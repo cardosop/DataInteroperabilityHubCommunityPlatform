@@ -214,11 +214,36 @@ class CostsViewSetTest(TestCase):
         self.assertEqual(response.data["total_cost"], 125.50)
         self.assertEqual(response.data["currency"], "USD")
 
-    @patch("hub.apps.api.analytics.views.CostTrackingService.get_cost_summary")
-    def test_list_cost_summary_missing_tenant_returns_400(self, mock_summary):
-        """Costs list returns 400 without tenant context"""
+    def test_list_cost_summary_missing_tenant_returns_400(self):
+        """Costs list returns 400 without tenant context.
+
+        Uses a user with a TENANT_ADMIN role (so HasAnyRole passes) but
+        no tenant (so _get_tenant_id returns None), triggering the
+        _check_tenant ValidationError guard before the service is called.
+        No mock needed.
+        """
+        # Create a separate tenant solely to host the role; the user
+        # itself has tenant=None so _get_tenant_id returns None.
+        role_tenant = Tenant.objects.create(
+            name=f"RoleHost {uuid.uuid4().hex[:8]}",
+            slug=f"rolehost-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        admin_role, _ = Role.objects.get_or_create(
+            name="TENANT_ADMIN", tenant=role_tenant
+        )
+        user_no_tenant = User.objects.create_user(
+            email=f"cview-nb-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=None,
+            status=UserStatus.ACTIVE,
+        )
+        UserRole.objects.get_or_create(
+            user=user_no_tenant, role=admin_role, tenant=role_tenant
+        )
         client = APIClient()
-        client.force_authenticate(user=self.user)
+        client.force_authenticate(user=user_no_tenant)
 
         url = reverse("costs-list")
         response = client.get(url)
@@ -323,6 +348,57 @@ class CostsViewSetTest(TestCase):
         mock_trends.assert_called_once()
         call_kwargs = mock_trends.call_args[1]
         self.assertEqual(call_kwargs["months"], 6)
+
+    def test_trends_invalid_months_silently_defaults_to_6(self):
+        """Costs trends silently defaults to 6 months for invalid months param.
+
+        The production code catches (TypeError, ValueError) from
+        int(months) and falls back to the default of 6 rather than
+        returning 400. This test pins that behaviour so a future
+        change that adds validation (and returns 400) will fail
+        here and force an explicit decision.
+        """
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        client.credentials(HTTP_X_TENANT_ID=str(self.tenant.id))
+
+        url = reverse("costs-trends")
+        response = client.get(url, {"months": "not-a-number"})
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_breakdown_missing_tenant_returns_400(self):
+        """Costs breakdown returns 400 without tenant context.
+
+        Uses a user with a TENANT_ADMIN role but no tenant so
+        _check_tenant raises ValidationError before the service call.
+        """
+        role_tenant = Tenant.objects.create(
+            name=f"RoleHost {uuid.uuid4().hex[:8]}",
+            slug=f"rolehost-{uuid.uuid4().hex[:8]}",
+            status="ACTIVE",
+            kyc_status="UNVERIFIED",
+        )
+        admin_role, _ = Role.objects.get_or_create(
+            name="TENANT_ADMIN", tenant=role_tenant
+        )
+        user_no_tenant = User.objects.create_user(
+            email=f"cview-bd-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=None,
+            status=UserStatus.ACTIVE,
+        )
+        UserRole.objects.get_or_create(
+            user=user_no_tenant, role=admin_role, tenant=role_tenant
+        )
+        client = APIClient()
+        client.force_authenticate(user=user_no_tenant)
+
+        url = reverse("costs-breakdown")
+        response = client.get(url)
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("Tenant context", str(response.data))
 
     def test_costs_list_requires_auth(self):
         """Costs endpoints return 401/403 without authentication"""

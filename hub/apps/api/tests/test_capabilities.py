@@ -26,13 +26,25 @@ def test_five_lineage_flags_are_registered():
 
 
 def test_test_environment_auto_enables_all_flags():
-    """REQ-LIN-006 scenario: test env returns all flags True."""
+    """REQ-LIN-006 scenario: test env returns all flags True (contract for E2E tests).
+
+    Pins the invariant that ALL lineage capability flags are True and bool
+    type in test mode.  Integration and E2E tests that depend on every
+    feature being enabled rely on this contract.
+    """
     from hub.apps.api.capabilities import LINEAGE_CAPABILITY_FLAGS, get_capabilities
 
-    # Pytest sets PYTEST_CURRENT_TEST so _is_test_environment() returns True.
     caps = get_capabilities()
+    lineage_caps = {k: v for k, v in caps.items() if k.startswith("lineage.")}
+    assert len(lineage_caps) == len(LINEAGE_CAPABILITY_FLAGS), (
+        "Number of lineage capability flags in response does not match "
+        "LINEAGE_CAPABILITY_FLAGS.  A flag may be missing from get_capabilities() output."
+    )
     for flag in LINEAGE_CAPABILITY_FLAGS:
         assert caps[flag] is True, f"flag {flag!r} should be True in test env; got {caps[flag]!r}"
+        assert isinstance(caps[flag], bool), (
+            f"flag {flag!r} must be bool, got {type(caps[flag])!r}"
+        )
 
 
 def test_settings_override_wins_over_default(monkeypatch):

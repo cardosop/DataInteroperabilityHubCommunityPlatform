@@ -57,6 +57,18 @@ MAX_RETRIES = 3
 RETRY_DELAY = 1.0
 
 
+def _internal_api_headers() -> dict[str, str]:
+    """Build headers for internal service-to-service calls.
+
+    The semantic service (and other internal services) require the
+    ``X-Internal-Api-Key`` header for authentication.  The key is set via
+    the ``INTERNAL_API_KEY`` env var (default: ``test-internal-api-key-for-test-env``
+    in docker-compose.test.yml).
+    """
+    key = os.getenv("INTERNAL_API_KEY", "test-internal-api-key-for-test-env")
+    return {"X-Internal-Api-Key": key}
+
+
 @pytest.fixture
 def complete_odps_product():
     """Complete ODPS product with all components for comprehensive testing"""
@@ -228,7 +240,7 @@ def _map_product_to_rdf(
     last_error = None
     for attempt in range(retries):
         try:
-            response = httpx.post(f"{SEMANTIC_SERVICE_URL}/map/odps", json=payload, timeout=30.0)
+            response = httpx.post(f"{SEMANTIC_SERVICE_URL}/map/odps", json=payload, timeout=30.0, headers=_internal_api_headers())
         except (httpx.ConnectError, httpx.ReadTimeout) as e:
             last_error = e
             if attempt < retries - 1:
@@ -292,6 +304,7 @@ def _map_odcs_contract_to_rdf(
                 f"{SEMANTIC_SERVICE_URL}/map/contract",
                 json={"hub_contract": hub_contract, "contract_uuid": contract_uuid},
                 timeout=30.0,
+                headers=_internal_api_headers(),
             )
 
             if response.status_code == 200:
@@ -344,6 +357,7 @@ def _execute_sparql_query(
     try:
         response = httpx.post(
             f"{SEMANTIC_SERVICE_URL}/sparql",
+            headers=_internal_api_headers(),
             json={"query": query, "output_format": output_format, "timeout": timeout},
             timeout=timeout + 5.0,
         )
@@ -764,14 +778,14 @@ class TestMultilingualSupport:
             name_pattern="Validierungs-Testprodukt", language="de", limit=10
         )
         bindings = _execute_sparql_query(query)
-        # German may not be found if not all triples were stored
-        if len(bindings) > 0:
-            german_found = any(
-                "Umfassendes Validierungs-Testprodukt" in b.get("productName", {}).get("value", "")
-                for b in bindings
-            )
-            if german_found:
-                assert True, "German product name found"
+        # Verify German product name appears in results
+        german_found = any(
+            "Umfassendes Validierungs-Testprodukt" in b.get("productName", {}).get("value", "")
+            for b in bindings
+        )
+        assert german_found, (
+            f"German product name should be found in {len(bindings)} results"
+        )
 
     def test_multilingual_query_spanish(self, complete_odps_product):
         """Test multilingual SPARQL query for Spanish"""
@@ -787,14 +801,14 @@ class TestMultilingualSupport:
             name_pattern="Validación Integral", language="es", limit=10
         )
         bindings = _execute_sparql_query(query)
-        # Spanish may not be found if not all triples were stored
-        if len(bindings) > 0:
-            spanish_found = any(
-                "Producto de Validación Integral" in b.get("productName", {}).get("value", "")
-                for b in bindings
-            )
-            if spanish_found:
-                assert True, "Spanish product name found"
+        # Verify Spanish product name appears in results
+        spanish_found = any(
+            "Producto de Validación Integral" in b.get("productName", {}).get("value", "")
+            for b in bindings
+        )
+        assert spanish_found, (
+            f"Spanish product name should be found in {len(bindings)} results"
+        )
 
     def test_multilingual_query_all_languages(self, complete_odps_product):
         """Test multilingual SPARQL query without language filter (all languages)"""

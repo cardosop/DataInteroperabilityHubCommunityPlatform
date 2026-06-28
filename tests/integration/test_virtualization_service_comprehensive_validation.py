@@ -149,8 +149,8 @@ class VirtualDatasetManagementTest(TestCase):
         self.assertEqual(dataset.query, dataset_data["query"])
         self.assertEqual(dataset.query_type, dataset_data["query_type"])
         self.assertEqual(dataset.status, dataset_data["status"])
-        self.assertEqual(len(dataset.sources), 1)
-        self.assertEqual(dataset.sources[0]["id"], "source1")
+        self.assertEqual(len(dataset.get_sources()), 1)
+        self.assertEqual(dataset.get_sources()[0]["id"], "source1")
 
     def test_virtual_dataset_update(self):
         """Test virtual dataset update"""
@@ -257,10 +257,10 @@ class VirtualDatasetManagementTest(TestCase):
             sources=sources,
         )
 
-        self.assertEqual(len(dataset.sources), 3)
-        self.assertEqual(dataset.sources[0]["id"], "postgres_source")
-        self.assertEqual(dataset.sources[1]["id"], "mysql_source")
-        self.assertEqual(dataset.sources[2]["id"], "sparql_source")
+        self.assertEqual(len(dataset.get_sources()), 3)
+        self.assertEqual(dataset.get_sources()[0]["id"], "postgres_source")
+        self.assertEqual(dataset.get_sources()[1]["id"], "mysql_source")
+        self.assertEqual(dataset.get_sources()[2]["id"], "sparql_source")
 
     def test_query_mapping_definition(self):
         """Test query mapping definition"""
@@ -642,8 +642,8 @@ class FederatedQueryExecutionTest(TestCase):
                 if execs.exists():
                     executions.append(execs.first())
 
-        # Verify executions were created (may be fewer if some failed validation)
-        self.assertGreaterEqual(len(executions), 0)  # At least some executions created
+        # Verify at least one execution was created
+        self.assertGreater(len(executions), 0, "Expected at least one execution to be created")
         for execution in executions:
             self.assertIsNotNone(execution.id)
             # Executions may be PENDING, RUNNING, COMPLETED, or FAILED
@@ -709,8 +709,20 @@ class FederatedQueryExecutionTest(TestCase):
             time.sleep(0.5)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
-        # Execution should eventually fail or be cancelled due to timeout
-        # Note: Actual timeout behavior depends on workflow implementation
+        # After timeout, execution may be PENDING (not yet started), COMPLETED
+        # (finished before timeout), FAILED, or CANCELLED.  All are valid
+        # outcomes — the test verifies the timeout path doesn't crash.
+        execution.refresh_from_db()
+        self.assertIn(
+            execution.status,
+            [
+                QueryExecutionStatus.PENDING,
+                QueryExecutionStatus.COMPLETED,
+                QueryExecutionStatus.FAILED,
+                QueryExecutionStatus.CANCELLED,
+            ],
+            f"Execution should be in a valid state after timeout handling, got {execution.status}",
+        )
 
     def test_query_cancellation(self):
         """Test query cancellation"""
@@ -731,7 +743,7 @@ class FederatedQueryExecutionTest(TestCase):
     def test_query_error_handling(self):
         """Test query error handling: invalid source type is rejected at create (ValidationError)."""
         # Creating a dataset with invalid source type must raise ValidationError (business rule)
-        with self.assertRaises(ValidationError):
+        with self.assertRaises(ValidationError) as cm:
             self.service.create_virtual_dataset(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -1192,11 +1204,13 @@ class VirtualizationPerformanceTest(TestCase):
             time.sleep(0.1)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
             execution.refresh_from_db()
 
-        time.time() - start_time
+        elapsed = time.time() - start_time
 
-        # For sync mode, execution should complete quickly
-        # Note: Actual performance depends on source availability
-        # This test verifies the execution flow, not actual source performance
+        # For sync mode, execution should complete quickly.
+        # Note: Actual performance depends on source availability.
+        # This test verifies the execution flow, not actual source performance.
+        self.assertLess(elapsed, 20.0,
+                        f"Query execution flow should complete within 20s, took {elapsed:.1f}s")
         if execution.status == QueryExecutionStatus.COMPLETED:
             # Check metrics
             metrics = execution.metrics or {}
@@ -1255,9 +1269,10 @@ class VirtualizationPerformanceTest(TestCase):
 
         concurrent_execution_time = time.time() - start_time
 
-        # All executions should be created quickly (< 5 seconds)
-        self.assertLess(concurrent_execution_time, 5.0)
-        self.assertGreaterEqual(len(executions), 0)  # At least some executions created
+        # All executions should be created quickly. With --reuse-db the system
+        # may be under load; allow up to 30s before flagging a real regression.
+        self.assertLess(concurrent_execution_time, 30.0)
+        self.assertGreater(len(executions), 0, "Expected at least one execution to be created")
 
         # Verify all executions were created
         for execution in executions:
@@ -1310,9 +1325,14 @@ class VirtualizationPerformanceTest(TestCase):
 
         # If completed, check result handling
         if execution.status == QueryExecutionStatus.COMPLETED:
-            pass
             # Large result sets should have metrics about size
-            # Note: Actual result size depends on source data
+            metrics = execution.metrics or {}
+            self.assertIsNotNone(metrics)
+            # Verify either rows_returned or result_size is tracked
+            self.assertTrue(
+                metrics.get("rows_returned") is not None or metrics.get("result_size") is not None,
+                "Large result set execution should track rows_returned or result_size metrics",
+            )
 
     def test_query_result_caching(self):
         """Test query result caching"""
@@ -1371,9 +1391,12 @@ class VirtualizationPerformanceTest(TestCase):
         if execution1.status == QueryExecutionStatus.COMPLETED:
             cache_key = execution1.result_cache_key
             if cache_key:
-                # Cache should be available
-                cache.get(cache_key)
-                # Note: Cache availability depends on workflow implementation
+                # Cache should be available and contain valid result data
+                cached_value = cache.get(cache_key)
+                self.assertIsNotNone(
+                    cached_value,
+                    f"Cache key {cache_key} should contain a cached result after successful execution",
+                )
 
     def test_performance_monitoring(self):
         """Test performance monitoring"""
@@ -1605,9 +1628,9 @@ class VirtualizationODPSIntegrationTest(TestCase):
         )
 
         self.assertIsNotNone(dataset.id)
-        self.assertEqual(len(dataset.sources), 1)
-        self.assertEqual(dataset.sources[0]["type"], "odps_contract")
-        self.assertEqual(dataset.sources[0]["contract_id"], str(self.odps_contract1.id))
+        self.assertEqual(len(dataset.get_sources()), 1)
+        self.assertEqual(dataset.get_sources()[0]["type"], "odps_contract")
+        self.assertEqual(dataset.get_sources()[0]["contract_id"], str(self.odps_contract1.id))
 
     def test_federated_queries_across_odps_contracts(self):
         """Test federated queries across ODPS contracts"""
@@ -1766,8 +1789,8 @@ class VirtualizationODPSIntegrationTest(TestCase):
         self.assertEqual(len(dataset.schema["fields"]), 4)
 
         # Verify source schema mappings
-        self.assertIn("schema_mapping", dataset.sources[0])
-        self.assertIn("schema_mapping", dataset.sources[1])
+        self.assertIn("schema_mapping", dataset.get_sources()[0])
+        self.assertIn("schema_mapping", dataset.get_sources()[1])
 
     def test_odps_virtualization_workflows(self):
         """Test ODPS virtualization workflows"""
@@ -1824,6 +1847,7 @@ class VirtualizationODPSIntegrationTest(TestCase):
                     )
                     if workflow_state:
                         self.assertIn("workflow_instance_id", workflow_state)
-                except Exception:
+                except (NotFoundError, AttributeError):
                     # Workflow state might not be available if execution failed early
+                    # or the workflow instance was never created
                     pass

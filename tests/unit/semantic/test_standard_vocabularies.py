@@ -36,12 +36,13 @@ def check_semantic_service_available():
         return False
 
 
-@pytest.mark.skipif(not check_semantic_service_available(), reason="Semantic service not available")
 class StandardVocabularyTest(TestCase):
     """Test standard vocabulary mappings"""
 
     def setUp(self):
         """Set up test fixtures"""
+        if not check_semantic_service_available():
+            self.skipTest("Semantic service not available")
         self.tenant = Tenant.objects.create(
             name=f"Test Tenant {uuid.uuid4().hex[:8]}",
             slug=f"test-tenant-{uuid.uuid4().hex[:8]}",
@@ -85,6 +86,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     def test_dqv_accuracy_dimension_mapping(self):
         """Test DQV accuracy dimension mapping"""
@@ -113,6 +116,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     def test_dqv_all_dimensions_mapping(self):
         """Test all DQV dimensions mapping"""
@@ -151,6 +156,8 @@ class StandardVocabularyTest(TestCase):
 
             semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
             self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # DPV Vocabulary Tests
     def test_dpv_email_address_category_mapping(self):
@@ -178,6 +185,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     def test_dpv_jurisdiction_mapping(self):
         """Test DPV jurisdiction mapping"""
@@ -207,6 +216,8 @@ class StandardVocabularyTest(TestCase):
 
             semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
             self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     def test_dpv_legal_basis_mapping(self):
         """Test DPV legal basis mapping"""
@@ -236,6 +247,8 @@ class StandardVocabularyTest(TestCase):
 
             semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
             self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # PROV-O Vocabulary Tests
     def test_prov_was_derived_from_mapping(self):
@@ -262,6 +275,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # ODRL Vocabulary Tests
     def test_odrl_permission_mapping(self):
@@ -288,6 +303,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     def test_odrl_prohibition_mapping(self):
         """Test ODRL prohibition mapping for restricted use"""
@@ -313,6 +330,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # SHACL Vocabulary Tests
     def test_shacl_validation_mapping(self):
@@ -345,6 +364,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # Schema.org Vocabulary Tests
     def test_schema_org_type_mapping(self):
@@ -376,6 +397,8 @@ class StandardVocabularyTest(TestCase):
 
             semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
             self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # FOAF Vocabulary Tests
     def test_foaf_owner_mapping(self):
@@ -401,6 +424,8 @@ class StandardVocabularyTest(TestCase):
 
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
 
     # Combined Vocabulary Tests
     def test_all_vocabularies_combined(self):
@@ -458,5 +483,7 @@ class StandardVocabularyTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         self.assertIsNotNone(semantic_resource)
+        self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0,
+            "Mapping should produce RDF triples")
         # All vocabularies should be mapped
         self.assertGreater(semantic_resource.metadata_json.get("triples_count", 0), 0)

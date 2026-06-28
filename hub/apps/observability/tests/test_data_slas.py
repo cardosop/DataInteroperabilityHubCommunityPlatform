@@ -12,7 +12,7 @@ from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.observability.data_slas import DataSLAMonitor
-from hub.apps.observability.models import DataObservabilityMetric
+from hub.apps.observability.models import DataObservabilityMetric, DataSLA
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import User, UserStatus
 
@@ -166,8 +166,10 @@ class DataSLAMonitorFailureTest(TestCase):
         )
 
     def test_create_sla_invalid_tenant_id(self):
-        """Test creating SLA with invalid tenant ID"""
-        with self.assertRaises(Exception):  # NotFoundError or ValidationError
+        """Test creating SLA with invalid tenant ID raises Tenant.DoesNotExist"""
+        from hub.apps.tenants.models import Tenant as TenantModel
+
+        with self.assertRaises(TenantModel.DoesNotExist):
             DataSLAMonitor.create_sla(
                 tenant_id=str(uuid.uuid4()),  # Non-existent tenant
                 name="Test SLA",
@@ -177,8 +179,10 @@ class DataSLAMonitorFailureTest(TestCase):
             )
 
     def test_create_sla_invalid_sla_type(self):
-        """Test creating SLA with invalid SLA type"""
-        with self.assertRaises(Exception):  # ValidationError
+        """Test creating SLA with invalid SLA type raises IntegrityError (CheckConstraint)"""
+        from django.db.utils import IntegrityError
+
+        with self.assertRaises(IntegrityError):
             DataSLAMonitor.create_sla(
                 tenant_id=str(self.tenant.id),
                 name="Test SLA",
@@ -187,16 +191,16 @@ class DataSLAMonitorFailureTest(TestCase):
             )
 
     def test_create_sla_missing_required_fields(self):
-        """Test creating SLA with missing required fields"""
-        with self.assertRaises(Exception):  # ValidationError or TypeError
+        """Test creating SLA with missing required fields raises TypeError"""
+        with self.assertRaises(TypeError):
             DataSLAMonitor.create_sla(
                 tenant_id=str(self.tenant.id),
                 # Missing name, sla_type
             )
 
     def test_check_compliance_invalid_sla_id(self):
-        """Test checking compliance with invalid SLA ID"""
-        with self.assertRaises(Exception):  # NotFoundError
+        """Test checking compliance with invalid SLA ID raises DataSLA.DoesNotExist"""
+        with self.assertRaises(DataSLA.DoesNotExist):
             DataSLAMonitor.check_compliance(str(uuid.uuid4()))  # Non-existent SLA
 
 

@@ -39,7 +39,6 @@ class DsarServiceTests(TestCase):
 
     def test_dsar_model_exists(self):
         """Verify DSARRequest model is importable and field contract is intact."""
-        assert self.tenant.id is not None
         fields = {f.name for f in DSARRequest._meta.get_fields()}
         for required in ("tenant", "request_type", "subject_email", "status"):
             assert required in fields, f"DSARRequest must have '{required}' field"
@@ -116,19 +115,28 @@ class DsarApiTests(TestCase):
         assert "results" in resp.data or isinstance(resp.data, list)
 
     def test_public_submission(self):
-        """Public DSAR submission endpoint accepts anonymous POST at /api/v1/public/dsar-requests/."""
+        """Public DSAR submission with captcha verification bypassed.
+
+        The serializer requires ``hcaptcha_response`` as a field even when
+        captcha verification is disabled.  The endpoint returns 201 on
+        successful submission with the bypass flag active."""
+        from django.test import override_settings
+
         public_client = APIClient()
-        resp = public_client.post(
-            "/api/v1/public/dsar-requests/",
-            {
-                "request_type": DSARRequestType.ACCESS,
-                "subject_email": "public@example.com",
-                "regimes": ["GDPR"],
-            },
-            format="json",
-        )
-        # Public submit returns 201 on success or 400 if captcha/validation fails
-        assert resp.status_code in (201, 202, 400)
+        with override_settings(DSAR_SKIP_HCAPTCHA_VERIFICATION=True):
+            resp = public_client.post(
+                "/api/v1/public/dsar-requests/",
+                {
+                    "request_type": DSARRequestType.ACCESS,
+                    "subject_email": "public@example.com",
+                    "regimes": ["GDPR"],
+                    "hcaptcha_response": "test-bypass-token",
+                    "tenant_id": str(self.tenant.id),
+                },
+                format="json",
+            )
+        self.assertEqual(resp.status_code, 201)
+        self.assertIn("public_reference_token", resp.data)
 
 
 class DsarFeatureFlagTests(TestCase):

@@ -86,6 +86,25 @@ class TestPlatformTenantViewSetPermissions(TestCase):
         self.assertIn("period_start", response.data)
         self.assertIn("period_end", response.data)
 
+    def test_platform_tenant_usage_filter_by_tenant_id(self):
+        """GET .../usage/?tenant_id=<uuid> returns only the requested tenant."""
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.get(
+            f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        results = response.data.get("results", [])
+        tenant_ids = [r["tenant_id"] for r in results]
+        self.assertIn(str(self.tenant.id), tenant_ids)
+
+    def test_platform_tenant_usage_invalid_tenant_id_returns_400(self):
+        """GET .../usage/?tenant_id=not-a-uuid returns 400."""
+        self.client.force_authenticate(user=self.platform_admin)
+        response = self.client.get(
+            "/api/v1/platform/tenants/usage/?tenant_id=not-a-uuid"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
     def test_platform_tenant_suspend_returns_200_and_sets_suspended(self):
         """Phase 15: POST suspend sets tenant status to SUSPENDED."""
         from hub.apps.tenants.models import TenantStatus
@@ -120,7 +139,6 @@ class TestPlatformTenantViewSetPermissions(TestCase):
             .first()
         )
         self.assertIsNotNone(event)
-        assert event is not None
         self.assertEqual(event.actor_user_id, self.platform_admin.id)
         self.assertEqual(str(event.resource_id), str(self.tenant.id))
         self.assertEqual(event.details_json.get("new_status"), TenantStatus.SUSPENDED)
@@ -155,7 +173,6 @@ class TestPlatformTenantViewSetPermissions(TestCase):
             .first()
         )
         self.assertIsNotNone(event)
-        assert event is not None
         self.assertEqual(event.actor_user_id, self.platform_admin.id)
         self.assertEqual(str(event.resource_id), str(self.tenant.id))
         self.assertEqual(event.details_json.get("new_status"), TenantStatus.ACTIVE)
@@ -247,7 +264,6 @@ class TestPlatformUserViewSetPermissions(TestCase):
             .first()
         )
         self.assertIsNotNone(event)
-        assert event is not None
         self.assertEqual(event.actor_user_id, self.platform_admin.id)
         self.assertEqual(event.details_json.get("source"), "platform_admin")
         self.assertEqual(event.details_json.get("initiated_by"), str(self.platform_admin.id))
@@ -268,5 +284,4 @@ class TestPlatformUserViewSetPermissions(TestCase):
             .first()
         )
         self.assertIsNotNone(event)
-        assert event is not None
         self.assertIsNone(event.actor_user_id, "ERASURE_COMPLETED is system action")

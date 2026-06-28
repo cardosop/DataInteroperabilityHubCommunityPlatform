@@ -681,13 +681,12 @@ class SemanticLayerE2ETest(E2ETestBase):
             pass
 
     def test_ontology_public_access(self):
-        """Test ontology is publicly accessible"""
+        """Test ontology endpoint requires authentication (not publicly accessible)."""
         # Clear authentication
         self.client.force_authenticate(user=None)
 
         response = self.client.get("/api/v1/semantic/ontology")
 
-        # Should be accessible without authentication
         # Semantic service may not be available (503)
         if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
             pytest.skip("Semantic service not available")  # noqa: skip-in-body — runtime service dependency
@@ -698,16 +697,16 @@ class SemanticLayerE2ETest(E2ETestBase):
         elif response.status_code == status.HTTP_400_BAD_REQUEST:
             pytest.skip("SPARQL query endpoint may not be fully implemented")  # noqa: skip-in-body — runtime service dependency
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Ontology endpoint requires authentication (401 for anonymous access)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_jsonld_context_public_access(self):
-        """Test JSON-LD context is publicly accessible"""
+        """Test JSON-LD context endpoint requires authentication (not publicly accessible)."""
         # Clear authentication
         self.client.force_authenticate(user=None)
 
         response = self.client.get("/api/v1/semantic/context.jsonld")
 
-        # Should be accessible without authentication
         # Semantic service may not be available (503)
         if response.status_code == status.HTTP_503_SERVICE_UNAVAILABLE:
             pytest.skip("Semantic service not available")  # noqa: skip-in-body — runtime service dependency
@@ -718,4 +717,5 @@ class SemanticLayerE2ETest(E2ETestBase):
         elif response.status_code == status.HTTP_400_BAD_REQUEST:
             pytest.skip("SPARQL query endpoint may not be fully implemented")  # noqa: skip-in-body — runtime service dependency
 
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # JSON-LD context endpoint requires authentication (401 for anonymous access)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)

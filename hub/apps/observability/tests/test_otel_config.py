@@ -320,7 +320,8 @@ class OpenTelemetryConfigTest(TestCase):
                 provider = trace.get_tracer_provider()
                 if isinstance(provider, SDKTracerProvider):
                     provider.shutdown()
-            except Exception:
+            except (ImportError, AttributeError, RuntimeError):
+                # Expected: OTEL packages not installed or provider already shut down
                 pass
 
     @override_settings(OPENTELEMETRY_ENABLED=False)
@@ -369,9 +370,14 @@ class OpenTelemetryConfigTest(TestCase):
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_add_span_attributes(self):
-        """Test adding attributes to current span with real implementation."""
+        """Test add_span_attributes completes without error even without an active span."""
         from hub.apps.observability.otel_config import add_span_attributes
 
         attributes = {"key1": "value1", "key2": 123}
 
-        add_span_attributes(attributes)
+        # When no span is active, add_span_attributes is a no-op.
+        # The function must never raise regardless of span state.
+        try:
+            add_span_attributes(attributes)
+        except Exception as exc:
+            self.fail(f"add_span_attributes raised unexpectedly: {exc}")

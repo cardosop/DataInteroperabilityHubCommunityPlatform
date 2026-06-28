@@ -299,9 +299,13 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
             self.verify_audit_log(
                 action="ODPS_CREATED", resource_type="CONTRACT", resource_id=odps_contract_id
             )
-        except AssertionError:
-            # Audit log may not be created immediately - this is non-critical
-            pass
+        except AssertionError as e:
+            # Audit log may not be created immediately — log a warning
+            # so the test output flags it but doesn't fail the test.
+            import logging
+            logging.getLogger(__name__).warning(
+                "Audit log verification deferred (non-critical): %s", e
+            )
 
     # Test 2: Data-First workflow with ODPS linking (enhanced)
     def test_data_first_workflow_with_odps_linking_enhanced(self):
@@ -498,8 +502,12 @@ class TestDPOEnhancedWorkflowsWithODPS(E2ETestBase):
         if "odps_contract_id" in locals() and odps_contract_id:
             try:
                 self.prepare_contract_for_activation(odps_contract_id)
-            except Exception:
-                pass  # ODPS contract may not exist if linking failed
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).warning(
+                    "ODPS contract activation prep failed (may not exist if linking "
+                    "failed): %s", e
+                )
         self.prepare_asset_for_activation(asset_id)
         activate_response = self.activate_asset(asset_id)
         self.assertEqual(activate_response.status_code, status.HTTP_200_OK)
@@ -1564,12 +1572,12 @@ class TestDataConsumerEnhancedWorkflowsWithODPS(E2ETestBase):
         )
         self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
         order_data = order_response.data.get("order", order_response.data)
-        order_data["id"]
+        self.assertIsNotNone(order_data.get("id"), "Order response should contain id")
 
         # Verify entitlement created
         entitlement_data = order_response.data.get("entitlement")
         self.assertIsNotNone(entitlement_data, "Entitlement should be created")
-        entitlement_data["id"]
+        self.assertIsNotNone(entitlement_data.get("id"), "Entitlement should contain id")
 
         # Step 4: Consumer retrieves access methods from ODPS contract
         # Get access methods via API (if endpoint exists)

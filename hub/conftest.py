@@ -431,6 +431,47 @@ def _reset_connector_circuit_breakers():
         pass
 
 
+@pytest.fixture(autouse=True)
+def _reset_odh_circuit_breakers():
+    """Reset ODH service circuit breakers before/after each test.
+
+    ODH integration tests use real ODH endpoints (inference scheduler,
+    model registry, training operator).  When a test intentionally uses
+    a non-existent resource (deployment ID, job ID) the ODH service
+    returns a 4xx response.  Without this fixture those 4xx responses
+    accumulate in the circuit breaker failure counter and eventually
+    OPEN the breaker, causing all subsequent ODH-dependent tests to
+    skip with ``CircuitBreakerError`` even though the ODH services
+    are fully healthy.
+    """
+    _ODH_BREAKERS = [
+        "odh-inference-scheduler",
+        "odh-model-registry",
+        "odh-training-operator",
+    ]
+    try:
+        from hub.apps.core.resilience.circuit_breaker import (
+            reset_circuit_breaker_by_name,
+        )
+
+        for name in _ODH_BREAKERS:
+            with contextlib.suppress(Exception):
+                reset_circuit_breaker_by_name(name)
+    except Exception:
+        pass
+    yield
+    try:
+        from hub.apps.core.resilience.circuit_breaker import (
+            reset_circuit_breaker_by_name,
+        )
+
+        for name in _ODH_BREAKERS:
+            with contextlib.suppress(Exception):
+                reset_circuit_breaker_by_name(name)
+    except Exception:
+        pass
+
+
 # ── Permanent module-level patch: suppress TransactionManagementError ──
 # Applied IMMEDIATELY at conftest import time (before any test fixture or
 # pytest_configure hook), so it is active for ALL test phases including
@@ -952,6 +993,10 @@ def pytest_configure(config):
         from django.db import connection as _db_conn
         from django.db import transaction as db_transaction
         from django.db.utils import IntegrityError as DjIntegrityError
+        # Django 6.0: InterfaceError is a sibling of DatabaseError, not a child.
+        # except (DjIntegrityError, OperationalError) would silently miss it.
+        from django.db.utils import InterfaceError as DjInterfaceError
+        from django.db.utils import OperationalError as DjOperationalError
 
         from hub.apps.tenants.models import Tenant
 
@@ -1000,16 +1045,21 @@ def pytest_configure(config):
                             except model_cls.DoesNotExist:
                                 continue
                     raise
-                except (DjIntegrityError, OperationalError):
-                    # OperationalError (deadlock, connection loss) may leave the
-                    # transaction aborted; try get() as a fallback before re-raising.
+                except (DjInterfaceError, DjIntegrityError, DjOperationalError):
+                    # OperationalError (deadlock, connection loss) or InterfaceError
+                    # (connection already closed, Django 6.0 sibling of DatabaseError)
+                    # may leave the transaction aborted; try get() as a fallback
+                    # before re-raising.
                     _recover_broken_transaction()
                     mgr = getattr(model_cls, "all_objects", model_cls.objects)
                     for key in ("slug", "name"):
                         if key in kwargs:
                             try:
                                 return mgr.get(**{key: kwargs[key]})
-                            except Exception:
+                            except (model_cls.DoesNotExist, DjInterfaceError,
+                                    DjOperationalError):
+                                # Expected: row may not exist for this key,
+                                # or connection may be unstable; try next key.
                                 continue
                     raise
 
@@ -1050,14 +1100,17 @@ def pytest_configure(config):
                 if email:
                     return _update_existing_user(_User, email, args, kwargs)
                 raise
-            except Exception:
-                # InFailedSqlTransaction — recover and try get fallback.
+            except (DjInterfaceError, DjOperationalError):
+                # Connection loss / deadlock / connection-already-closed
+                # (Django 6.0: InterfaceError is a sibling of DatabaseError).
+                # Recover and try get fallback.
                 _recover_broken_transaction()
                 email = kwargs.get("email") or (args[0] if args else None)
                 if email:
                     try:
                         return _update_existing_user(_User, email, args, kwargs)
-                    except Exception:
+                    except (DjInterfaceError, DjOperationalError):
+                        # Still unstable — give up on fallback.
                         pass
                 raise
 

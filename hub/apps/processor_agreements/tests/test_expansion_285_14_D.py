@@ -59,7 +59,6 @@ class ProcessorAgreementsServiceTests(TestCase):
             effective_from=date.today(),
             sub_processors_declared=[],
         )
-        assert agreement.id is not None
         assert agreement.tenant == self.tenant
         assert agreement.processor == proc
         assert agreement.agreement_type == ProcessorAgreementType.DPA
@@ -95,7 +94,6 @@ class ProcessorAgreementsServiceTests(TestCase):
             effective_from=date.today(),
             sub_processors_declared=[{"name": "Sub A"}],
         )
-        assert agreement.id is not None
         # Update
         agreement.document_uri = "https://example.com/updated.pdf"
         agreement.save(update_fields=["document_uri"])
@@ -132,9 +130,10 @@ class ProcessorAgreementsApiTests(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_list_endpoint_scoped(self):
-        """GET /api/v1/processor-agreements/processors/ returns tenant-scoped results."""
+        """GET /api/v1/processor-agreements/processors/ returns 200 with results."""
         resp = self.client.get("/api/v1/processor-agreements/processors/")
         assert resp.status_code == 200
+        assert "results" in resp.data or isinstance(resp.data, list)
 
     def test_permission_checks(self):
         """Non-TENANT_ADMIN user gets 403 on processor endpoints."""
@@ -198,20 +197,29 @@ class ProcessorAgreementsFeatureFlagTests(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_flag_disabled_returns_gated(self):
-        """When compliance_processor_agreements_enabled=False, processor view denies write."""
-        # Test at the permission layer: the permission class checks the tenant flag
-
-        # Permission check should account for the disabled flag
-        # Verify that the tenant flag is indeed False
+        """When compliance_processor_agreements_enabled=False, non-admin is blocked."""
+        # Use a regular user — platform admins bypass the feature flag
+        non_admin = User.objects.create_user(
+            email=f"regular-{uuid.uuid4().hex[:8]}@test.local",
+            password="Pass1234!",
+            tenant=self.tenant,
+        )
+        client = APIClient()
+        client.force_authenticate(user=non_admin)
         self.tenant.refresh_from_db()
         assert self.tenant.compliance_processor_agreements_enabled is False
+        resp = client.get("/api/v1/processor-agreements/processors/")
+        assert resp.status_code == 403, (
+            f"Expected 403 when flag disabled, got {resp.status_code}"
+        )
 
     def test_flag_enabled_returns_accessible(self):
-        """When compliance_processor_agreements_enabled=True, endpoints return 200."""
+        """When compliance_processor_agreements_enabled=True, endpoints return 200 with results."""
         self.tenant.compliance_processor_agreements_enabled = True
         self.tenant.save(update_fields=["compliance_processor_agreements_enabled"])
         resp = self.client.get("/api/v1/processor-agreements/processors/")
         assert resp.status_code == 200
+        assert "results" in resp.data or isinstance(resp.data, list)
 
 
 class ProcessorAgreementsAuditTests(TestCase):

@@ -36,6 +36,14 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
         """Set up test fixtures"""
         self.client = APIClient()
 
+        # Create a platform admin user for tenant onboarding API calls.
+        # The onboarding endpoint requires is_superuser or PLATFORM_ADMIN role.
+        self.admin_user = User.objects.create_superuser(
+            email=f"admin-{uuid.uuid4().hex[:8]}@example.com",
+            password="SecurePass123!",
+        )
+        self.client.force_authenticate(user=self.admin_user)
+
         # Get or create FREE plan
         self.free_plan, _ = TenantPlan.objects.get_or_create(
             slug="free",
@@ -153,7 +161,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             status=TenantStatus.ACTIVE,
         )
         User.objects.create_user(
-            email=f"duplicate-{uuid.uuid4().hex[:8]}@example.com",
+            email="duplicate@example.com",
             password="testpass123",
             tenant=existing_tenant,
             status=UserStatus.ACTIVE,
@@ -161,7 +169,7 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
 
         data = {
             "name": "Duplicate Email Tenant",
-            "slug": "duplicate-email-tenant",
+            "slug": f"duplicate-email-tenant-{uuid.uuid4().hex[:8]}",
             "first_user": {
                 "email": "duplicate@example.com",  # Duplicate email
                 "password": "SecurePass123!",
@@ -218,7 +226,8 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
         response = self.client.post("/api/v1/tenants/onboarding/", data, format="json")
 
         if response.status_code == status.HTTP_201_CREATED:
-            response.data.get("tenant", {}).get("id")
+            tenant_id = response.data.get("tenant", {}).get("id")
+            self.assertIsNotNone(tenant_id, "Created tenant ID should be present")
             user_id = response.data.get("user", {}).get("id")
 
             user = User.objects.get(id=user_id)
@@ -226,11 +235,11 @@ class TenantOnboardingServiceComprehensiveValidationTest(TestCase):
             # Verify user can only see their tenant's data
             self.client.force_authenticate(user=user)
 
-            # Try to access assets (should be empty or tenant-scoped)
+            # Try to access assets — should be tenant-scoped (empty for new tenant)
             assets_response = self.client.get("/api/v1/assets/")
-
             self.assertEqual(assets_response.status_code, status.HTTP_200_OK)
-            # All assets should belong to user's tenant
-            for _asset in assets_response.data.get("results", []):
-                # Verify tenant isolation (if tenant_id is in response)
-                pass  # Tenant isolation verified by backend
+            for asset in assets_response.data.get("results", []):
+                self.assertEqual(
+                    asset.get("tenant_id"), tenant_id,
+                    f"Asset {asset.get('id')} should belong to tenant {tenant_id}"
+                )

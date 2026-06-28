@@ -26,6 +26,33 @@ from hub.apps.users.models import User, UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
+class _VersioningTestBase(TestCase):
+    """Shared setUp for all versioning integration tests.
+
+    Creates tenant, user, and an authenticated APIClient.
+    Subclasses add resource-specific fixtures (asset, contracts) in
+    their own setUp after calling super().setUp().
+    """
+
+    def setUp(self):
+        super().setUp()
+        uid = uuid.uuid4().hex[:8]
+        self.client = APIClient()
+        self.tenant = Tenant.objects.create(
+            name=f"vtest-{uid}",
+            slug=f"vtest-{uid}",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.VERIFIED,
+        )
+        self.user = User.objects.create_user(
+            email=f"vu-{uid}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+            status=UserStatus.ACTIVE,
+        )
+        self.client.force_authenticate(user=self.user)
+
+
 def _create_contract(tenant, asset=None, version=1, **kwargs):
     return Contract.objects.create(
         tenant=tenant,
@@ -39,25 +66,11 @@ def _create_contract(tenant, asset=None, version=1, **kwargs):
     )
 
 
-class VersioningListVersionsIntegrationTest(TestCase):
+class VersioningListVersionsIntegrationTest(_VersioningTestBase):
     """List versions: GET /api/v1/versioning/versions/?resource_type=contract&resource_id=<asset_uuid>."""
 
     def setUp(self):
         super().setUp()
-        self.client = APIClient()
-        self.tenant = Tenant.objects.create(
-            name="T1",
-            slug="t1",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email=f"u1-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-        self.client.force_authenticate(user=self.user)
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="asset1",
@@ -87,6 +100,8 @@ class VersioningListVersionsIntegrationTest(TestCase):
             {"resource_id": str(self.asset.id)},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data,
+                      "Missing resource_type must produce an error message")
 
     def test_list_versions_missing_resource_id_returns_400(self):
         response = self.client.get(
@@ -94,11 +109,23 @@ class VersioningListVersionsIntegrationTest(TestCase):
             {"resource_type": "contract"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data,
+                      "Missing resource_id must produce an error message")
 
     def test_list_versions_invalid_resource_type_returns_400(self):
         response = self.client.get(
             "/api/v1/versioning/versions/",
             {"resource_type": "invalid", "resource_id": str(self.asset.id)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data,
+                      "Invalid resource_type must produce an error message")
+
+    def test_list_versions_invalid_uuid_returns_400(self):
+        """Non-UUID resource_id is rejected at the parameter-validation layer."""
+        response = self.client.get(
+            "/api/v1/versioning/versions/",
+            {"resource_type": "contract", "resource_id": "not-a-uuid"},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
@@ -174,25 +201,11 @@ class VersioningListVersionsIntegrationTest(TestCase):
         self.assertEqual(versions[1]["is_current"], False)
 
 
-class VersioningGetVersionIntegrationTest(TestCase):
+class VersioningGetVersionIntegrationTest(_VersioningTestBase):
     """Get version: GET /api/v1/versioning/versions/<id>/."""
 
     def setUp(self):
         super().setUp()
-        self.client = APIClient()
-        self.tenant = Tenant.objects.create(
-            name="T1",
-            slug="t1",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email=f"u1-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-        self.client.force_authenticate(user=self.user)
         self.contract = _create_contract(self.tenant, asset=None, version=1)
 
     def test_get_version_contract_returns_200_and_shape(self):
@@ -202,14 +215,24 @@ class VersioningGetVersionIntegrationTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["id"], str(self.contract.id))
         self.assertEqual(response.data["resource_type"], "contract")
-        self.assertIn("version", response.data)
+        self.assertEqual(response.data["version"], 1)
         self.assertIn("created_at", response.data)
+        self.assertIn("updated_at", response.data)
+        self.assertIn("is_current", response.data)
+        self.assertIn("status", response.data)
+        self.assertIn("semantic_version", response.data)
+        self.assertIn("original_spec_version", response.data)
 
     def test_get_version_unknown_id_returns_404(self):
         response = self.client.get(
             "/api/v1/versioning/versions/00000000-0000-0000-0000-000000000000/",
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        # 404 responses may have an empty body; the status code alone
+        # confirms the resource is correctly treated as not-found.
+        if response.data is not None:
+            self.assertIn("error", response.data,
+                          "Non-existent version ID must produce an error message")
 
     def test_get_version_tenant_isolation_returns_404_for_other_tenant(self):
         other_tenant = Tenant.objects.create(
@@ -224,26 +247,25 @@ class VersioningGetVersionIntegrationTest(TestCase):
         )
         self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
+    def test_get_version_invalid_uuid_returns_404(self):
+        """A non-UUID pk is rejected; Django's URL resolver returns 404."""
+        response = self.client.get("/api/v1/versioning/versions/not-a-uuid/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
-class VersioningCompareIntegrationTest(TestCase):
+    def test_get_version_unauthenticated_returns_401(self):
+        """Retrieve endpoint requires authentication."""
+        client = APIClient()  # no force_authenticate
+        response = client.get(
+            f"/api/v1/versioning/versions/{self.contract.id}/",
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+
+class VersioningCompareIntegrationTest(_VersioningTestBase):
     """Compare: GET /api/v1/versioning/compare/?resource_type=contract&id_a=<uuid>&id_b=<uuid>."""
 
     def setUp(self):
         super().setUp()
-        self.client = APIClient()
-        self.tenant = Tenant.objects.create(
-            name="T1",
-            slug="t1",
-            status=TenantStatus.ACTIVE,
-            kyc_status=KYCStatus.VERIFIED,
-        )
-        self.user = User.objects.create_user(
-            email=f"u1-{uuid.uuid4().hex[:8]}@example.com",
-            password="testpass123",
-            tenant=self.tenant,
-            status=UserStatus.ACTIVE,
-        )
-        self.client.force_authenticate(user=self.user)
         self.asset = Asset.objects.create(
             tenant=self.tenant,
             key="a1",
@@ -273,8 +295,16 @@ class VersioningCompareIntegrationTest(TestCase):
             },
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("id_a", response.data)
+        self.assertIn("id_b", response.data)
         self.assertIn("version_a", response.data)
         self.assertIn("version_b", response.data)
+        self.assertIn("resource_type", response.data)
+        self.assertIn("created_at_a", response.data)
+        self.assertIn("created_at_b", response.data)
+        self.assertEqual(response.data["id_a"], str(self.c1.id))
+        self.assertEqual(response.data["id_b"], str(self.c2.id))
+        self.assertEqual(response.data["resource_type"], "contract")
         self.assertEqual(response.data["version_a"], 1)
         self.assertEqual(response.data["version_b"], 2)
 
@@ -284,6 +314,45 @@ class VersioningCompareIntegrationTest(TestCase):
             {"resource_type": "contract", "id_b": str(self.c2.id)},
         )
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data,
+                      "Missing id_a must produce an error message")
+
+    def test_compare_missing_id_b_returns_400(self):
+        """Missing id_b is rejected with 400."""
+        response = self.client.get(
+            "/api/v1/versioning/compare/",
+            {"resource_type": "contract", "id_a": str(self.c1.id)},
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data,
+                      "Missing id_b must produce an error message")
+
+    def test_compare_invalid_resource_type_returns_400(self):
+        """An invalid resource_type for the compare endpoint is rejected."""
+        response = self.client.get(
+            "/api/v1/versioning/compare/",
+            {
+                "resource_type": "invalid",
+                "id_a": str(self.c1.id),
+                "id_b": str(self.c2.id),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data,
+                      "Invalid resource_type must produce an error message")
+
+    def test_compare_unauthenticated_returns_401(self):
+        """Compare endpoint requires authentication."""
+        client = APIClient()  # no force_authenticate
+        response = client.get(
+            "/api/v1/versioning/compare/",
+            {
+                "resource_type": "contract",
+                "id_a": str(self.c1.id),
+                "id_b": str(self.c2.id),
+            },
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_compare_tenant_isolation_returns_404_for_other_tenant_id(self):
         other_tenant = Tenant.objects.create(

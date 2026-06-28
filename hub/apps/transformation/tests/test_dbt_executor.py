@@ -139,7 +139,6 @@ class TestProfileResolution:
             lambda arn: fake_secret,
         )
 
-        @pytest.mark.unit
         class TestError(Exception):
             pass
 
@@ -478,14 +477,15 @@ class TestWithSampleProject:
             data = yaml.safe_load(f)
         assert data["name"] == "sample_dbt"
         assert data["profile"] == "meshant_dbt"
-        assert "model-paths" in data or "model_paths" in data
+        assert "model-paths" in data
+        assert data["model-paths"] == ["models"]
 
     @pytest.mark.unit
     def test_model_files_exist(self):
         """Sample project has at least 2 SQL models."""
         models_dir = _SAMPLE_PROJECT / "models"
         sql_files = list(models_dir.glob("*.sql"))
-        assert len(sql_files) >= 2
+        assert len(sql_files) == 2, f"Expected 2 SQL models, got: {[f.name for f in sql_files]}"
 
     @pytest.mark.unit
     def test_schema_yml_exists(self):
@@ -494,11 +494,11 @@ class TestWithSampleProject:
         with open(schema_yml) as f:
             data = yaml.safe_load(f)
         assert "models" in data
-        assert len(data["models"]) >= 2
+        assert len(data["models"]) == 2
 
     @pytest.mark.unit
-    def test_dbt_run_with_sample_project(self, tmp_path, monkeypatch):
-        """Full dbt_run flow with the sample project (no actual dbt exec)."""
+    def test_dbt_command_construction_with_sample_project(self, tmp_path, monkeypatch):
+        """Verify dbt command construction and profile setup with sample project (no actual dbt exec)."""
         executor = _make_executor(tmp_path)
         fake_secret = {
             "type": "snowflake",

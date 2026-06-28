@@ -267,7 +267,6 @@ class ComplianceReportModelTest(TestCase):
             key="test-asset",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.INTERNAL,
             created_by=self.user,
         )
 
@@ -373,7 +372,6 @@ class ComplianceReportModelTest(TestCase):
             key="other-asset",
             name="Other Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.INTERNAL,
         )
 
         report = ComplianceReport(domain=self.domain, asset=other_asset)

@@ -49,7 +49,7 @@ class TestTraefikConfiguration:
 
         content = self.routes_file.read_text(encoding="utf-8")
 
-        # Architecture: Traefik routes /api/v1 to api-gateway; API Gateway routes internally
+        # Architecture: Traefik routes /api/v1 directly to api-service (no separate gateway service)
         assert "api-gateway" in content, "API gateway route should exist"
         assert "PathPrefix(`/api/v1`)" in content, "API gateway should use PathPrefix /api/v1"
         assert "compliance-service:" in content, "Should have compliance service definition"
@@ -64,7 +64,7 @@ class TestTraefikConfiguration:
 
         content = self.routes_file.read_text(encoding="utf-8")
 
-        # Architecture: Traefik routes /api/v1 to api-gateway; API Gateway routes internally
+        # Architecture: Traefik routes /api/v1 directly to api-service (no separate gateway service)
         assert "api-gateway" in content, "API gateway route should exist"
         assert "PathPrefix(`/api/v1`)" in content, "API gateway should use PathPrefix /api/v1"
         assert "dq-service:" in content, "Should have DQ service definition"
@@ -142,30 +142,6 @@ class TestKubernetesIngressRules:
                             f"Compliance ingress should not use old pattern: {path_value}"
                         )
 
-    def test_dq_service_ingress(self):
-        """Test DQ service ingress configuration"""
-        dq_ingress = None
-        for ingress_file in self.ingress_files:
-            if "dq" in str(ingress_file).lower() and "service" in str(ingress_file).lower():
-                dq_ingress = ingress_file
-                break
-
-        if not dq_ingress or not dq_ingress.exists():
-            pytest.skip("DQ service ingress not found")  # noqa: skip-in-body — runtime service dependency
-
-        content = dq_ingress.read_text(encoding="utf-8")
-        ingress = yaml.safe_load(content)
-
-        # Should not have old patterns in paths
-        if "spec" in ingress and "rules" in ingress["spec"]:
-            for rule in ingress["spec"]["rules"]:
-                if "http" in rule and "paths" in rule["http"]:
-                    for path in rule["http"]["paths"]:
-                        path_value = path.get("path", "")
-                        assert "/dq-runs" not in path_value, (
-                            f"DQ ingress should not use old pattern: {path_value}"
-                        )
-
     def test_all_ingress_files_valid_yaml(self):
         """Test that all ingress files are valid YAML"""
         for ingress_file in self.ingress_files:
@@ -194,7 +170,6 @@ class TestGatewayRouting:
         except Exception:
             return False
 
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
     def test_compliance_endpoint_routing(self):
         """Test that compliance endpoints are routable"""
         if not self._check_service_available(self.api_url):  # noqa: skip-in-body — runtime service dependency
@@ -212,8 +187,8 @@ class TestGatewayRouting:
                 f"Compliance endpoint should be routable (got {response.status_code})"
             )
         except requests.exceptions.RequestException as e:
+            pytest.fail(f"Compliance endpoint routing check failed: {e}")
 
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
     def test_dq_endpoint_routing(self):
         """Test that DQ endpoints are routable"""
         if not self._check_service_available(self.api_url):  # noqa: skip-in-body — runtime service dependency
@@ -231,8 +206,8 @@ class TestGatewayRouting:
                 f"DQ endpoint should be routable (got {response.status_code})"
             )
         except requests.exceptions.RequestException as e:
+            pytest.fail(f"DQ endpoint routing check failed: {e}")
 
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
     def test_old_patterns_not_routable(self):
         """Test that old endpoint patterns are not routable (should return 404)"""
         if not self._check_service_available(self.api_url):  # noqa: skip-in-body — runtime service dependency
@@ -255,6 +230,7 @@ class TestGatewayRouting:
                 f"Old dq-runs pattern should not be routable (got {response.status_code})"
             )
         except requests.exceptions.RequestException as e:
+            pytest.fail(f"Old pattern routing check failed: {e}")
 
 
 class TestGatewayVerificationScript:

@@ -14,6 +14,8 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from drf_spectacular.utils import extend_schema
+
 from hub.apps.dsar.captcha import verify_hcaptcha
 from hub.apps.dsar.email_notify import send_dsar_otp_email
 from hub.apps.dsar.models import DSARRequest, DSARStatus, DSARVerificationMethod
@@ -58,6 +60,7 @@ class PublicDsarSubmitView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [DsarPublicIPThrottle]
 
+    @extend_schema(description="Submit a new DSAR (Data Subject Access Request) via the public ingress")
     def post(self, request):
         ser = PublicDsarSubmitSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -144,6 +147,7 @@ class PublicDsarVerifyOtpView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [DsarPublicIPThrottle]
 
+    @extend_schema(description="Verify an OTP code for a DSAR request submitted via the public ingress")
     def post(self, request, dsar_id):
         row = get_object_or_404(DSARRequest, id=dsar_id)
         ser = PublicDsarOtpSerializer(data=request.data)
@@ -161,6 +165,7 @@ class PublicDsarStatusByTokenView(APIView):
     permission_classes = [AllowAny]
     throttle_classes = [DsarPublicIPThrottle]
 
+    @extend_schema(description="Retrieve the status of a DSAR request by its public reference token")
     def get(self, request, reference_token):
         row = get_object_or_404(DSARRequest, public_reference_token=reference_token)
         payload = DSARRequestSerializer(instance=row).data
@@ -194,7 +199,7 @@ class DSARRequestViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         tenant_id = getattr(self.request.user, "tenant_id", None)
         if tenant_id is None:
-            raise ValidationError("Cannot create a DSAR request without a tenant context.")
+            raise DjangoValidationError("Cannot create a DSAR request without a tenant context.")
         serializer.save(tenant_id=tenant_id)
 
     def get_queryset(self):

@@ -6,7 +6,7 @@
  * endpoint load while maintaining responsiveness for quick scans.
  */
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { fileService } from '../services/fileService';
 import type { FileScanStatus } from '../../../shared/types/files';
 import {

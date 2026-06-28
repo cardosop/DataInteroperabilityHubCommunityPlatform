@@ -176,20 +176,27 @@ class EventBusArchitectureDecisionDocumentationTest(TestCase):
         phases_with_test_results = ["Phase 9.7.1.1.1", "Phase 9.7.1.1.2", "Phase 9.7.1.1.3"]
 
         for phase in phases_with_test_results:
-            # Find the phase section
+            # Find the phase section — fail if missing from the document
             phase_start = content.find(phase)
-            if phase_start != -1:
-                # Get next 2000 characters (should contain the phase details)
-                phase_section = content[phase_start : phase_start + 2000]
+            self.assertNotEqual(
+                phase_start, -1,
+                f"{phase} section not found in design.md",
+            )
+            # Get next 2000 characters (should contain the phase details)
+            phase_section = content[phase_start : phase_start + 2000]
 
-                # Check for required subsections
-                self.assertIn("Objective", phase_section, f"Objective not found in {phase}")
-                self.assertIn("Activities", phase_section, f"Activities not found in {phase}")
-                self.assertIn("Test Results", phase_section, f"Test Results not found in {phase}")
-                self.assertIn("Key Findings", phase_section, f"Key Findings not found in {phase}")
+            # Check for required subsections
+            self.assertIn("Objective", phase_section, f"Objective not found in {phase}")
+            self.assertIn("Activities", phase_section, f"Activities not found in {phase}")
+            self.assertIn("Test Results", phase_section, f"Test Results not found in {phase}")
+            self.assertIn("Key Findings", phase_section, f"Key Findings not found in {phase}")
 
         # Phase 9.7.1.1.4 has Decision instead of Test Results
         phase_4_start = content.find("Phase 9.7.1.1.4")
+        self.assertNotEqual(
+            phase_4_start, -1,
+            "Phase 9.7.1.1.4 section not found in design.md",
+        )
         if phase_4_start != -1:
             phase_4_section = content[phase_4_start : phase_4_start + 2000]
             self.assertIn("Objective", phase_4_section, "Objective not found in Phase 9.7.1.1.4")
@@ -377,22 +384,34 @@ class EventBusArchitectureDecisionDocumentationTest(TestCase):
         )
 
     def test_referenced_docs_exist(self):
-        """Test that referenced documentation files exist"""
+        """Test that the event-bus-specific referenced documentation files exist.
+
+        Only checks the 5 docs directly related to Decision 13 (Event Bus
+        Architecture), not all docs/ references in the entire design.md file.
+        """
         content = self.design_doc.read_text()
 
-        # Extract referenced doc paths
-        doc_pattern = r"docs/([A-Z_]+\.md)"
-        referenced_docs = re.findall(doc_pattern, content)
+        # Decision 13 event-bus-specific docs referenced in design.md
+        _EVENT_BUS_DOCS = [
+            "EVENT_BUS_ARCHITECTURE_DECISION.md",
+            "EVENT_BUS_PERFORMANCE_ANALYSIS.md",
+            "REDIS_STREAMS_EVALUATION.md",
+            "KAFKA_RABBITMQ_EVALUATION.md",
+            "KAFKA_RABBITMQ_PERFORMANCE_COMPARISON.md",
+        ]
 
-        for doc_name in referenced_docs:
+        # Verify each doc is referenced in design.md AND exists on disk
+        for doc_name in _EVENT_BUS_DOCS:
             doc_path = self.docs_path / doc_name
-            # Documentation files may not exist - skip if missing (not critical for functionality)
-            if not doc_path.exists():
-                self.skipTest(
-                    f"Referenced documentation file not found: {doc_path} (documentation may be in progress)"
-                )
             self.assertTrue(
-                doc_path.exists(), f"Referenced documentation file not found: {doc_path}"
+                doc_path.exists(),
+                f"Referenced documentation file not found: {doc_path}",
+            )
+            # Also verify the doc is actually referenced in design.md
+            self.assertIn(
+                f"docs/{doc_name}",
+                content,
+                f"docs/{doc_name} should be referenced in design.md",
             )
 
     def test_decision_date_documented(self):

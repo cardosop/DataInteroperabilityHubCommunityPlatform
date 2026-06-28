@@ -41,6 +41,8 @@ def _tenant(request):
 
 
 class BreachIncidentViewSet(viewsets.ModelViewSet):
+    """Manage breach incidents for the current tenant."""
+
     permission_classes = [permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder]
     throttle_classes = [BreachTenantRateThrottle]
     lookup_field = "id"
@@ -109,6 +111,8 @@ class BreachIncidentViewSet(viewsets.ModelViewSet):
 
 
 class BreachNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    """Manage breach notification records for the current tenant."""
+
     serializer_class = BreachNotificationSerializer
     permission_classes = [permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder]
     throttle_classes = [BreachTenantRateThrottle]
@@ -153,6 +157,8 @@ class BreachTenantTemplateOverrideViewSet(
     mixins.DestroyModelMixin,
     viewsets.GenericViewSet,
 ):
+    """Manage breach notification template overrides for the current tenant."""
+
     serializer_class = BreachTenantTemplateOverrideSerializer
     permission_classes = [permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder]
     throttle_classes = [BreachTenantRateThrottle]
@@ -209,6 +215,7 @@ class BreachTenantTemplateOverrideViewSet(
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder])
 def breach_dashboard(request):
+    """Retrieve aggregated breach incident metrics and dashboard data for the current tenant."""
     tenant = _tenant(request)
     if not tenant:
         return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)
@@ -218,6 +225,7 @@ def breach_dashboard(request):
 @api_view(["GET"])
 @permission_classes([permissions.IsAuthenticated, IsTenantScoped, IsBreachResponder])
 def breach_template_catalog(request):
+    """List available breach notification templates for the current tenant."""
     tenant = _tenant(request)
     if not tenant:
         return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)

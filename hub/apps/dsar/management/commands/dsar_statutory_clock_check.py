@@ -43,5 +43,8 @@ class Command(BaseCommand):
                 job_row.mark_completed(result_json={"counters": counters})
         except Exception as exc:
             if job_row:
-                job_row.mark_failed(str(exc))
+                import traceback
+                job_row.mark_failed(
+                    f"{exc!r}\n\n{traceback.format_exc()}"
+                )
             raise

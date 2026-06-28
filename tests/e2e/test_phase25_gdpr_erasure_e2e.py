@@ -24,7 +24,7 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
-from hub.apps.auth.models import APIKey
+from hub.apps.baas.models import APIKey
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.users.models import Role, User, UserRole, UserStatus
@@ -63,12 +63,24 @@ class Phase25GDPRErasureE2ETest(TestCase):
             display_name="User To Erase E2E",
         )
 
-        # Create API key for user (use key_hash instead of key)
+        # Create API key for user (BAAS APIKey — the erasure service
+        # revokes BAAS API keys, not auth.models.APIKey).
+        from hub.apps.baas.models import APITierModel
+
         test_key = "e2e_test_api_key_12345"
         key_hash = APIKey.hash_key(test_key)
+        tier, _ = APITierModel.objects.get_or_create(
+            name="E2E Basic Tier",
+            defaults={
+                "rate_limit_per_hour": 100,
+                "rate_limit_per_day": 10000,
+                "max_requests_per_month": 100000,
+            },
+        )
         self.api_key = APIKey.objects.create(
             tenant=self.tenant,
             user=self.user_to_erase,
+            tier=tier,
             name="E2E Test API Key",
             key_hash=key_hash,
         )
@@ -89,76 +101,77 @@ class Phase25GDPRErasureE2ETest(TestCase):
         self.client.force_authenticate(user=self.user_to_erase)
 
         response = self.client.post(
-            "/api/v1/users/me/request-erasure/",
+            "/api/v1/users/me/erasure-requests/request-erasure/",
             {},
             format="json",
         )
 
-        # Should succeed
-        self.assertLess(
+        # Erasure request should return 200 or 201.  A 404 means the
+        # user erasure endpoint is not deployed in this environment —
+        # skip rather than failing.
+        if response.status_code == status.HTTP_404_NOT_FOUND:
+            pytest.skip(
+                "User erasure request endpoint not available (404) — "
+                "feature may not be deployed in this environment"
+            )
+        self.assertIn(
             response.status_code,
-            500,
+            [status.HTTP_201_CREATED, status.HTTP_200_OK],
+            f"Erasure request failed with {response.status_code}: "
+            f"{get_response_data(response)}",
         )
 
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_200_OK]:
-            erasure_request_id = (get_response_data(response) or {}).get("id")
+        erasure_request_id = (get_response_data(response) or {}).get("request_id")
+        self.assertIsNotNone(
+            erasure_request_id,
+            f"Erasure response missing request_id: {get_response_data(response)}",
+        )
 
-            # Step 2: Verify erasure request created
-            erasure_request = ErasureRequest.objects.get(id=erasure_request_id)
-            self.assertEqual(erasure_request.status, ErasureRequestStatus.PENDING)
-            self.assertEqual(erasure_request.user_id, self.user_to_erase.id)
+        # Step 2: Verify erasure request created and completed.
+        # The view calls ErasureService.create_request() + execute_erasure()
+        # synchronously, so the request is already COMPLETED at this point.
+        erasure_request = ErasureRequest.objects.get(id=erasure_request_id)
+        self.assertEqual(erasure_request.status, ErasureRequestStatus.COMPLETED)
+        self.assertEqual(erasure_request.user_id, self.user_to_erase.id)
+        self.assertIsNotNone(erasure_request.completed_at)
 
-            # Step 3: List erasure requests
-            response = self.client.get("/api/v1/users/me/erasure-requests/")
+        # Step 3: List erasure requests — the completed request should appear.
+        list_response = self.client.get("/api/v1/users/me/erasure-requests/")
+        self.assertEqual(list_response.status_code, status.HTTP_200_OK)
+        data = get_response_data(list_response) or {}
+        self.assertIn("results", data)
+        request_ids = [req["id"] for req in data.get("results", [])]
+        self.assertIn(str(erasure_request.id), request_ids)
 
-            if response.status_code == status.HTTP_200_OK:
-                data = get_response_data(response) or {}
-                self.assertIn("results", data)
-                request_ids = [req["id"] for req in data.get("results", [])]
-                self.assertIn(str(erasure_request.id), request_ids)
+        # Step 4: Verify user anonymized — all PII fields
+        self.user_to_erase.refresh_from_db()
+        # Email must be anonymized
+        self.assertNotIn("eraseme2e", self.user_to_erase.email.lower())
+        self.assertIn("deleted", self.user_to_erase.email.lower())
+        # Display name must be anonymized (not the original value)
+        self.assertNotEqual(self.user_to_erase.display_name, "User To Erase E2E")
+        self.assertFalse(
+            self.user_to_erase.display_name
+            and "User To Erase" in self.user_to_erase.display_name,
+            "display_name still contains original PII after erasure",
+        )
 
-            # Step 4: Execute erasure (simulate workflow execution)
-            from hub.apps.gdpr.services import ErasureService
+        # Step 5: Verify API key revoked (must still exist with revoked_at set)
+        self.api_key.refresh_from_db()
+        self.assertIsNotNone(
+            self.api_key.revoked_at,
+            "API key must be revoked (revoked_at set) after GDPR erasure",
+        )
 
-            erasure_service = ErasureService()
-            try:
-                erasure_service.execute_erasure(str(erasure_request.id))
-            except NotImplementedError:
-                pytest.skip("ErasureService.execute_erasure not fully implemented")  # noqa: skip-in-body — runtime service dependency
-                return
-
-            # Step 5: Verify user anonymized — all PII fields
-            self.user_to_erase.refresh_from_db()
-            # Email must be anonymized
-            self.assertNotIn("eraseme2e", self.user_to_erase.email.lower())
-            self.assertIn("erased", self.user_to_erase.email.lower())
-            # Display name must be anonymized (not the original value)
-            self.assertNotEqual(self.user_to_erase.display_name, "User To Erase E2E")
-            self.assertFalse(
-                self.user_to_erase.display_name
-                and "User To Erase" in self.user_to_erase.display_name,
-                "display_name still contains original PII after erasure",
-            )
-
-            # Step 6: Verify API key revoked (must still exist with revoked_at set)
-            self.api_key.refresh_from_db()
-            self.assertIsNotNone(
-                self.api_key.revoked_at,
-                "API key must be revoked (revoked_at set) after GDPR erasure",
-            )
-
-            # Step 7: Verify erasure request completed
-            erasure_request.refresh_from_db()
-            self.assertEqual(erasure_request.status, ErasureRequestStatus.COMPLETED)
-            self.assertIsNotNone(erasure_request.completed_at)
-
-            # Step 8: Verify audit event created
-            audit_events = AuditEvent.objects.filter(
-                resource_type="USER",
-                resource_id=str(self.user_to_erase.id),
-                action="ERASURE_EXECUTED",
-            )
-            self.assertTrue(audit_events.exists())
+        # Step 6: Verify audit event created.
+        # ErasureService emits ERASURE_REQUESTED (on create) and
+        # ERASURE_COMPLETED (on execute), both with resource_type=ERASURE_REQUEST.
+        audit_events = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST",
+            resource_id=str(erasure_request.id),
+            action="ERASURE_COMPLETED",
+        )
+        self.assertTrue(audit_events.exists())
 
     def test_erasure_request_tenant_isolation(self):
         """Test erasure request tenant isolation"""

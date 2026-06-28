@@ -100,10 +100,17 @@ class RESTAPIE2ETest(E2ETestBase):
         response = self.client.get("/api-docs/openapi.json")
         schema = json.loads(response.content)
 
-        if "components" in schema and "securitySchemes" in schema["components"]:
-            security_schemes = schema["components"]["securitySchemes"]
-            # Should have authentication schemes
-            self.assertGreater(len(security_schemes), 0)
+        self.assertTrue(
+            "components" in schema,
+            "OpenAPI schema missing 'components' key",
+        )
+        self.assertTrue(
+            "securitySchemes" in schema.get("components", {}),
+            "OpenAPI schema components missing 'securitySchemes' key",
+        )
+        security_schemes = schema["components"]["securitySchemes"]
+        # Should have authentication schemes
+        self.assertGreater(len(security_schemes), 0)
 
     def test_swagger_ui_endpoint(self):
         """Test Swagger UI endpoint"""

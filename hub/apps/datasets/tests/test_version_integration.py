@@ -324,12 +324,12 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
 
         # Don't create version history
 
-        # get_version_tree must return a list (possibly empty) for a dataset
-        # with no version history — never raise.
+        # get_version_tree must return a list containing at least the
+        # dataset itself even when no explicit version history exists.
         history = VersionHistoryManager.get_version_tree(dataset)
-        self.assertIsInstance(
-            history, list, "get_version_tree must return a list even for empty history"
-        )
+        self.assertIsInstance(history, list)
+        self.assertGreaterEqual(len(history), 1,
+                                "get_version_tree must include the dataset itself")
 
     def test_version_integration_edge_case_single_version(self):
         """Test version integration with single version (edge case)"""
@@ -345,9 +345,12 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
 
         VersionHistoryManager.create_version(dataset, semantic_version="1.0.0", is_current=True)
 
-        # Should handle single version gracefully
-        self.assertIsNotNone(dataset)
-        self.assertEqual(dataset.version, 1)
+        dataset.refresh_from_db()
+        self.assertEqual(dataset.semantic_version, "1.0.0")
+        self.assertTrue(dataset.is_current)
+        # Version tree must include this dataset.
+        tree = VersionHistoryManager.get_version_tree(dataset)
+        self.assertIn(dataset.id, {v.id for v in tree})
 
     # ========== ERROR HANDLING ==========
 
@@ -363,7 +366,9 @@ class VersionHistoryIntegrationTest(DatasetsAPITestBase):
             created_by=self.user,
         )
 
-        # create_version must succeed for a valid persisted dataset
-        # without raising.
-        VersionHistoryManager.create_version(dataset, semantic_version="1.0.0", is_current=True)
-        self.assertIsNotNone(dataset, "create_version must succeed for a valid persisted dataset")
+        updated = VersionHistoryManager.create_version(
+            dataset, semantic_version="1.0.0", is_current=True
+        )
+        self.assertIsNotNone(updated.version_hash)
+        self.assertEqual(updated.semantic_version, "1.0.0")
+        self.assertTrue(updated.is_current)

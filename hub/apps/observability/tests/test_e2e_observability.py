@@ -251,7 +251,8 @@ class DataSLAsE2ETest(TestCase):
 
         # Incident may or may not be created depending on SLA type
         # (auto-detection currently focuses on freshness violations)
-        self.assertIsNotNone(incidents)
+        # Verify the query executes without error and returns a countable result
+        self.assertIsInstance(incidents.count(), int)
 
 
 class DataIncidentsE2ETest(TestCase):
@@ -392,4 +393,5 @@ class DataIncidentsE2ETest(TestCase):
         )
 
         # May or may not create incident depending on existing incidents
-        self.assertIsNotNone(incidents)
+        # Verify the query executes without error and returns a countable result
+        self.assertIsInstance(incidents.count(), int)

@@ -389,7 +389,8 @@ class NormalizationEdgeCaseTest(TestCase):
         field = self._get_field_by_name(fields, "field1")
         self.assertEqual(field.get("min"), 100)
         self.assertEqual(field.get("max"), 50)
-        # May have warnings about invalid range
+        # Invalid range (min > max) — normalization may produce warnings or silently fix
+        # The contract preserves the values as given; check warnings if present
         if warnings:
             self.assertTrue(
                 any("min" in str(w).lower() or "max" in str(w).lower() for w in warnings)
@@ -645,14 +646,9 @@ class NormalizationEdgeCaseTest(TestCase):
 
         hub_contract, _status, errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
-        # Empty fields array causes validation errors, so hub_contract may be None
-        # When errors are present, hub_contract should be None (consistent with test_status_normalization_failed_missing_fields)
-        if errors:
-            self.assertIsNone(hub_contract)
-        else:
-            self.assertIsNotNone(hub_contract)
-            fields = hub_contract.get("schema", {}).get("fields", [])
-            self.assertEqual(len(fields), 0)
+        # Empty fields array causes validation errors, and hub_contract is None when errors exist
+        self.assertGreater(len(errors), 0, "Empty fields should produce validation errors")
+        self.assertIsNone(hub_contract, "hub_contract should be None when errors are present")
 
     def test_normalize_contract_null_values(self):
         """Test normalization with null values in optional fields"""
@@ -913,11 +909,11 @@ class NormalizationEdgeCaseTest(TestCase):
         self.assertEqual(status, NormalizationStatus.NORMALIZED_OK)
         fields = hub_contract.get("schema", {}).get("fields", [])
         price = self._get_field_by_name(fields, "price")
-        # Precision/scale should be preserved in metadata
+        # Precision/scale may be preserved in metadata (implementation-dependent)
         metadata = price.get("metadata", {})
         if metadata:
-            self.assertIn("precision", metadata or {})
-            self.assertIn("scale", metadata or {})
+            self.assertIn("precision", metadata)
+            self.assertIn("scale", metadata)
 
     def test_normalize_contract_required_vs_optional_fields(self):
         """Test normalization with required and optional field markers"""
@@ -1453,10 +1449,9 @@ class NormalizationEdgeCaseTest(TestCase):
         # Should normalize but may have warnings/errors about missing name
         self.assertIsNotNone(hub_contract)
         fields = hub_contract.get("schema", {}).get("fields", [])
-        # Field should still be included with empty name
-        if fields:
-            field = fields[0]
-            self.assertEqual(field.get("name"), "")
+        self.assertGreater(len(fields), 0, "Field should be included in output")
+        field = fields[0]
+        self.assertEqual(field.get("name"), "")
 
     def test_normalize_contract_field_without_type(self):
         """Test normalization with field missing type"""

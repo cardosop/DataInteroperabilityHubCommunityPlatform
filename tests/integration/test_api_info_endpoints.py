@@ -1,7 +1,8 @@
 """
-Integration tests for third-party API integration points.
+Integration tests for API info / OpenAPI schema endpoints.
 
-Verifies API gateway and external API configuration (no mocks/stubs).
+Verifies the API root and OpenAPI schema endpoints are reachable
+and return valid responses (no mocks/stubs).
 """
 
 import pytest
@@ -14,8 +15,8 @@ from tests.factories import TenantFactory, UserFactory
 pytestmark = pytest.mark.django_db(transaction=True)
 
 
-class ThirdPartyAPIsIntegrationTest(TestCase):
-    """Integration tests for third-party API paths."""
+class APIInfoEndpointsIntegrationTest(TestCase):
+    """Integration tests for API info and OpenAPI schema endpoints."""
 
     def setUp(self):
         self.client = APIClient()
@@ -26,7 +27,7 @@ class ThirdPartyAPIsIntegrationTest(TestCase):
     def test_openapi_schema_available(self):
         """OpenAPI schema endpoint responds (real schema)."""
         response = self.client.get("/api/v1/openapi.json")
-        self.assertIn(response.status_code, [200, 404])
+        self.assertEqual(response.status_code, 200)
 
     def test_api_v1_info_available(self):
         """API info endpoint responds."""

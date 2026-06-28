@@ -136,7 +136,7 @@ class EntitlementsE2ETest(E2ETestBase):
         self.verify_entitlement_created(order.id, asset_id)
 
     def test_entitlement_expiration(self):
-        """Test entitlement expiration"""
+        """Test entitlement expiration via the model's expire() method."""
         # Create entitlement with expiration
         asset_id = self.create_asset(key="expiration-test", name="Expiration Test")
         asset = Asset.objects.get(id=asset_id)
@@ -153,8 +153,7 @@ class EntitlementsE2ETest(E2ETestBase):
             metadata_json={"title": "Test Listing"},
         )
 
-        # Create entitlement directly (for testing)
-        # Create first, then update expires_at to be in the past but after granted_at
+        # Create an ACTIVE entitlement
         entitlement = Entitlement.objects.create(
             tenant=self.consumer_tenant,
             asset=asset,
@@ -162,24 +161,22 @@ class EntitlementsE2ETest(E2ETestBase):
             status=EntitlementStatus.ACTIVE,
         )
         entitlement.refresh_from_db()
-        # Set expires_at to be in the past but after granted_at
+
+        # The model enforces expires_at > granted_at.  Set expires_at
+        # just after granted_at, then call expire() which transitions
+        # the status to EXPIRED even with a future expiry timestamp.
         if entitlement.granted_at:
-            # Set expires_at to be just after granted_at but in the past
-            expires_at = entitlement.granted_at + timedelta(seconds=1)
-            # But we want it expired, so set it to yesterday if granted_at allows
-            if entitlement.granted_at < timezone.now() - timedelta(days=1):
-                expires_at = timezone.now() - timedelta(days=1)
-            else:
-                # If granted_at is recent, just set expires_at to be slightly after
-                expires_at = entitlement.granted_at + timedelta(seconds=1)
-            entitlement.expires_at = expires_at
-            entitlement.status = EntitlementStatus.EXPIRED
-            entitlement.save(update_fields=["expires_at", "status"])
+            entitlement.expires_at = entitlement.granted_at + timedelta(seconds=1)
+            entitlement.save(update_fields=["expires_at"])
+
+        # Trigger the actual expiration transition (calls model.expire()).
+        entitlement.expire()
         entitlement.refresh_from_db()
 
-        # Verify entitlement is expired (is_active should return False for expired entitlements)
+        # Verify entitlement is expired.
         self.assertFalse(entitlement.is_active())
         self.assertEqual(entitlement.status, EntitlementStatus.EXPIRED)
+        self.assertIsNotNone(entitlement.expires_at)
 
     def test_entitlement_revocation(self):
         """Test entitlement revocation"""
@@ -211,13 +208,12 @@ class EntitlementsE2ETest(E2ETestBase):
             f"/api/v1/marketplace/entitlements/{entitlement.id}/revoke/", format="json"
         )
 
-        # Revoke endpoint may not be available
+        # Revoke endpoint may not be available in this deployment.
         if response.status_code == status.HTTP_404_NOT_FOUND:
-            # Manually revoke for test
-            entitlement.revoke()
-            entitlement.refresh_from_db()
-            self.assertEqual(entitlement.status, EntitlementStatus.REVOKED)
-            return
+            pytest.skip(
+                "Entitlement revoke endpoint not available (404) — "
+                "feature may not be deployed in this environment"
+            )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual((get_response_data(response) or {})["status"], EntitlementStatus.REVOKED)
@@ -287,7 +283,16 @@ class EntitlementsE2ETest(E2ETestBase):
             f"/api/v1/marketplace/entitlements/?status={EntitlementStatus.ACTIVE}"
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        {e["status"] for e in (get_response_data(response) or {}).get("results", [])}
+        # Verify no non-ACTIVE statuses leak through the filter.
+        statuses = {
+            e["status"] for e in (get_response_data(response) or {}).get("results", [])
+        }
+        for status_val in statuses:
+            self.assertEqual(
+                status_val,
+                EntitlementStatus.ACTIVE,
+                f"Filter should only return ACTIVE, got status: {status_val}",
+            )
         # All returned entitlements should have ACTIVE status
         for ent in (get_response_data(response) or {}).get("results", []):
             self.assertEqual(

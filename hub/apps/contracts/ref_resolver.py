@@ -540,8 +540,10 @@ class RefResolver:
             # Update cache size gauge
             tenant_id = self.tenant_id or "unknown"
             self._update_cache_size_gauge(tenant_id)
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — stats tracking must not block caching
         except Exception:
-            pass  # Stats tracking failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
     def _update_cache_rate_gauges(self, tenant_id: str, ref_type: str) -> None:
         """
@@ -575,8 +577,10 @@ class RefResolver:
                 odps_ref_cache_miss_rate.labels(ref_type=ref_type, tenant_id=tenant_id).set(
                     miss_rate
                 )
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — metrics must not block caching
         except Exception:
-            pass  # Metrics failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
     def _update_cache_size_gauge(self, tenant_id: str) -> None:
         """
@@ -605,8 +609,10 @@ class RefResolver:
             odps_ref_cache_size_limit.labels(tenant_id=tenant_id, ref_type=ref_type).set(
                 self.cache_max_entries
             )
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — metrics must not block caching
         except Exception:
-            pass  # Metrics failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
     def _track_ref_access(self, ref_path: str) -> None:
         """
@@ -641,8 +647,10 @@ class RefResolver:
 
             # Set expiration on sorted set (24 hours)
             self._redis_client.expire(REDIS_CACHE_ACCESS_PREFIX + "all", self.cache_ttl * 24)
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — access tracking must not block caching
         except Exception:
-            pass  # Access tracking failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
     def _track_cache_hit(self) -> None:
         """Track cache hit for statistics."""
@@ -653,8 +661,10 @@ class RefResolver:
             stats_key = self._redis_cache_stats_key("hits")
             self._redis_client.incr(stats_key)
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — stats tracking must not block caching
         except Exception:
-            pass  # Stats tracking failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
         # Track cache hit in Prometheus metrics
         try:
@@ -664,8 +674,10 @@ class RefResolver:
 
             # Update hit rate gauge (calculate from Redis stats)
             self._update_cache_rate_gauges(tenant_id, ref_type)
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — metrics must not block caching
         except Exception:
-            pass  # Metrics failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
     def _track_cache_miss(self) -> None:
         """Track cache miss for statistics."""
@@ -676,8 +688,10 @@ class RefResolver:
             stats_key = self._redis_cache_stats_key("misses")
             self._redis_client.incr(stats_key)
             self._redis_client.expire(stats_key, self.cache_ttl * 24)  # Keep stats for 24 hours
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — stats tracking must not block caching
         except Exception:
-            pass  # Stats tracking failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
         # Track cache miss in Prometheus metrics
         try:
@@ -687,8 +701,10 @@ class RefResolver:
 
             # Update miss rate gauge (calculate from Redis stats)
             self._update_cache_rate_gauges(tenant_id, ref_type)
+        except (ConnectionError, TimeoutError, OSError):
+            pass  # Built-in I/O exceptions — metrics must not block caching
         except Exception:
-            pass  # Metrics failure should not affect caching
+            pass  # Outer safety net for redis-py exceptions (don't inherit from builtins)
 
     def get_cache_hit_rate(self) -> float | None:
         """

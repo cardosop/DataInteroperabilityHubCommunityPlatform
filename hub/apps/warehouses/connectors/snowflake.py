@@ -145,13 +145,17 @@ class SnowflakeConnector(WarehouseConnector):
             cursor.close()
 
     def reflect_schema(self, table_name: str) -> list[SchemaColumn]:
+        import time
         sql = (
             "SELECT COLUMN_NAME, DATA_TYPE, IS_NULLABLE, COMMENT "
             "FROM INFORMATION_SCHEMA.COLUMNS "
             "WHERE TABLE_NAME = %(table_name)s "
             "ORDER BY ORDINAL_POSITION"
         )
+        t0 = time.monotonic()
         result = self.execute_query(sql, {"table_name": table_name.upper()})
+        elapsed = time.monotonic() - t0
+        self._record_cost(self._tenant_id, max(elapsed, 60.0) / 3600.0 * 2.0, "snowflake-credit")
         return [
             SchemaColumn(
                 name=r[0],

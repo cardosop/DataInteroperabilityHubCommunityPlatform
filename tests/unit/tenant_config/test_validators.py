@@ -45,14 +45,8 @@ class ValidateDQProfileTest(TestCase):
         self.assertIn("invalid_profile", error_message)
 
     def test_empty_string(self):
-        """Test empty string (should be invalid or treated as None)"""
-        # Empty string should pass (validator only checks if value is truthy)
-        # If value is empty string, validator doesn't raise (because of `if value` check)
-        try:
-            validate_dq_profile("")
-        except ValidationError:
-            # If it raises, that's also acceptable behavior
-            pass
+        """Empty string is accepted (validator treats it as falsy and skips)."""
+        validate_dq_profile("")  # must not raise
 
     def test_none_value(self):
         """Test None value (should be valid, uses platform default)"""
@@ -314,7 +308,7 @@ class GetPlatformDefaultsTest(TestCase):
 
         self.assertEqual(defaults["default_dq_profile"], "intake_basic_gx")
         self.assertEqual(
-            defaults["allowed_compliance_regimes"], ["GDPR", "LGPD", "CCPA", "HIPAA", "SOX"]
+            defaults["allowed_compliance_regimes"], list(VALID_COMPLIANCE_REGIMES)
         )
         self.assertEqual(defaults["default_compliance_regimes"], ["GDPR", "LGPD"])
         self.assertEqual(defaults["data_retention_days"], 2555)
@@ -342,11 +336,11 @@ class GetPlatformDefaultsTest(TestCase):
             )
 
     def test_platform_defaults_immutability(self):
-        """Test platform defaults immutability (should not be modified)"""
+        """Each call returns a fresh dict — mutations don't propagate."""
         defaults1 = get_platform_defaults()
-        defaults1["rate_limits"].copy()
+        defaults2 = get_platform_defaults()
 
-        # Try to modify
+        # Modify one copy
         defaults1["rate_limits"]["new_category"] = {"burst_per_10s": 10}
         defaults1["default_dq_profile"] = "modified"
 

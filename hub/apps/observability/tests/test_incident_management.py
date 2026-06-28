@@ -8,7 +8,9 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
 from django.test import TestCase
+from django.utils import timezone
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.observability.incident_management import IncidentManager
@@ -246,6 +248,107 @@ class IncidentManagerSuccessTest(TestCase):
         self.assertEqual(len(dashboard["results"]), 0)
         self.assertEqual(dashboard["summary"]["total_incidents"], 0)
 
+    def test_lifecycle_timestamp_preserved_on_second_update(self):
+        """Test lifecycle timestamps are set once and preserved on subsequent updates"""
+        incident = IncidentManager.create_incident(
+            tenant_id=str(self.tenant.id),
+            title="Timestamp Test",
+            description="Testing timestamp invariants",
+            incident_type="PIPELINE_FAILURE",
+        )
+
+        # First update to TRIAGED — triaged_at should be set
+        updated = IncidentManager.update_incident_status(
+            incident_id=str(incident.id), status="TRIAGED"
+        )
+        self.assertIsNotNone(updated.triaged_at, "triaged_at must be set on first TRIAGED update")
+        first_triaged_at = updated.triaged_at
+
+        # Second update to TRIAGED — triaged_at must NOT change
+        updated2 = IncidentManager.update_incident_status(
+            incident_id=str(incident.id), status="TRIAGED"
+        )
+        self.assertEqual(
+            updated2.triaged_at, first_triaged_at,
+            "triaged_at must not change on second TRIAGED update",
+        )
+
+    def test_resolution_time_calculated_correctly(self):
+        """Test resolution_time_seconds is computed correctly when resolving"""
+        from datetime import timedelta
+
+        incident = IncidentManager.create_incident(
+            tenant_id=str(self.tenant.id),
+            title="Resolution Time Test",
+            description="Testing resolution time calculation",
+            incident_type="QUALITY_VIOLATION",
+        )
+        # Manually set detected_at to 2 hours ago
+        two_hours_ago = timezone.now() - timedelta(hours=2)
+        incident.detected_at = two_hours_ago
+        incident.save(update_fields=["detected_at"])
+
+        resolved = IncidentManager.resolve_incident(
+            incident_id=str(incident.id),
+            resolution_notes="Fixed",
+            resolved_by_id=str(self.user.id),
+        )
+
+        self.assertIsNotNone(resolved.resolution_time_seconds)
+        # Should be approximately 7200 seconds (2 hours), allow ±60s for test overhead
+        self.assertGreaterEqual(resolved.resolution_time_seconds, 7140)
+        self.assertLessEqual(resolved.resolution_time_seconds, 7260)
+
+    def test_get_incidents_dashboard_with_seeded_data(self):
+        """Test incidents dashboard summary reflects seeded data correctly"""
+        # Seed 2 DETECTED, 1 TRIAGED, 1 RESOLVED incidents
+        for i in range(2):
+            IncidentManager.create_incident(
+                tenant_id=str(self.tenant.id),
+                title=f"Detected Incident {i}",
+                description="Open incident",
+                incident_type="FRESHNESS_VIOLATION",
+                severity="MEDIUM",
+            )
+        triaged = IncidentManager.create_incident(
+            tenant_id=str(self.tenant.id),
+            title="Triaged Incident",
+            description="Being triaged",
+            incident_type="QUALITY_VIOLATION",
+            severity="HIGH",
+        )
+        IncidentManager.update_incident_status(
+            incident_id=str(triaged.id), status="TRIAGED"
+        )
+        resolved = IncidentManager.create_incident(
+            tenant_id=str(self.tenant.id),
+            title="Resolved Incident",
+            description="Already fixed",
+            incident_type="PIPELINE_FAILURE",
+            severity="LOW",
+        )
+        IncidentManager.update_incident_status(
+            incident_id=str(resolved.id),
+            status="RESOLVED",
+            resolved_by_id=str(self.user.id),
+        )
+
+        dashboard = IncidentManager.get_incidents_dashboard(
+            tenant_id=str(self.tenant.id), limit=10
+        )
+
+        self.assertIn("results", dashboard)
+        self.assertIn("summary", dashboard)
+        summary = dashboard["summary"]
+        self.assertEqual(summary["total_incidents"], 4)
+        self.assertEqual(summary["detected_incidents"], 2)
+        self.assertEqual(summary["triaged_incidents"], 1)
+        self.assertEqual(summary["resolved_incidents"], 1)
+        # Unassigned = DETECTED+TRIAGED+IN_PROGRESS with assigned_to=None (2+1+0=3; RESOLVED excluded)
+        self.assertEqual(summary["unassigned_incidents"], 3)
+        self.assertIsInstance(summary["incident_types"], list)
+        self.assertIsInstance(summary["severities"], list)
+
 
 class IncidentManagerFailureTest(TestCase):
     """Test IncidentManager failure scenarios"""
@@ -261,16 +364,18 @@ class IncidentManagerFailureTest(TestCase):
         )
 
     def test_create_incident_missing_required_fields(self):
-        """Test creating incident with missing required fields"""
-        with self.assertRaises(Exception):  # ValidationError or TypeError
+        """Test creating incident with missing required fields raises TypeError"""
+        with self.assertRaises(TypeError):
             IncidentManager.create_incident(
                 tenant_id=str(self.tenant.id),
                 # Missing title, description, incident_type
             )
 
     def test_create_incident_invalid_tenant_id(self):
-        """Test creating incident with invalid tenant ID"""
-        with self.assertRaises(Exception):  # NotFoundError or ValidationError
+        """Test creating incident with invalid tenant ID raises Tenant.DoesNotExist"""
+        from hub.apps.tenants.models import Tenant as TenantModel
+
+        with self.assertRaises(TenantModel.DoesNotExist):
             IncidentManager.create_incident(
                 tenant_id=str(uuid.uuid4()),  # Non-existent tenant
                 title="Test Incident",
@@ -279,8 +384,10 @@ class IncidentManagerFailureTest(TestCase):
             )
 
     def test_update_incident_status_invalid_incident_id(self):
-        """Test updating incident with invalid incident ID"""
-        with self.assertRaises(Exception):  # NotFoundError
+        """Test updating incident with invalid incident ID raises DataIncident.DoesNotExist"""
+        from hub.apps.observability.models import DataIncident
+
+        with self.assertRaises(DataIncident.DoesNotExist):
             IncidentManager.update_incident_status(
                 incident_id=str(uuid.uuid4()),
                 status="TRIAGED",  # Non-existent incident
@@ -295,7 +402,7 @@ class IncidentManagerFailureTest(TestCase):
             incident_type="FRESHNESS_VIOLATION",
         )
 
-        with self.assertRaises(Exception):  # ValidationError
+        with self.assertRaises(ValidationError):
             IncidentManager.update_incident_status(
                 incident_id=str(incident.id), status="INVALID_STATUS"
             )
@@ -309,7 +416,7 @@ class IncidentManagerFailureTest(TestCase):
             incident_type="PIPELINE_FAILURE",
         )
 
-        with self.assertRaises(Exception):  # NotFoundError
+        with self.assertRaises(User.DoesNotExist):
             IncidentManager.assign_incident(
                 incident_id=str(incident.id),
                 assigned_to_id=str(uuid.uuid4()),  # Non-existent user
@@ -395,6 +502,36 @@ class IncidentManagerEdgeCasesTest(TestCase):
         dashboard = IncidentManager.get_incidents_dashboard(tenant_id=str(self.tenant.id), limit=5)
 
         self.assertEqual(len(dashboard["results"]), 5)
+
+    def test_assign_resolved_incident_does_not_reopen(self):
+        """Test assigning a RESOLVED incident does not change its status"""
+        incident = IncidentManager.create_incident(
+            tenant_id=str(self.tenant.id),
+            title="Resolved Assign Test",
+            description="Testing assign on resolved incident",
+            incident_type="PIPELINE_FAILURE",
+        )
+        # Resolve first
+        resolved = IncidentManager.resolve_incident(
+            incident_id=str(incident.id),
+            resolution_notes="Done",
+            resolved_by_id=str(self.user.id),
+        )
+        self.assertEqual(resolved.status, "RESOLVED")
+
+        # Assign to another user — status must remain RESOLVED
+        other_user = User.objects.create_user(
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
+            password="testpass123",
+            tenant=self.tenant,
+        )
+        reassigned = IncidentManager.assign_incident(
+            incident_id=str(incident.id),
+            assigned_to_id=str(other_user.id),
+        )
+        self.assertEqual(reassigned.status, "RESOLVED",
+                        "Assigning a RESOLVED incident must not change its status")
+        self.assertEqual(str(reassigned.assigned_to.id), str(other_user.id))
 
 
 class IncidentManagerErrorHandlingTest(TestCase):

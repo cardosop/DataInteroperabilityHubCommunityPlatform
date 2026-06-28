@@ -160,6 +160,11 @@ class MarketplacePurchaseE2ETest(TestCase):
         elif entitlement:
             self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
             self.assertEqual(entitlement.tenant, self.consumer_tenant)
+        else:
+            self.fail(
+                f"Entitlement not created and order not fulfilled. "
+                f"order.status={order.status}, order_id={order_id}"
+            )
 
         # Step 8: Consumer can access asset via entitlement
         if entitlement:
@@ -179,8 +184,20 @@ class MarketplacePurchaseE2ETest(TestCase):
 
         # Step 10: Consumer can access asset data
         # (In real flow, this would be via asset download/access endpoints)
-        self.consumer_client.get(f"/api/v1/assets/{self.asset.id}/")
-        # May return 404 if asset access requires entitlement check in view
+        asset_response = self.consumer_client.get(
+            f"/api/v1/assets/{self.asset.id}/"
+        )
+        self.assertIn(
+            asset_response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            f"Asset access returned unexpected status: {asset_response.status_code}",
+        )
+        if asset_response.status_code == status.HTTP_200_OK:
+            asset_data = get_response_data(asset_response) or {}
+            self.assertEqual(
+                str(asset_data.get("id")), str(self.asset.id),
+                "Asset data should contain the correct asset id",
+            )
         # For E2E test, we verify the entitlement exists
         if entitlement:
             self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)

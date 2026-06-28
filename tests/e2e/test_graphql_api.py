@@ -313,14 +313,14 @@ class GraphQLAPIE2ETest(E2ETestBase):
         asset_id2 = self.create_asset(key="job-asset-2", name="Job Asset 2")
 
         create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id1,
             tenant=self.tenant,
             user=self.user,
         )
         create_job(
-            type=JobType.COMPLIANCE_RUN,
+            job_type=JobType.COMPLIANCE_RUN,
             resource_type="ASSET",
             resource_id=asset_id2,
             tenant=self.tenant,
@@ -356,7 +356,7 @@ class GraphQLAPIE2ETest(E2ETestBase):
         asset_id = self.create_asset(key="filter-job-asset", name="Filter Job Asset")
 
         create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -392,7 +392,7 @@ class GraphQLAPIE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="single-job-asset", name="Single Job Asset")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,

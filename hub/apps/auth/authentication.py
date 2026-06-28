@@ -151,7 +151,7 @@ class APIKeyAuthentication(BaseAuthentication):
             if not user.is_active():
                 raise AuthenticationFailed("User is not active")
             # Refresh tenant_id for thread safety (LiveServerTestCase, TransactionTestCase)
-            user.refresh_from_db(fields=["tenant_id", "tenant"])
+            user.refresh_from_db(fields=["tenant_id"])
         else:
             # Tenant-scoped API key without user - create a system user representation
             # For now, we'll use the tenant's first admin or create a system user

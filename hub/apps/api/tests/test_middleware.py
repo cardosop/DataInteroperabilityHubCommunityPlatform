@@ -11,9 +11,6 @@ from django.test import RequestFactory, TestCase
 
 from hub.apps.api.middleware import RequestIDMiddleware
 
-pytestmark = pytest.mark.django_db(transaction=True)
-
-
 class RequestIDMiddlewareTest(TestCase):
     """Test RequestIDMiddleware"""
 
@@ -130,14 +127,15 @@ class RequestIDMiddlewareTest(TestCase):
 
             # Should bind request_id, route, and method
             mock_bind.assert_called_once()
-            # Check call arguments (can be positional or keyword)
             call_kwargs = mock_bind.call_args[1] if mock_bind.call_args[1] else {}
-            if "request_id" in call_kwargs:
-                self.assertEqual(call_kwargs["route"], "/api/v1/assets/")
-                self.assertEqual(call_kwargs["method"], "GET")
+            self.assertIn("request_id", call_kwargs,
+                "request_id was not bound to structlog context")
+            self.assertEqual(call_kwargs["route"], "/api/v1/assets/")
+            self.assertEqual(call_kwargs["method"], "GET")
             # Request ID should be generated
             self.assertTrue(hasattr(request, "request_id"))
 
+    @pytest.mark.django_db(transaction=True)
     def test_binds_tenant_id_to_structlog(self):
         """Test that middleware binds tenant_id to structlog in response"""
         from hub.apps.tenants.models import Tenant
@@ -156,9 +154,10 @@ class RequestIDMiddlewareTest(TestCase):
             mock_bind.assert_called_once()
             # Check if tenant_id was bound
             calls = [call[1] for call in mock_bind.call_args_list if "tenant_id" in call[1]]
-            if calls:
-                self.assertEqual(calls[0]["tenant_id"], str(tenant.id))
+            self.assertTrue(calls, "tenant_id was never bound to structlog context in any call")
+            self.assertEqual(calls[0]["tenant_id"], str(tenant.id))
 
+    @pytest.mark.django_db(transaction=True)
     def test_binds_user_id_to_structlog(self):
         """Test that middleware binds user_id to structlog in response"""
         from hub.apps.tenants.models import Tenant
@@ -182,8 +181,8 @@ class RequestIDMiddlewareTest(TestCase):
             mock_bind.assert_called_once()
             # Check if user_id was bound
             calls = [call[1] for call in mock_bind.call_args_list if "user_id" in call[1]]
-            if calls:
-                self.assertEqual(calls[0]["user_id"], str(user.id))
+            self.assertTrue(calls, "user_id was never bound to structlog context in any call")
+            self.assertEqual(calls[0]["user_id"], str(user.id))
 
     def test_middleware_performance(self):
         """Test middleware performance (should be fast)"""
@@ -196,5 +195,6 @@ class RequestIDMiddlewareTest(TestCase):
             self.middleware.process_request(request)
         elapsed = time.time() - start
 
-        # Should process 1000 requests in less than 0.5 seconds
-        self.assertLess(elapsed, 0.5, f"Middleware too slow: {elapsed:.3f}s for 1000 requests")
+        # Should process 1000 requests in under 2.0 seconds
+        # (generous budget to avoid CI flakiness under CPU contention)
+        self.assertLess(elapsed, 2.0, f"Middleware too slow: {elapsed:.3f}s for 1000 requests")

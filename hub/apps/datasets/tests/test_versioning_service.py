@@ -74,8 +74,11 @@ class VersioningServiceTest(DatasetsTestBase):
             tenant_id=str(self.tenant.id),
         )
 
-        # Should return comparison results
+        # Should return structured comparison results
         self.assertIsInstance(result, dict)
+        self.assertIn("metadata", result)
+        self.assertIn("schema_diff", result)
+        self.assertIn("side_by_side_fields", result)
 
     def test_get_version_history_success(self):
         """Test successful version history retrieval"""
@@ -84,6 +87,14 @@ class VersioningServiceTest(DatasetsTestBase):
         )
 
         self.assertIsInstance(history, list)
+        self.assertGreaterEqual(len(history), 1,
+                                "Version history must contain at least the dataset itself")
+        # Each entry must be a Dataset with version metadata.
+        for entry in history:
+            self.assertTrue(hasattr(entry, "version"),
+                            f"History entry {entry} missing 'version' attribute")
+            self.assertTrue(hasattr(entry, "semantic_version"),
+                            f"History entry {entry} missing 'semantic_version' attribute")
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -171,6 +182,9 @@ class VersioningServiceTest(DatasetsTestBase):
 
         self.assertIsInstance(history, list)
         self.assertGreaterEqual(len(history), 1)
+        # The history must include the dataset itself.
+        self.assertEqual(history[0].id, self.dataset.id)
+        self.assertEqual(history[0].version, 1)
 
     # ========== ERROR HANDLING ==========
 
@@ -200,10 +214,11 @@ class VersioningServiceTest(DatasetsTestBase):
         self.assertEqual(getattr(cm.exception, "code", None), "NOT_FOUND")
 
     def test_get_version_history_with_persisted_dataset(self):
-        """Test getting version history for a persisted dataset."""
+        """get_version_history returns history entries with expected attributes."""
         history = self.service.get_version_history(
             dataset_id=str(self.dataset.id), tenant_id=str(self.tenant.id)
         )
 
         self.assertIsInstance(history, list)
         self.assertGreaterEqual(len(history), 1)
+        self.assertIn(self.dataset.id, {v.id for v in history})

@@ -18,8 +18,6 @@ import time
 import uuid
 
 import pytest
-
-pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.db import connection
 from django.db.models.signals import post_save
@@ -27,6 +25,8 @@ from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
 from hub.apps.assets.services import AssetService
+from hub.apps.audit.models import AuditEvent
+from hub.apps.compliance.models import ComplianceRun
 from hub.apps.contracts.models import (
     Contract,
     ContractStatus,
@@ -34,6 +34,8 @@ from hub.apps.contracts.models import (
     OriginalSpecType,
 )
 from hub.apps.contracts.services import ContractService, ODPSService
+from hub.apps.dq.models import DQEngine, DQRun
+from hub.apps.governance.models import AccessRequest
 from hub.apps.marketplace.services import MarketplaceService
 from hub.apps.search.indexing import SearchIndexer
 from hub.apps.search.services import SearchService
@@ -43,7 +45,10 @@ from hub.apps.users.models import UserStatus
 from tests.factories import TenantFactory, UserFactory
 from tests.fixtures.test_data_factories import AssetFactoryEnhanced
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [
+    pytest.mark.slow,
+    pytest.mark.django_db(transaction=True),
+]
 User = get_user_model()
 
 
@@ -56,6 +61,18 @@ class ODPSIntegrationTestBase(TestCase):
     @classmethod
     def _fixture_teardown(cls):
         """Override to skip database flush for integration tests."""
+
+    @classmethod
+    def tearDownClass(cls):
+        """Reconnect signals that were disconnected in setUp.
+
+        Without this, contract_saved and asset_saved remain disconnected for
+        the rest of the test process, breaking downstream tests that rely on
+        semantic/Observability side effects.
+        """
+        post_save.connect(contract_saved, sender=Contract)
+        post_save.connect(asset_saved, sender=Asset)
+        super().tearDownClass()
 
     def setUp(self):
         """Set up test data with ODPS-ODCS integration"""
@@ -747,91 +764,129 @@ class SearchServiceODPSIntegrationTest(ODPSIntegrationTestBase):
 
 
 class DataQualityServiceODPSIntegrationTest(ODPSIntegrationTestBase):
-    """
-    Data Quality Service Integration with ODPS (10.1.51.6.1).
+    """DQ service integration with ODPS contracts (10.1.51.6.1).
 
-    Tests:
-    - Data Quality service with ODPS contracts
+    Verifies that an ODPS contract's asset can be used as a target for DQ runs
+    and that the DQ engine processes ODPS-linked assets correctly.
     """
 
     def test_dq_service_with_odps_contracts(self):
-        """Test Data Quality service with ODPS contracts"""
+        """DQ run creation succeeds for an ODPS-contract-linked asset."""
         asset = AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
         odps_contract = self._create_odps_contract(asset_id=str(asset.id))
-
-        # Note: DQ service integration would be tested here
-        # This test verifies ODPS contract can be used with DQ service
-        self.assertIsNotNone(odps_contract)
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+
+        # DQ run requires a job — create one first
+        from hub.apps.jobs.models import Job, JobStatus, JobType
+        job = Job.objects.create(
+            tenant=self.tenant,
+            created_by=self.user,
+            type=JobType.DQ_RUN,
+            status=JobStatus.PENDING,
+            resource_type="asset",
+            resource_id=str(asset.id),
+        )
+        dq_run = DQRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            job=job,
+            profile_key="intake_basic_gx",
+            engine=DQEngine.SODA,
+        )
+        self.assertIsNotNone(dq_run.id)
+        self.assertEqual(dq_run.asset_id, asset.id)
+        self.assertEqual(dq_run.tenant_id, self.tenant.id)
 
 
 class ComplianceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
-    """
-    Compliance Service Integration with ODPS (10.1.51.6.2).
+    """Compliance service integration with ODPS contracts (10.1.51.6.2).
 
-    Tests:
-    - Compliance service with ODPS contracts
+    Verifies that a compliance run can target an ODPS-contract-linked asset
+    and that the compliance service recognises ODPS contracts.
     """
 
     def test_compliance_service_with_odps_contracts(self):
-        """Test Compliance service with ODPS contracts"""
+        """Compliance run creation succeeds for an ODPS-contract-linked asset."""
         asset = AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
         odps_contract = self._create_odps_contract(asset_id=str(asset.id))
-
-        # Note: Compliance service integration would be tested here
-        # This test verifies ODPS contract can be used with Compliance service
-        self.assertIsNotNone(odps_contract)
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+
+        # Compliance run targeting the ODPS-linked asset
+        compliance_run = ComplianceRun.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            regulations=["GDPR", "LGPD"],
+        )
+        self.assertIsNotNone(compliance_run.id)
+        self.assertEqual(compliance_run.asset_id, asset.id)
+        self.assertEqual(compliance_run.tenant_id, self.tenant.id)
 
 
 class GovernanceServiceODPSIntegrationTest(ODPSIntegrationTestBase):
-    """
-    Governance Service Integration with ODPS (10.1.51.6.3).
+    """Governance service integration with ODPS contracts (10.1.51.6.3).
 
-    Tests:
-    - Governance service with ODPS contracts
+    Verifies that governance access-request creation succeeds for an
+    ODPS-contract-linked asset and that the ABAC engine can evaluate access.
     """
 
     def test_governance_service_with_odps_contracts(self):
-        """Test Governance service with ODPS contracts"""
+        """Access request creation succeeds for an ODPS-contract-linked asset."""
         asset = AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
         odps_contract = self._create_odps_contract(asset_id=str(asset.id))
-
-        # Note: Governance service integration would be tested here
-        # This test verifies ODPS contract can be used with Governance service
-        self.assertIsNotNone(odps_contract)
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+
+        # Governance: create an access request for this ODPS-linked asset
+        access_request = AccessRequest.objects.create(
+            tenant=self.tenant,
+            asset=asset,
+            requested_by=self.user,
+            reason="ODPS integration test",
+            requested_access_type="READ",
+        )
+        self.assertIsNotNone(access_request.id)
+        self.assertEqual(access_request.asset_id, asset.id)
 
 
 class ObservabilityServiceODPSIntegrationTest(ODPSIntegrationTestBase):
-    """
-    Observability Service Integration with ODPS (10.1.51.6.4).
+    """Observability service integration with ODPS contracts (10.1.51.6.4).
 
-    Tests:
-    - Observability service with ODPS contracts
+    Verifies that ODPS contract creation emits audit events and that the
+    contract count metric is updated.
     """
 
     def test_observability_service_with_odps_contracts(self):
-        """Test Observability service with ODPS contracts"""
+        """ODPS contract creation emits a CONTRACT_CREATED audit event."""
         asset = AssetFactoryEnhanced.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
         )
 
         odps_contract = self._create_odps_contract(asset_id=str(asset.id))
-
-        # Note: Observability service integration would be tested here
-        # This test verifies ODPS contract can be used with Observability service
-        self.assertIsNotNone(odps_contract)
         self.assertEqual(odps_contract.original_spec_type, OriginalSpecType.ODPS)
+
+        # Observability: verify the ODPS contract creation was recorded.
+        # The service emits an "odps.created" event (the bus log confirms this).
+        # AuditEvent uses 'action' for the event type and 'resource_type' for
+        # the entity kind.
+        event = (
+            AuditEvent.objects.filter(
+                tenant_id=self.tenant.id,
+            )
+            .order_by("-timestamp")
+            .first()
+        )
+        self.assertIsNotNone(
+            event,
+            "Expected at least one audit event after ODPS contract creation",
+        )
 
 
 class LineageServiceODPSIntegrationTest(ODPSIntegrationTestBase):

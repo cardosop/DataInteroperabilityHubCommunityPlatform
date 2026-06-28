@@ -155,12 +155,20 @@ class Phase25BillingE2ETest(TestCase):
             format="json",
         )
 
-        # Should return 403 with subscription_inactive
+        # Should return 403 with subscription-related billing block.
+        # Must contain a keyword implying restriction, not just "subscription."
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         data = get_response_data(response) or {}
         error_str = str(data.get("error", "")).lower()
         self.assertTrue(
-            "subscription" in error_str or "inactive" in error_str or "past_due" in error_str
+            any(
+                phrase in error_str
+                for phrase in [
+                    "inactive", "past_due", "canceled", "subscription_inactive",
+                    "subscription_required", "no active subscription",
+                ]
+            ),
+            f"Expected billing-related block error, got: {data.get('error', '')}",
         )
 
         # Read operations should still work
@@ -184,11 +192,21 @@ class Phase25BillingE2ETest(TestCase):
             format="json",
         )
 
-        # Should return 403 with tenant_suspended
+        # Should return 403 with tenant-suspension block.
+        # Must contain a keyword implying suspension, not just "tenant."
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
         data = get_response_data(response) or {}
         error_str = str(data.get("error", "")).lower()
-        self.assertTrue("tenant" in error_str or "suspended" in error_str)
+        self.assertTrue(
+            any(
+                phrase in error_str
+                for phrase in [
+                    "suspended", "tenant_disabled", "tenant_inactive",
+                    "account suspended", "tenant_suspended",
+                ]
+            ),
+            f"Expected tenant-suspension block error, got: {data.get('error', '')}",
+        )
 
         # Read operations should still work even for suspended tenants
         response = self.client.get("/api/v1/assets/")

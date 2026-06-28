@@ -205,12 +205,8 @@ class DataMeshDomainModelTest(TestCase):
     def test_domain_clean_validation_owner_same_tenant(self):
         """Test domain clean() validation for owner from same tenant (should pass)"""
         domain = DataMeshDomain(tenant=self.tenant, name="Test Domain", owner=self.user)
-
-        # Should not raise ValidationError
-        try:
-            domain.clean()
-        except ValidationError:
-            self.fail("clean() raised ValidationError unexpectedly")
+        # Should not raise ValidationError — if it does, the test fails naturally
+        domain.clean()
 
     def test_domain_save_calls_clean(self):
         """Test that save() calls clean() for validation"""
@@ -325,9 +321,9 @@ class DataMeshDomainModelTest(TestCase):
         domain.refresh_from_db()
         self.assertIsNone(domain.owner)
 
-    def test_domain_indexes(self):
-        """Test that domain has proper database indexes"""
-        # Create domains to test indexes
+    def test_domain_filtered_queries(self):
+        """Test domain queryset filtering by tenant, status, and name"""
+        # Create domains to test filtered queries
         domain1 = DataMeshDomain.objects.create(
             tenant=self.tenant,
             name="Index Test Domain 1",

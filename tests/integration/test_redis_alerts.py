@@ -3,6 +3,9 @@ Integration tests for Redis alerts.
 
 Tests that Redis alerts are properly configured and can be triggered.
 Uses PROMETHEUS_URL from env when running in Docker.
+
+These tests require Prometheus and Alertmanager to be accessible.
+They are conditionally skipped when the infrastructure is not available.
 """
 
 import os
@@ -21,7 +24,6 @@ class TestRedisAlerts:
         """Get Prometheus URL from env or localhost."""
         return os.getenv("PROMETHEUS_URL", "http://localhost:9090")
 
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
     def test_redis_alerts_loaded(self, prometheus_url):
         """Test that Redis alerts are loaded in Prometheus."""
         # Wait for Prometheus to load rules
@@ -29,8 +31,11 @@ class TestRedisAlerts:
 
         try:
             response = requests.get(f"{prometheus_url}/api/v1/rules", timeout=15)
+            response.raise_for_status()
         except requests.exceptions.ConnectionError:
-        assert response.status_code == 200
+            pytest.skip("Prometheus not reachable at " + prometheus_url)
+        except requests.exceptions.RequestException as exc:
+            pytest.fail(f"Prometheus rules API returned error: {exc}")
 
         data = response.json()
         groups = data.get("data", {}).get("groups", [])
@@ -55,7 +60,6 @@ class TestRedisAlerts:
         for alert_name in expected_alerts:
             assert alert_name in alert_names, f"Alert {alert_name} should be configured"
 
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
     def test_redis_memory_alert_rule(self, prometheus_url):
         """Test Redis memory alert rule."""
         query = "redis_memory_used_bytes / redis_memory_max_bytes > 0.80"
@@ -63,10 +67,13 @@ class TestRedisAlerts:
             response = requests.get(
                 f"{prometheus_url}/api/v1/query", params={"query": query}, timeout=15
             )
+            response.raise_for_status()
         except requests.exceptions.ConnectionError:
+            pytest.skip("Prometheus not reachable at " + prometheus_url)
+        except requests.exceptions.RequestException as exc:
+            pytest.fail(f"Redis memory alert query failed: {exc}")
         assert response.status_code == 200
 
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
     def test_redis_connection_pool_alert_rule(self, prometheus_url):
         """Test Redis connection pool alert rule."""
         query = "redis_connected_clients / redis_maxclients > 0.90"
@@ -74,10 +81,13 @@ class TestRedisAlerts:
             response = requests.get(
                 f"{prometheus_url}/api/v1/query", params={"query": query}, timeout=15
             )
+            response.raise_for_status()
         except requests.exceptions.ConnectionError:
+            pytest.skip("Prometheus not reachable at " + prometheus_url)
+        except requests.exceptions.RequestException as exc:
+            pytest.fail(f"Redis connection pool alert query failed: {exc}")
         assert response.status_code == 200
 
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
     def test_redis_latency_alert_rule(self, prometheus_url):
         """Test Redis latency alert rule."""
         query = "histogram_quantile(0.95, sum(rate(redis_commands_duration_seconds_bucket[5m])) by (le)) > 0.1"
@@ -85,20 +95,26 @@ class TestRedisAlerts:
             response = requests.get(
                 f"{prometheus_url}/api/v1/query", params={"query": query}, timeout=15
             )
+            response.raise_for_status()
         except requests.exceptions.ConnectionError:
+            pytest.skip("Prometheus not reachable at " + prometheus_url)
+        except requests.exceptions.RequestException as exc:
+            pytest.fail(f"Redis latency alert query failed: {exc}")
         assert response.status_code == 200
 
-@pytest.mark.skip(reason="Alertmanager not accessible")
     def test_alertmanager_receives_alerts(self, prometheus_url):
         """Test that Alertmanager can receive alerts."""
         alertmanager_url = os.getenv("ALERTMANAGER_URL", "http://localhost:9093")
 
         try:
             response = requests.get(f"{alertmanager_url}/api/v2/alerts", timeout=15)
+            response.raise_for_status()
             assert response.status_code == 200
-        except requests.exceptions.RequestException:
+        except requests.exceptions.ConnectionError:
+            pytest.skip("Alertmanager not reachable at " + alertmanager_url)
+        except requests.exceptions.RequestException as exc:
+            pytest.fail(f"Alertmanager API returned error: {exc}")
 
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
     def test_redis_metrics_available_for_alerts(self, prometheus_url):
         """Test that Redis metrics are available for alert evaluation."""
         time.sleep(15)  # INTENTIONAL: e2e/integration test polling real services
@@ -108,16 +124,20 @@ class TestRedisAlerts:
             "redis_connected_clients",
             "redis_maxclients",
         ]
-        try:
-            for metric in metrics_to_check:
+        for metric in metrics_to_check:
+            try:
                 response = requests.get(
-                    f"{prometheus_url}/api/v1/query", params={"query": metric}, timeout=15
+                    f"{prometheus_url}/api/v1/query",
+                    params={"query": metric},
+                    timeout=15,
                 )
-                assert response.status_code == 200
-        except requests.exceptions.ConnectionError:
-            data = response.json()
-
-            # Metric should exist (may have no data points if Redis is idle)
-            if data.get("status") == "success":
-                # Metric is queryable
-                pass
+                response.raise_for_status()
+                data = response.json()
+                # Metric should exist (may have no data points if Redis is idle)
+                assert data.get("status") == "success", (
+                    f"Metric {metric} query returned status={data.get('status')}"
+                )
+            except requests.exceptions.ConnectionError:
+                pytest.skip("Prometheus not reachable at " + prometheus_url)
+            except requests.exceptions.RequestException as exc:
+                pytest.fail(f"Metric {metric} query failed: {exc}")

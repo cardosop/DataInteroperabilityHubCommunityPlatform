@@ -161,18 +161,27 @@ class JobFactory:
 
     @staticmethod
     def create_failed_job(**kwargs):
+        import uuid as _uuid
+        from django.utils import timezone
         from hub.apps.jobs.models import Job, JobStatus
 
         error_message = kwargs.pop("error_message", "Test error message")
+        kwargs.setdefault("resource_id", _uuid.uuid4())
         kwargs.setdefault("status", JobStatus.FAILED)
+        kwargs.setdefault("error_message", error_message)
+        kwargs.setdefault("completed_at", timezone.now())
         kwargs.setdefault("result_json", {"error": error_message})
         return Job.objects.create(**kwargs)
 
     @staticmethod
     def create_completed_job(**kwargs):
+        import uuid as _uuid
+        from django.utils import timezone
         from hub.apps.jobs.models import Job, JobStatus
 
+        kwargs.setdefault("resource_id", _uuid.uuid4())
         kwargs.setdefault("status", JobStatus.COMPLETED)
+        kwargs.setdefault("completed_at", timezone.now())
         kwargs.setdefault("result_json", {"message": "Job completed successfully"})
         return Job.objects.create(**kwargs)
 
@@ -182,9 +191,15 @@ class FileFactory:
 
     @staticmethod
     def create_file(**kwargs):
+        import uuid as _uuid
         from hub.apps.files.models import File
 
-        return File.objects.create(**kwargs)
+        defaults = {
+            "size": 0,
+            "storage_path": f"test-files/{_uuid.uuid4().hex}.dat",
+        }
+        defaults.update(kwargs)
+        return File.objects.create(**defaults)
 
 
 class ListingFactory:

@@ -392,23 +392,38 @@ class MarketplacePurchaseTests(E2ETestBase):
                 self.assertEqual(entitlement.status, EntitlementStatus.ACTIVE)
                 self.assertEqual(entitlement.tenant, self.consumer_tenant)
 
-    def test_purchase_own_listing_fails(self):
-        """Test that provider cannot purchase their own listing"""
-        # Provider tries to purchase their own listing
+    def test_purchase_own_listing_creates_requested_order(self):
+        """Provider purchasing own listing creates a REQUESTED order (internal governance).
+
+        Same-tenant orders are allowed as internal data governance requests.
+        They go into REQUESTED status (not auto-fulfilled like FREE_AUTO_APPROVE
+        cross-tenant orders) and require manual approval.
+        """
+        # Provider purchases their own listing
         order_response = self.provider_client.post(
             "/api/v1/marketplace/orders/", {"listing_id": str(self.listing.id)}, format="json"
         )
 
-        # Should fail with appropriate error
-        self.assertNotEqual(
+        # Order should be created successfully (201), but in REQUESTED state
+        self.assertEqual(
             order_response.status_code,
             status.HTTP_201_CREATED,
-            "Provider should not be able to purchase their own listing",
+            "Same-tenant order creation should succeed (internal governance request)",
         )
-        error_data = str(get_response_data(order_response) or {}).lower()
+        resp_data = get_response_data(order_response) or {}
+        order_data = resp_data.get("order", resp_data)
+
+        # Verify order is in REQUESTED status (not auto-fulfilled)
+        self.assertEqual(
+            order_data.get("status"),
+            OrderStatus.REQUESTED,
+            "Same-tenant order must be REQUESTED (not auto-fulfilled)",
+        )
+        # Verify same_tenant_request metadata is set
+        metadata = order_data.get("metadata_json") or {}
         self.assertTrue(
-            "own" in error_data or "provider" in error_data or "self" in error_data,
-            f"Error should mention self-purchase restriction, got: {error_data}",
+            metadata.get("same_tenant_request"),
+            "Same-tenant order must have same_tenant_request metadata flag",
         )
 
     def test_purchase_unpublished_listing_fails(self):

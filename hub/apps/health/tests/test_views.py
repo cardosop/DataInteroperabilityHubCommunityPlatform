@@ -271,6 +271,10 @@ class TestHealthCheck(TestCase):
         if response.status_code in [200, 404]:
             data = _json_data(response)
             self.assertNotIn("http_status", data)
+        elif response.status_code == 500:
+            self.skipTest("Circuit breaker service unavailable")
+        else:
+            self.fail(f"Unexpected status code: {response.status_code}")
 
 
 class TestCircuitBreakerStatus(TestCase):
@@ -301,23 +305,28 @@ class TestCircuitBreakerStatus(TestCase):
         force_authenticate(request, user=self.user)
         return circuit_breaker_status(request)
 
+    def _require_200_or_skip(self, response, label=""):
+        """Assert 200; skip on 500 (service unavailable); fail on anything else."""
+        if response.status_code == 500:
+            data = _json_data(response)
+            self.assertEqual(data.get("error"), "Circuit breaker status unavailable",
+                             "500 must carry expected error message")
+            self.skipTest(f"Circuit breaker service unavailable ({label})")
+        self.assertEqual(response.status_code, 200,
+                         f"Expected 200 for {label}, got {response.status_code}")
+
     def test_circuit_breaker_status_all_breakers(self):
         """Test getting aggregate status of all circuit breakers"""
         response = self._authed_get()
-        # Circuit breakers may not be configured in the test environment —
-        # 500 is acceptable ONLY when the error is the expected "unavailable"
-        # message, not a crash or unexpected exception.
         if response.status_code == 500:
             data = _json_data(response)
             self.assertEqual(data.get("error"), "Circuit breaker status unavailable")
-            return  # Infrastructure not available — skip further assertions.
+            self.skipTest("Circuit breaker service unavailable")
         self.assertEqual(response.status_code, 200)
-
-        if response.status_code == 200:
-            data = _json_data(response)
-            self.assertIn("status", data)
-            self.assertIn("total_breakers", data)
-            self.assertIn("open_breakers", data)
+        data = _json_data(response)
+        self.assertIn("status", data)
+        self.assertIn("total_breakers", data)
+        self.assertIn("open_breakers", data)
 
     def test_circuit_breaker_status_error_handling(self):
         """Test error handling in circuit breaker status"""
@@ -336,41 +345,43 @@ class TestCircuitBreakerStatus(TestCase):
     def test_circuit_breaker_status_query_params_ignored(self):
         """Test circuit breaker status ignores service_name param (221.3.2)"""
         response = self._authed_get("/health/circuit-breakers/?service_name=test")
-        self.assertIn(response.status_code, [200, 500])
-        if response.status_code == 200:
-            data = _json_data(response)
-            # Should still return aggregate data, not single-service
-            self.assertIn("total_breakers", data)
+        self._require_200_or_skip(response, "query params ignored")
+        data = _json_data(response)
+        self.assertIn("total_breakers", data)
 
     def test_circuit_breaker_status_aggregate_structure(self):
         """Test that response has correct aggregate-only structure (221.3.2)"""
         response = self._authed_get()
-
-        if response.status_code == 200:
-            data = _json_data(response)
-            self.assertIn("status", data)
-            self.assertIn("total_breakers", data)
-            self.assertIn("open_breakers", data)
-            self.assertIsInstance(data["total_breakers"], int)
-            self.assertIsInstance(data["open_breakers"], int)
-            # Service names must NOT be exposed
-            self.assertNotIn("circuit_breakers", data)
-            self.assertNotIn("open_breaker_names", data)
-            self.assertNotIn("circuit_breaker", data)
+        self._require_200_or_skip(response, "aggregate structure")
+        data = _json_data(response)
+        self.assertIn("status", data)
+        self.assertIn("total_breakers", data)
+        self.assertIn("open_breakers", data)
+        self.assertIsInstance(data["total_breakers"], int)
+        self.assertIsInstance(data["open_breakers"], int)
+        self.assertNotIn("circuit_breakers", data)
+        self.assertNotIn("open_breaker_names", data)
+        self.assertNotIn("circuit_breaker", data)
 
     def test_circuit_breaker_status_error_response_structure(self):
-        """Test that error response has correct structure and generic message"""
+        """Test that error response has correct structure and generic message.
+        When CB service is available (200) the error path is not reachable
+        in this test environment — the test verifies the 500 path if present."""
         response = self._authed_get()
-
+        self.assertIn(response.status_code, [200, 500])
         if response.status_code == 500:
             data = _json_data(response)
             self.assertIn("status", data)
             self.assertIn("error", data)
             self.assertEqual(data["status"], "error")
-            # 221.3 — error must be generic, not leak internals
             self.assertEqual(
                 data["error"],
                 "Circuit breaker status unavailable",
+            )
+        else:
+            self.skipTest(
+                "Circuit breaker service returned 200 — "
+                "error response structure not verifiable"
             )
 
     def test_circuit_breaker_status_multiple_calls(self):
@@ -385,20 +396,18 @@ class TestCircuitBreakerStatus(TestCase):
     def test_circuit_breaker_status_returns_all_required_aggregate_fields(self):
         """Test that response returns all required aggregate fields"""
         response = self._authed_get()
-
-        if response.status_code == 200:
-            data = _json_data(response)
-            self.assertIn("status", data)
-            self.assertIn("total_breakers", data)
-            self.assertIn("open_breakers", data)
+        self._require_200_or_skip(response, "required fields")
+        data = _json_data(response)
+        self.assertIn("status", data)
+        self.assertIn("total_breakers", data)
+        self.assertIn("open_breakers", data)
 
     def test_circuit_breaker_status_status_values(self):
         """Test that status field has valid values"""
         response = self._authed_get()
-
-        if response.status_code == 200:
-            data = _json_data(response)
-            self.assertIn(data["status"], ["healthy", "degraded"])
+        self._require_200_or_skip(response, "status values")
+        data = _json_data(response)
+        self.assertIn(data["status"], ["healthy", "degraded"])
 
     def test_circuit_breaker_status_http_status_codes(self):
         """Test that HTTP status codes are correct"""

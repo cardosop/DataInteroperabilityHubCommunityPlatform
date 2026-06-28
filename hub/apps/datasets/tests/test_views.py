@@ -239,11 +239,53 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertTrue(any("searchable" in n for n in names))
 
     def test_list_datasets_ordering(self):
-        """Test ordering datasets (29.69.2)."""
-        response = self.client.get("/api/v1/datasets/?ordering=created_at")
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        response_desc = self.client.get("/api/v1/datasets/?ordering=-created_at")
-        self.assertEqual(response_desc.status_code, status.HTTP_200_OK)
+        """Ascending ordering returns earlier rows first; descending reverses."""
+        from datetime import timedelta
+        from django.utils import timezone
+
+        # Create two datasets with explicitly staggered created_at so
+        # ordering is deterministic.
+        file_a = File.objects.create(
+            id=uuid.uuid4(), tenant=self.tenant, name="order-a.csv",
+            content_type="text/csv", size=10, status=FileStatus.ACTIVE,
+        )
+        file_b = File.objects.create(
+            id=uuid.uuid4(), tenant=self.tenant, name="order-b.csv",
+            content_type="text/csv", size=10, status=FileStatus.ACTIVE,
+        )
+        earlier = Dataset.objects.create(
+            tenant=self.tenant, file=file_a, format="CSV",
+            created_by=self.user, version=1,
+        )
+        Dataset.objects.filter(id=earlier.id).update(
+            created_at=timezone.now() - timedelta(hours=1),
+        )
+        later = Dataset.objects.create(
+            tenant=self.tenant, file=file_b, format="CSV",
+            created_by=self.user, version=1,
+        )
+
+        # Ascending: earlier first
+        asc = self.client.get("/api/v1/datasets/?ordering=created_at")
+        self.assertEqual(asc.status_code, status.HTTP_200_OK)
+        asc_ids = [d["id"] for d in asc.data.get("results", [])]
+        self.assertIn(str(earlier.id), asc_ids)
+        self.assertIn(str(later.id), asc_ids)
+        self.assertLess(
+            asc_ids.index(str(earlier.id)), asc_ids.index(str(later.id)),
+            "Ascending ordering must place earlier-created dataset first",
+        )
+
+        # Descending: later first
+        desc = self.client.get("/api/v1/datasets/?ordering=-created_at")
+        self.assertEqual(desc.status_code, status.HTTP_200_OK)
+        desc_ids = [d["id"] for d in desc.data.get("results", [])]
+        self.assertIn(str(earlier.id), desc_ids)
+        self.assertIn(str(later.id), desc_ids)
+        self.assertLess(
+            desc_ids.index(str(later.id)), desc_ids.index(str(earlier.id)),
+            "Descending ordering must place later-created dataset first",
+        )
 
     def test_list_datasets_pagination_returns_200(self):
         """Test pagination returns 200 status code"""
@@ -600,17 +642,12 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         self.assertEqual(response.data.get("code"), "VERSIONING_DISABLED")
         self.assertIn("disabled", (response.data.get("detail") or "").lower())
 
-    def test_create_version_missing_data(self):
-        """Test creating version with empty payload — version fields are optional."""
-
-        data = {}  # Missing required fields
-
+    def test_create_version_defaults_with_empty_payload(self):
+        """Creating a version with an empty payload succeeds by applying defaults."""
+        data = {}
         response = self.client.post(
             f"/api/v1/datasets/{self.dataset.id}/versions/", data, format="json"
         )
-
-        # Version creation fields are optional — the endpoint creates a
-        # version with defaults when given an empty payload.
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
 
     def test_compare_versions_success(self):
@@ -630,10 +667,17 @@ class DatasetViewSetTest(DatasetsAPITestBase):
         )
 
         response = self.client.get(
-            f"/api/v1/datasets/{self.dataset.id}/versions/compare/?version1={self.dataset.id}&version2={version2.id}"
+            f"/api/v1/datasets/{self.dataset.id}/versions/compare/"
+            f"?version1={self.dataset.id}&version2={version2.id}"
         )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsInstance(response.data, dict,
+                              "Version comparison response must be a dict")
+        self.assertIn("version1", response.data,
+                      "Version comparison response must include 'version1'")
+        self.assertIn("version2", response.data,
+                      "Version comparison response must include 'version2'")
 
     def test_compare_versions_missing_params(self):
         """Test comparing versions with missing parameters (error handling)"""
@@ -641,6 +685,33 @@ class DatasetViewSetTest(DatasetsAPITestBase):
 
         # Missing required parameters must return 400
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    # ========== ADDITIONAL AUTHORIZATION TESTS ==========
+
+    def test_partial_update_dataset_tenant_isolation(self):
+        """Tenant isolation: user cannot PATCH another tenant's dataset."""
+        self.client.force_authenticate(user=self.other_user)
+        response = self.client.patch(
+            f"/api/v1/datasets/{self.dataset.id}/",
+            {"format": "JSON"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_destroy_dataset_unauthenticated(self):
+        """Unauthenticated DELETE request must return 401."""
+        self.client.force_authenticate(user=None)
+        response = self.client.delete(
+            f"/api/v1/datasets/{self.dataset.id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    def test_refresh_dataset_requires_tenant_admin(self):
+        """A non-TENANT_ADMIN user gets 403 when calling refresh."""
+        response = self.client.post(
+            f"/api/v1/datasets/{self.dataset.id}/refresh/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     # ========== EDGE CASES ==========
 

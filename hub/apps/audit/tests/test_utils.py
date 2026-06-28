@@ -319,65 +319,42 @@ class AuditUtilsTest(TestCase):
     # ========== ERROR HANDLING ==========
 
     def test_redact_pii_with_invalid_data_type(self):
-        """Test redact_pii with invalid data type (error handling)."""
-        # redact_pii should handle non-dict types gracefully
+        """Test redact_pii returns non-dict input unchanged."""
         data = "not a dict"
-        # This should not raise an error, but may return the original value
-        # or handle it gracefully depending on implementation
-        try:
-            redacted = redact_pii(data)
-            # If it doesn't raise, verify it handles gracefully
-            self.assertIsNotNone(redacted)
-        except (TypeError, AttributeError):
-            # If it raises, that's also acceptable error handling
-            pass
+        redacted = redact_pii(data)
+        # redact_pii returns non-dict types unchanged (line 39-40 of utils.py)
+        self.assertEqual(redacted, data)
 
     def test_create_audit_event_with_invalid_resource_id_format(self):
-        """Test create_audit_event with invalid resource_id format (error handling)."""
-        # Should handle invalid UUID format gracefully
-        try:
-            event = create_audit_event(
-                resource_type="TEST",
-                action="TEST_ACTION",
-                actor_user=self.user,
-                tenant=self.tenant,
-                resource_id="invalid-uuid",
-            )
-            # If it doesn't raise, verify it handles gracefully
-            self.assertIsNotNone(event)
-        except (ValueError, TypeError):
-            # If it raises, that's also acceptable error handling
-            pass
+        """Test create_audit_event gracefully handles invalid UUID resource_id by setting it to None."""
+        event = create_audit_event(
+            resource_type="TEST",
+            action="TEST_ACTION",
+            actor_user=self.user,
+            tenant=self.tenant,
+            resource_id="invalid-uuid",
+        )
+        self.assertIsNotNone(event)
+        # Invalid UUIDs are caught and resource_id is set to None (utils.py lines 340-349)
+        self.assertIsNone(event.resource_id)
 
     def test_log_tenant_operation_with_none_tenant(self):
-        """Test log_tenant_operation with None tenant (error handling)."""
-        # Should handle None tenant gracefully
-        try:
-            event = log_tenant_operation(action="UPDATED", tenant=None, actor_user=self.user)
-            # If it doesn't raise, verify it handles gracefully
-            self.assertIsNotNone(event)
-        except (TypeError, AttributeError):
-            # If it raises, that's also acceptable error handling
-            pass
+        """Test log_tenant_operation with None tenant infers tenant from actor_user."""
+        event = log_tenant_operation(action="UPDATED", tenant=None, actor_user=self.user)
+        self.assertIsNotNone(event)
+        # create_audit_event infers tenant from actor_user when tenant is None (line 297-298)
+        self.assertEqual(event.tenant, self.user.tenant)
 
     def test_log_user_operation_with_none_user(self):
-        """Test log_user_operation with None user (error handling)."""
-        # Should handle None user gracefully
-        try:
-            event = log_user_operation(action="CREATED", user=None, actor_user=self.user)
-            # If it doesn't raise, verify it handles gracefully
-            self.assertIsNotNone(event)
-        except (TypeError, AttributeError):
-            # If it raises, that's also acceptable error handling
-            pass
+        """Test log_user_operation with None user raises AttributeError (user is required)."""
+        # The type signature is user: User (not Optional), so None is invalid input.
+        # str(None.id) raises AttributeError.
+        with self.assertRaises(AttributeError):
+            log_user_operation(action="CREATED", user=None, actor_user=self.user)
 
     def test_log_auth_operation_with_none_user(self):
-        """Test log_auth_operation with None user (error handling)."""
-        # Should handle None user gracefully
-        try:
-            event = log_auth_operation(action="LOGIN", user=None, result="FAILURE")
-            # If it doesn't raise, verify it handles gracefully
-            self.assertIsNotNone(event)
-        except (TypeError, AttributeError):
-            # If it raises, that's also acceptable error handling
-            pass
+        """Test log_auth_operation with None user raises AttributeError (user is required)."""
+        # The type signature is user: User (not Optional), so None is invalid input.
+        # str(None.id) raises AttributeError.
+        with self.assertRaises(AttributeError):
+            log_auth_operation(action="LOGIN", user=None, result="FAILURE")

@@ -55,6 +55,7 @@ class DPIAViewSetTests(TestCase):
     def test_list_dpia_records(self):
         resp = self.client.get("/api/v1/dpia/records/")
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("results", resp.data, "Paginated response must include 'results' key")
 
     @pytest.mark.integration
     def test_create_dpia_record(self):
@@ -65,6 +66,8 @@ class DPIAViewSetTests(TestCase):
         }
         resp = self.client.post("/api/v1/dpia/records/", payload, format="json")
         self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["title"], "Test DPIA")
+        self.assertIn("id", resp.data)
 
     @pytest.mark.integration
     def test_unauthenticated_rejected(self):

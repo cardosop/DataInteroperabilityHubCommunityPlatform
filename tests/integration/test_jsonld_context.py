@@ -72,16 +72,27 @@ class JSONLDContextTest(TestCase):
         else:
             context_dict = context
 
-        for prefix in required_prefixes:
-            # Prefix should be in context (case-insensitive check)
-            found = False
-            for key in context_dict.keys():
-                if prefix.lower() in key.lower():
-                    found = True
-                    break
-            # Note: Some prefixes may be optional, so we log but don't fail
+        # Prefixes that MUST be present in every JSON-LD context
+        required = {"rdf", "rdfs", "xsd", "schema", "dct"}
+        # Prefixes commonly expected but potentially conditional
+        optional = set(required_prefixes) - required
+
+        missing: list[str] = []
+        for prefix in sorted(required):
+            found = any(prefix.lower() in key.lower() for key in context_dict)
             if not found:
-                print(f"Warning: Prefix '{prefix}' not found in JSON-LD context")
+                missing.append(prefix)
+
+        self.assertEqual(
+            missing, [],
+            f"Missing required JSON-LD context prefixes: {missing}. "
+            f"Context keys: {list(context_dict.keys())[:20]}",
+        )
+
+        for prefix in sorted(optional):
+            found = any(prefix.lower() in key.lower() for key in context_dict)
+            if not found:
+                print(f"Warning: Optional prefix '{prefix}' not found in JSON-LD context")
 
     def test_jsonld_context_structure(self):
         """Test that JSON-LD context has correct structure"""

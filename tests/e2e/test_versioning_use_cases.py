@@ -344,8 +344,13 @@ class VersionComparisonUseCasesTest(E2ETestBase):
             {"version2": str(self.dataset_v2.id)},
         )
 
-        # Should work if parent exists, or return 400 if not
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Accept 200 (parent version found) or 400 (no parent version to compare).
+        # Both are valid outcomes depending on test data state with --reuse-db.
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            f"Expected 200 (parent exists) or 400 (no parent), got {response.status_code}",
+        )
 
         if response.status_code == status.HTTP_200_OK:
             data = get_response_data(response) or {}

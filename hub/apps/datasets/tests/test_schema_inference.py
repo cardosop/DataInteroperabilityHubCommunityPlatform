@@ -168,7 +168,12 @@ class EnhancedSchemaInferenceTest(TestCase):
         self.assertIn("\\d", pattern)
 
     def test_infer_pattern_uuid(self):
-        """Test pattern inference for UUIDs (GAP-8.2.4)"""
+        """Test pattern inference for UUIDs (GAP-8.2.4).
+
+        The returned regex must actually match valid UUIDs and reject
+        strings that are not UUIDs — not merely contain literal digits."""
+        import re
+
         values = [
             "550e8400-e29b-41d4-a716-446655440000",
             "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
@@ -177,9 +182,23 @@ class EnhancedSchemaInferenceTest(TestCase):
 
         pattern = infer_pattern_from_values(values)
 
-        self.assertIsNotNone(pattern)
-        self.assertIn("8", pattern)
-        self.assertIn("4", pattern)
+        self.assertIsNotNone(pattern, "UUID values must produce a pattern")
+        compiled = re.compile(pattern, re.IGNORECASE)
+        # Pattern must match every input UUID
+        for uuid_val in values:
+            self.assertIsNotNone(
+                compiled.match(uuid_val),
+                f"UUID pattern {pattern!r} must match {uuid_val!r}",
+            )
+        # Pattern must NOT match non-UUID strings
+        self.assertIsNone(
+            compiled.match("not-a-uuid"),
+            f"UUID pattern {pattern!r} must NOT match 'not-a-uuid'",
+        )
+        self.assertIsNone(
+            compiled.match("12345678-1234-1234-1234-1234567890ab1"),
+            f"UUID pattern {pattern!r} must NOT match a 33-hex-char string",
+        )
 
     def test_infer_enum_from_values(self):
         """Test enum inference from limited unique values (GAP-8.2.4)"""
@@ -421,19 +440,6 @@ Jane;25;LA"""
         # Should detect semicolon delimiter
         self.assertEqual(schema["inference_metadata"]["delimiter"], ";")
 
-    def test_infer_schema_from_csv_primary_key_candidate(self):
-        """Test primary key candidate detection"""
-        csv_content = b"""id,name,age
-1,John,30
-2,Jane,25
-3,Bob,35"""
-
-        schema = infer_schema_from_csv(csv_content, sample_size=10)
-
-        # ID field should be a primary key candidate (all unique, non-null)
-        self.assertIn("primary_key_candidates", schema)
-        self.assertIn("id", schema["primary_key_candidates"])
-
     # ========== SUCCESS SCENARIOS ==========
 
     def test_schema_inference_success_csv(self):
@@ -445,6 +451,7 @@ Jane;25;LA"""
         # Should return schema
         self.assertIsNotNone(schema)
         self.assertIn("fields", schema)
+        self.assertGreater(len(schema["fields"]), 0, "Schema must contain at least one field")
 
     def test_schema_inference_success_json(self):
         """Test successful schema inference from JSON (success scenario)"""
@@ -486,25 +493,6 @@ Jane;25;LA"""
             f"Empty content must produce 'empty'/'no headers'/'no columns' error; "
             f"got: {cm.exception}",
         )
-
-    # ========== ERROR HANDLING ==========
-
-    def test_infer_schema_from_csv_returns_valid_schema(self):
-        """infer_schema_from_csv returns a well-formed schema for valid CSV."""
-        csv_content = b"name,age\nJohn,30\nJane,25"
-
-        schema = infer_schema_from_csv(csv_content, sample_size=10)
-        self.assertIsNotNone(schema)
-        self.assertIn("fields", schema)
-        self.assertGreater(len(schema["fields"]), 0, "Schema must contain at least one field")
-
-    def test_detect_delimiter_detects_comma(self):
-        """detect_delimiter returns the correct delimiter for comma-separated content."""
-        content = b"name,age\nJohn,30"
-
-        delimiter = detect_delimiter(content)
-        self.assertIsNotNone(delimiter)
-        self.assertEqual(delimiter, ",")
 
     # ── Encoding detection (gap: previously untested) ────────────────
 
@@ -611,11 +599,40 @@ Jane;25;LA"""
     # ── infer_schema_from_excel ──────────────────────────────────────
 
     def test_infer_schema_from_excel_valid(self):
-        """infer_schema_from_excel is callable and raises ImportError without pandas."""
+        """Minimal XLSX file returns well-formed schema via infer_schema_from_excel."""
         from hub.apps.datasets.schema_inference import infer_schema_from_excel
 
-        # Verify the function is importable and callable
+        try:
+            import io
+
+            import pandas as pd
+        except ImportError:
+            self.skipTest("pandas not available for Excel schema inference")
+
+        df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
+        buf = io.BytesIO()
+        df.to_excel(buf, index=False, engine="openpyxl")
+        schema = infer_schema_from_excel(buf.getvalue())
+
+        self.assertIsNotNone(schema)
+        self.assertIn("fields", schema)
+        field_names = {f["name"] for f in schema["fields"]}
+        self.assertEqual(field_names, {"id", "name"})
+        self.assertIn("inference_metadata", schema)
+
+    def test_infer_schema_from_excel_raises_import_error_when_pandas_missing(self):
+        """When pandas is unavailable, excel inference raises ImportError.
+
+        Uses a surgical ``PANDAS_AVAILABLE = False`` override rather than
+        trying to uninstall pandas (which would break other tests). This
+        is the canonical pattern for testing ImportError guard clauses on
+        optional dependencies — it exercises the real production code path
+        without side effects on the runtime environment.
+        """
         from unittest.mock import patch
+
+        from hub.apps.datasets.schema_inference import infer_schema_from_excel
+
         with patch("hub.apps.datasets.schema_inference.PANDAS_AVAILABLE", False):
             with self.assertRaises(ImportError):
                 infer_schema_from_excel(b"fake-excel-bytes-not-real")

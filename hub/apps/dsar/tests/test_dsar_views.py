@@ -45,6 +45,7 @@ class DSARViewSetTests(TestCase):
     def test_list_dsar_requests(self):
         resp = self.client.get("/api/v1/dsar/requests/")
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("results", resp.data, "Paginated response must include 'results' key")
 
     @pytest.mark.integration
     def test_create_dsar_request(self):
@@ -55,6 +56,14 @@ class DSARViewSetTests(TestCase):
         }
         resp = self.client.post("/api/v1/dsar/requests/", payload, format="json")
         self.assertEqual(resp.status_code, 201)
+        self.assertIn("id", resp.data, "Response must include the created request id")
+        self.assertEqual(resp.data.get("status"), "SUBMITTED")
+        # Verify persistence
+        from hub.apps.dsar.models import DSARRequest
+        self.assertTrue(
+            DSARRequest.objects.filter(id=resp.data["id"]).exists(),
+            "DSARRequest must be persisted in the database",
+        )
 
     @pytest.mark.integration
     def test_unauthenticated_rejected(self):

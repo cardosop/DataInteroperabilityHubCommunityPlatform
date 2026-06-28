@@ -62,6 +62,7 @@ class WorkerServiceE2ETest(E2ETestBase):
     def tearDown(self):
         """Clean up after tests"""
         cache.clear()
+        super().tearDown()
 
     # Job Processing Journey Tests
     def test_dq_run_job_processing_journey(self):
@@ -71,7 +72,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(dq_run_id),
             details_json={"dq_run_id": str(dq_run_id)},
@@ -113,7 +114,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.COMPLIANCE_RUN,
+            job_type=JobType.COMPLIANCE_RUN,
             resource_type="COMPLIANCE_RUN",
             resource_id=str(compliance_run_id),
             details_json={"compliance_run_id": str(compliance_run_id)},
@@ -154,7 +155,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.CONTRACT_VALIDATION,
+            job_type=JobType.CONTRACT_VALIDATION,
             resource_type="CONTRACT",
             resource_id=str(contract.id),
         )
@@ -185,7 +186,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.SEMANTIC_MAPPING,
+            job_type=JobType.SEMANTIC_MAPPING,
             resource_type="CONTRACT",
             resource_id=str(contract.id),
             details_json={"resource_type": "CONTRACT", "resource_id": str(contract.id)},
@@ -207,7 +208,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,  # HIGH priority
+            job_type=JobType.DQ_RUN,  # HIGH priority
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -216,7 +217,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
+            job_type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             details_json={"resource_type": "CONTRACT", "resource_id": str(uuid.uuid4())},
@@ -225,7 +226,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.CONTRACT_VALIDATION,  # LOW priority
+            job_type=JobType.CONTRACT_VALIDATION,  # LOW priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
         )
@@ -257,7 +258,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
+            job_type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             details_json={"resource_type": "CONTRACT", "resource_id": str(uuid.uuid4())},
@@ -291,7 +292,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,  # HIGH priority
+            job_type=JobType.DQ_RUN,  # HIGH priority
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -301,7 +302,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         normal_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
+            job_type=JobType.SEMANTIC_MAPPING,  # NORMAL priority
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             details_json={"resource_type": "CONTRACT", "resource_id": str(uuid.uuid4())},
@@ -335,7 +336,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job1 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -348,11 +349,11 @@ class WorkerServiceE2ETest(E2ETestBase):
         decrement_tenant_job_counter(str(self.tenant.id), "queued")
 
         # Try to create second job - should fail
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception) as cm:
             create_job(
                 tenant=self.tenant,
                 user=self.user,
-                type=JobType.DQ_RUN,
+                job_type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
                 resource_id=str(uuid.uuid4()),
                 details_json={"dq_run_id": str(uuid.uuid4())},
@@ -368,7 +369,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job2 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -386,7 +387,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job1 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -394,7 +395,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job2 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -405,11 +406,11 @@ class WorkerServiceE2ETest(E2ETestBase):
         self.assertIsNotNone(job2.id)
 
         # Try to create third job - should fail
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception) as cm:
             create_job(
                 tenant=self.tenant,
                 user=self.user,
-                type=JobType.DQ_RUN,
+                job_type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
                 resource_id=str(uuid.uuid4()),
                 details_json={"dq_run_id": str(uuid.uuid4())},
@@ -424,7 +425,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -455,7 +456,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -552,7 +553,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         dq_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -561,7 +562,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         compliance_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.COMPLIANCE_RUN,
+            job_type=JobType.COMPLIANCE_RUN,
             resource_type="COMPLIANCE_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"compliance_run_id": str(uuid.uuid4())},
@@ -570,7 +571,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         validation_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.CONTRACT_VALIDATION,
+            job_type=JobType.CONTRACT_VALIDATION,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
         )
@@ -578,7 +579,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         semantic_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.SEMANTIC_MAPPING,
+            job_type=JobType.SEMANTIC_MAPPING,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
             details_json={"resource_type": "CONTRACT", "resource_id": str(uuid.uuid4())},
@@ -587,7 +588,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         migration_job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.CONTRACT_MIGRATION,
+            job_type=JobType.CONTRACT_MIGRATION,
             resource_type="CONTRACT",
             resource_id=str(uuid.uuid4()),
         )
@@ -637,7 +638,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job1 = create_job(
             tenant=tenant1,
             user=user1,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -658,7 +659,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job2 = create_job(
             tenant=tenant2,
             user=user2,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -666,7 +667,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job3 = create_job(
             tenant=tenant2,
             user=user2,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -686,7 +687,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job1 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -694,7 +695,7 @@ class WorkerServiceE2ETest(E2ETestBase):
         job2 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},

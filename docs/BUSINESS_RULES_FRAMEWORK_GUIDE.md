@@ -274,6 +274,81 @@ context = RuleExecutionContext(
 6. **Document new chains** — Update this guide when adding new chains or rules.
 7. **Use ValidationResult correctly** — Always return a `ValidationResult` with clear errors and warnings.
 
+## Common Utilities
+
+The `hub.apps.core.business_rules.utils` module provides shared validation helpers extracted
+from duplicated patterns found across 26 business rules implementations.
+Use these to reduce boilerplate and ensure consistent behaviour.
+
+### `get_field_path(data, path, default=None, *, separator=".")`
+
+Traverse a nested dictionary by dotted-path string. Returns *default* when a key is missing
+or an intermediate node is not a dict.
+
+```python
+from hub.apps.core.business_rules.utils import get_field_path
+
+contract = {"info": {"owner": {"email": "user@example.com"}}}
+email = get_field_path(contract, "info.owner.email")  # "user@example.com"
+missing = get_field_path(contract, "info.owner.phone", default="N/A")  # "N/A"
+```
+
+### `validate_tenant_context(expected_tenant_id, *entries)`
+
+Check that one or more resources belong to the expected tenant. Each entry is a
+`(label: str, actual_tenant_id: str|None)` pair. When *expected_tenant_id* is `None`,
+the check returns valid with a warning about un-scoped execution.
+
+```python
+from hub.apps.core.business_rules.utils import validate_tenant_context
+
+result = validate_tenant_context(
+    self.tenant_id,
+    ("dataset", str(dataset.tenant_id)),
+    ("contract", str(contract.tenant_id)),
+)
+if not result.is_valid:
+    return result  # contains .errors, .warnings, .details
+```
+
+### `check_value_overlap(value1, value2)`
+
+Detect overlap between two access-policy or permission values. Handles list intersection,
+value-in-list, nested dicts, exact match, and no-match cases.
+
+```python
+from hub.apps.core.business_rules.utils import check_value_overlap
+
+overlap = check_value_overlap(["read", "write"], ["write", "admin"])
+# {"overlaps": True, "type": "LIST_INTERSECTION", "overlap_values": ["write"]}
+```
+
+### `collect_errors(*checks)`
+
+Collect error messages for conditions that failed. Each check is a `(condition_passed, error_message)` pair.
+
+```python
+from hub.apps.core.business_rules.utils import collect_errors
+
+errors = collect_errors(
+    (dataset.tenant is not None, "Dataset must have a tenant"),
+    (len(name) <= 255, f"Name too long: {len(name)}"),
+)
+```
+
+### `make_validation_result(errors=None, warnings=None, details=None)`
+
+Convenience constructor that derives `is_valid` from `len(errors) == 0`.
+
+```python
+from hub.apps.core.business_rules.utils import make_validation_result
+
+return make_validation_result(
+    errors=["field X is required"],
+    warnings=["field Y is deprecated"],
+)
+```
+
 ## Troubleshooting
 
 ### Common Issues

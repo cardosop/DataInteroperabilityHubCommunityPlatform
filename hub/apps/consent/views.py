@@ -268,6 +268,7 @@ class ConsentRecordViewSet(viewsets.ModelViewSet):
 @permission_classes([permissions.IsAuthenticated, IsTenantScoped, IsTenantAdminOrDPO])
 @throttle_classes([ConsentDashboardThrottle])
 def consent_dashboard(request):
+    """Retrieve aggregated consent metrics and dashboard data for the current tenant."""
     tenant = _tenant_from_request(request)
     if not tenant:
         return Response({"error": "Tenant required"}, status=status.HTTP_400_BAD_REQUEST)

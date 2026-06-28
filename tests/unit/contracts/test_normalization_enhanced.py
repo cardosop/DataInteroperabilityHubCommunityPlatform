@@ -436,12 +436,9 @@ class EnhancedNormalizationTest(TestCase):
 
         hub_contract, status, errors, _warnings = normalize_odcs_to_hubcontract(odcs_contract)
 
-        # When fields are truly missing (not present), hub_contract should be None
-        # When status is FAILED but no errors, hub_contract should exist
-        if errors:
-            self.assertIsNone(hub_contract)
-        else:
-            self.assertIsNotNone(hub_contract)
+        # When fields are truly missing, normalization fails and hub_contract is None
+        self.assertIsNone(hub_contract, "hub_contract should be None when fields are missing")
+        self.assertGreater(len(errors), 0, "Missing fields should produce errors")
         self.assertEqual(status, NormalizationStatus.NORMALIZATION_FAILED)
 
     def test_status_normalization_failed_exception(self):

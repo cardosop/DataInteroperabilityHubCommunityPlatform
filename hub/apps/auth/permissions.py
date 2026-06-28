@@ -297,7 +297,7 @@ class HasScope(permissions.BasePermission):
         # API keys are always scope-checked (no enforcement flag bypass).
         # Use getattr(..., None) — MagicMock-safe alternative to hasattr.
         if getattr(request, "api_key_scopes", None) is not None:
-            return self.required_scope in request.api_key_scopes
+            return "*" in request.api_key_scopes or self.required_scope in request.api_key_scopes
 
         # When ENFORCE_JWT_SCOPES is off, allow all authenticated users (backwards compat)
         if not getattr(settings, "ENFORCE_JWT_SCOPES", False):

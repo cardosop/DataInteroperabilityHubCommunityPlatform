@@ -34,6 +34,8 @@ class DQServiceE2ETest(E2ETestBase):
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
+        # Skip all DQ tests if DQ service is not available
+        self.require_service("DQ", self.dq_service_url)
 
     def test_create_dq_run_success(self):
         """Test creating a DQ run"""

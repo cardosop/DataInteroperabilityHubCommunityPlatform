@@ -30,7 +30,7 @@ from rest_framework.test import APIClient
 from hub.apps.assets.models import AssetStatus
 from hub.apps.tenants.models import KYCStatus, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.users.models import Role, UserRole
+from hub.apps.users.models import Role, UserRole, UserStatus
 from hub.apps.virtualization.models import QueryType, VirtualDataset, VirtualDatasetStatus
 from tests.fixtures.test_data_factories import (
     AssetFactory,
@@ -67,6 +67,7 @@ class VirtualizationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
             slug=f"test-tenant-{unique_id}",
             status=TenantStatus.ACTIVE,
             kyc_status=KYCStatus.VERIFIED,
+            virtualization_enabled=True,
         )
         ensure_tenant_has_active_subscription(self.tenant)
 
@@ -86,12 +87,14 @@ class VirtualizationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
         self.dpo_user = UserFactory.create_user(
             tenant=self.tenant,
             email=f"dpo-{unique_id}@example.com",
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.get_or_create(user=self.dpo_user, role=self.data_provider_role)
 
         self.dc_user = UserFactory.create_user(
             tenant=self.tenant,
             email=f"dc-{unique_id}@example.com",
+            status=UserStatus.ACTIVE,
         )
         UserRole.objects.get_or_create(user=self.dc_user, role=self.data_consumer_role)
 

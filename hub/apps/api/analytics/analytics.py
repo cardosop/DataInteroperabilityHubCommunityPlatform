@@ -51,17 +51,21 @@ class APIAnalyticsService:
         """
         try:
             from django.contrib.auth import get_user_model
-            from django.db import connections
+            from django.db import InterfaceError
 
             from hub.apps.tenants.models import Tenant
 
             User = get_user_model()
 
-            # Close any stale connections (e.g. after a long-running request
-            # caused an idle-timeout) so the analytics write gets a fresh one.
-            for conn in connections.all():
-                conn.close_if_unusable_or_obsolete()
-
+            # NOTE: We intentionally do NOT call close_old_connections() here.
+            # In Django 6.0, close_if_unusable_or_obsolete() can leave the
+            # default connection in a closed state that ensure_connection()
+            # does not reliably recover from (InterfaceError is a sibling of
+            # DatabaseError, not a child, so the standard recovery patterns
+            # in middleware except clauses miss it).  Instead we let Django
+            # manage its own connection lifecycle — if the connection is
+            # genuinely stale, the DB ops below will raise InterfaceError
+            # which is caught by the broad except below (best-effort path).
             tenant = Tenant.objects.get(id=tenant_id)
             user = User.objects.get(id=user_id) if user_id else None
 
@@ -77,6 +81,17 @@ class APIAnalyticsService:
                 api_version=api_version,
             )
         except Exception as e:
+            # If a DB InterfaceError ("connection already closed") prevented
+            # the write, close the stale connection so the *next* request
+            # gets a fresh one.  This is fire-and-forget — failures here
+            # are best-effort and must never block the response.
+            if isinstance(e, InterfaceError):
+                try:
+                    from django.db import connection
+
+                    connection.close()
+                except Exception:
+                    pass
             logger.warning(
                 "api_analytics_tracking_failed", error=str(e), endpoint_path=endpoint_path
             )

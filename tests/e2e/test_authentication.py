@@ -149,7 +149,7 @@ class AuthenticationE2ETest(E2ETestBase):
             "/api/v1/auth/register/",
             {
                 "email": email,
-                "password": "SecurePass123",
+                "password": "Secure@Pass123",
                 "name": "New Visitor",
             },
             format="json",
@@ -166,7 +166,7 @@ class AuthenticationE2ETest(E2ETestBase):
         )
         self.assertIsNotNone(data.get("tenant_id"))
         user = User.objects.get(email=email)
-        self.assertTrue(user.check_password("SecurePass123"))
+        self.assertTrue(user.check_password("Secure@Pass123"))
         self.assertEqual(user.display_name, "New Visitor")
         self.assertEqual(user.status, UserStatus.ACTIVE)
         self.assertIsNotNone(user.tenant_id, "User must have personal tenant after registration")
@@ -177,7 +177,7 @@ class AuthenticationE2ETest(E2ETestBase):
         email = "registerthenlogin@example.com"
         reg = self.client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "SecurePass123", "name": "Reg Then Login"},
+            {"email": email, "password": "Secure@Pass123", "name": "Reg Then Login"},
             format="json",
         )
         self.assertEqual(reg.status_code, status.HTTP_201_CREATED)
@@ -186,7 +186,7 @@ class AuthenticationE2ETest(E2ETestBase):
         self.assertIsNotNone(reg_data.get("tenant_id"))
         login_resp = self.client.post(
             "/api/v1/auth/login/",
-            {"email": email, "password": "SecurePass123"},
+            {"email": email, "password": "Secure@Pass123"},
             format="json",
         )
         self.assertEqual(login_resp.status_code, status.HTTP_200_OK)
@@ -199,7 +199,7 @@ class AuthenticationE2ETest(E2ETestBase):
         self.client.force_authenticate(user=None)
 
         email = f"platform-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "Secure@Pass123"
         name = "Platform User"
 
         reg = self.client.post(
@@ -380,7 +380,7 @@ class AuthenticationE2ETest(E2ETestBase):
             "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_logout_success(self):
         """Test successful logout"""

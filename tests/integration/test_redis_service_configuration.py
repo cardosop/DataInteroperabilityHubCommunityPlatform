@@ -11,6 +11,7 @@ Tests verify:
 All tests use real implementations (no mocks/stubs).
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -267,9 +268,13 @@ class TestRedisServiceConfiguration:
             for service_name in redis_services:
                 if service_name in services:
                     service_config = services[service_name]
-                    assert "ports" in service_config, (
-                        f"{service_name} must have ports configured in {name}"
-                    )
+                    # In production, redis services communicate over the Docker
+                    # network and don't need host-port exposure.  Only the test
+                    # environment requires ports for external connectivity.
+                    if name != "production":
+                        assert "ports" in service_config, (
+                            f"{service_name} must have ports configured in {name}"
+                        )
 
 
 class TestKubernetesRedisManifests:
@@ -348,7 +353,6 @@ class TestMultiRedisDockerComposeSetup:
         """Get path to docker-compose.yml."""
         return project_root / "docker-compose.yml"
 
-@pytest.mark.skip(reason="redis-cache not accessible (Docker Compose services may not be running)")
     def test_redis_cache_accessible(self, docker_compose_file):
         """Test that redis-cache is accessible."""
         try:
@@ -358,8 +362,10 @@ class TestMultiRedisDockerComposeSetup:
             result = r.ping()
             assert result is True, "redis-cache should respond to ping"
         except redis.ConnectionError:
+            if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
+                pytest.skip("redis-cache not accessible (Docker Compose services may not be running)")
+            raise
 
-@pytest.mark.skip(reason="redis-queue not accessible (Docker Compose services may not be running)")
     def test_redis_queue_accessible(self, docker_compose_file):
         """Test that redis-queue is accessible."""
         try:
@@ -369,8 +375,10 @@ class TestMultiRedisDockerComposeSetup:
             result = r.ping()
             assert result is True, "redis-queue should respond to ping"
         except redis.ConnectionError:
+            if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
+                pytest.skip("redis-queue not accessible (Docker Compose services may not be running)")
+            raise
 
-@pytest.mark.skip(reason="redis-events not accessible (Docker Compose services may not be running)")
     def test_redis_events_accessible(self, docker_compose_file):
         """Test that redis-events is accessible."""
         try:
@@ -380,8 +388,10 @@ class TestMultiRedisDockerComposeSetup:
             result = r.ping()
             assert result is True, "redis-events should respond to ping"
         except redis.ConnectionError:
+            if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
+                pytest.skip("redis-events not accessible (Docker Compose services may not be running)")
+            raise
 
-@pytest.mark.skip(reason="redis-channels not accessible (Docker Compose services may not be running)")
     def test_redis_channels_accessible(self, docker_compose_file):
         """Test that redis-channels is accessible."""
         try:
@@ -391,10 +401,10 @@ class TestMultiRedisDockerComposeSetup:
             result = r.ping()
             assert result is True, "redis-channels should respond to ping"
         except redis.ConnectionError:
-                "redis-channels not accessible (Docker Compose services may not be running)"
-            )
+            if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
+                pytest.skip("redis-channels not accessible (Docker Compose services may not be running)")
+            raise
 
-@pytest.mark.skip(reason="Redis instances not accessible (Docker Compose services may not be running)")
     def test_redis_instances_isolated(self, docker_compose_file):
         """Test that Redis instances are isolated (data in one doesn't appear in another)."""
         try:
@@ -424,5 +434,6 @@ class TestMultiRedisDockerComposeSetup:
             # Cleanup
             cache_client.delete(test_key)
         except redis.ConnectionError:
-                "Redis instances not accessible (Docker Compose services may not be running)"
-            )
+            if os.environ.get("REDIS_TEST_ALLOW_SKIP"):
+                pytest.skip("Redis instances not accessible (Docker Compose services may not be running)")
+            raise

@@ -108,11 +108,15 @@ class WarehouseConnection(models.Model):
         # Phase 275.A.1 — SSRF guard at config-save: validate any URL-like
         # fields in the raw config before encrypting. Reuses the SPARQL
         # federation validator pattern (is_safe_url + allowlist).
-        if self.config and not isinstance(self.config.get("_encrypted"), str):
+        # Guard: config may be a plain string (already encrypted/serialized)
+        # rather than a dict — skip SSRF validation and encryption in that case.
+        _config_is_dict = isinstance(self.config, dict)
+
+        if _config_is_dict and not isinstance(self.config.get("_encrypted"), str):
             self._validate_config_urls(self.config)
 
         # Encrypt on first save if raw config provided.
-        if self.config and not isinstance(self.config.get("_encrypted"), str):
+        if _config_is_dict and not isinstance(self.config.get("_encrypted"), str):
             raw = self.config
             self.config = {}
             super().save(*args, **kwargs)  # need pk first

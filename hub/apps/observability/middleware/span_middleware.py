@@ -142,41 +142,56 @@ class SpanMiddleware(MiddlewareMixin):
                 # Ensure error spans are sampled (100% sampling for errors)
                 if is_error and hasattr(span, "get_span_context"):
                     span_context = span.get_span_context()
-                    is_sampled = bool(span_context.trace_flags & trace.TraceFlags.SAMPLED)
 
-                    span.set_attribute("error.sampled", is_sampled)
-                    span.set_attribute("sampling.priority", "high")
+                    # Guard: when the span was created without a valid parent
+                    # context, trace_id is OpenTelemetry's INVALID_TRACE_ID (0).
+                    # Creating an error-span with an invalid context produces
+                    # orphaned spans with trace_id=0000.... Skip error-span
+                    # creation in this case.
+                    if span_context.trace_id == 0:
+                        logger.debug(
+                            "trace_sampling_error_span_skipped_no_trace_context",
+                            status_code=response.status_code,
+                            path=request.path,
+                        )
+                    else:
+                        is_sampled = bool(
+                            span_context.trace_flags & trace.TraceFlags.SAMPLED
+                        )
 
-                    if not is_sampled:
-                        tracer = trace.get_tracer(__name__)
-                        with tracer.start_as_current_span(
-                            f"HTTP {request.method} {request.path} [ERROR]",
-                            context=trace.set_span_in_context(span),
-                            kind=trace.SpanKind.SERVER,
-                        ) as error_span:
-                            if hasattr(error_span, "set_attribute"):
-                                error_span.set_attribute("http.method", request.method)
-                                error_span.set_attribute("http.url", request.build_absolute_uri())
-                                error_span.set_attribute("http.route", request.path)
-                                error_span.set_attribute("http.status_code", response.status_code)
-                                error_span.set_attribute("sampling.forced", True)
-                                error_span.set_attribute("sampling.reason", "http_error")
-                                error_span.set_status(
-                                    Status(StatusCode.ERROR, f"HTTP {response.status_code}")
+                        span.set_attribute("error.sampled", is_sampled)
+                        span.set_attribute("sampling.priority", "high")
+
+                        if not is_sampled:
+                            tracer = trace.get_tracer(__name__)
+                            with tracer.start_as_current_span(
+                                f"HTTP {request.method} {request.path} [ERROR]",
+                                context=trace.set_span_in_context(span),
+                                kind=trace.SpanKind.SERVER,
+                            ) as error_span:
+                                if hasattr(error_span, "set_attribute"):
+                                    error_span.set_attribute("http.method", request.method)
+                                    error_span.set_attribute("http.url", request.build_absolute_uri())
+                                    error_span.set_attribute("http.route", request.path)
+                                    error_span.set_attribute("http.status_code", response.status_code)
+                                    error_span.set_attribute("sampling.forced", True)
+                                    error_span.set_attribute("sampling.reason", "http_error")
+                                    error_span.set_status(
+                                        Status(StatusCode.ERROR, f"HTTP {response.status_code}")
+                                    )
+                                    if hasattr(request, "user") and request.user.is_authenticated:
+                                        error_span.set_attribute("user.id", str(request.user.id))
+                                        if hasattr(request.user, "tenant_id"):
+                                            error_span.set_attribute(
+                                                "tenant.id", str(request.user.tenant_id)
+                                            )
+
+                                logger.debug(
+                                    "trace_sampling_error_span_created",
+                                    trace_id=format(span_context.trace_id, "032x"),
+                                    status_code=response.status_code,
+                                    path=request.path,
                                 )
-                                if hasattr(request, "user") and request.user.is_authenticated:
-                                    error_span.set_attribute("user.id", str(request.user.id))
-                                    if hasattr(request.user, "tenant_id"):
-                                        error_span.set_attribute(
-                                            "tenant.id", str(request.user.tenant_id)
-                                        )
-
-                            logger.debug(
-                                "trace_sampling_error_span_created",
-                                trace_id=format(span_context.trace_id, "032x"),
-                                status_code=response.status_code,
-                                path=request.path,
-                            )
 
             # End span: use context manager __exit__ if available, else span.end()
             if span_cm is not None:

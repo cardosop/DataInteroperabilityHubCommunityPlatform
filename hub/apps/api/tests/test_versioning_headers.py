@@ -121,6 +121,11 @@ class APIVersionHeadersTest(TestCase):
             # The endpoint resolves to the api_not_found catch-all (404).
             # The APIVersionMiddleware should still add deprecation headers
             # because the path IS registered in DEPRECATED_ENDPOINTS.
+            self.assertEqual(
+                response.status_code, 404,
+                "Deprecated test endpoint does not have a real view; "
+                "should hit the api_not_found catch-all (404)",
+            )
             self.assertIn(
                 "X-API-Deprecated",
                 response.headers,

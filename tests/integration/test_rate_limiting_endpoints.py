@@ -183,29 +183,21 @@ class TestRateLimitingIntegration(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_compliance_runs_endpoint_has_rate_limiting(self):
-        """Test that compliance runs endpoint has rate limiting headers"""
-        # Make a request to compliance runs endpoint
+        """Test that compliance runs endpoint is accessible."""
         response = self.client.get("/api/v1/compliance/runs/")
-
-        # Should have rate limit headers (if rate limiting is enabled)
-        # Note: May return 200, 401, or 404 depending on endpoint availability
-        # But if rate limiting middleware is active, headers should be present
-        if response.status_code not in [404, 500]:
-            # Rate limit headers may or may not be present depending on middleware configuration
-            # This test verifies the endpoint is accessible and rate limiting can be applied
-            self.assertLess(response.status_code, 500)
+        # Endpoint should be accessible (200 or 401 if unauthenticated)
+        self.assertIn(response.status_code, [200, 401],
+            f"Expected 200 or 401, got {response.status_code}")
+        # Rate-limit headers may or may not be present (middleware is env-dependent)
+        # At minimum verify the endpoint is accessible without a 500 error
+        self.assertLess(response.status_code, 500)
 
     def test_dq_runs_endpoint_has_rate_limiting(self):
-        """Test that DQ runs endpoint has rate limiting headers"""
-        # Make a request to DQ runs endpoint
+        """Test that DQ runs endpoint is accessible."""
         response = self.client.get("/api/v1/dq/runs/")
-
-        # Should have rate limit headers (if rate limiting is enabled)
-        # Note: May return 200, 401, or 404 depending on endpoint availability
-        if response.status_code not in [404, 500]:
-            # Rate limit headers may or may not be present depending on middleware configuration
-            # This test verifies the endpoint is accessible and rate limiting can be applied
-            self.assertLess(response.status_code, 500)
+        self.assertIn(response.status_code, [200, 401],
+            f"Expected 200 or 401, got {response.status_code}")
+        self.assertLess(response.status_code, 500)
 
     def test_endpoint_category_matches_standardized_patterns(self):
         """Test that endpoint categorization matches standardized patterns"""

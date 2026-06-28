@@ -8,7 +8,6 @@ in the context of API and dataset creation workflows.
 import uuid
 
 from django.contrib.auth import get_user_model
-from django.core.exceptions import ValidationError
 from django.test import TestCase
 from rest_framework.test import APIClient
 
@@ -497,8 +496,12 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
 
     # ========== FAILURE SCENARIOS ==========
 
-    def test_semantic_versioning_integration_failure_invalid_version(self):
-        """Test semantic versioning integration with invalid version (failure scenario)"""
+    def test_semantic_versioning_integration_permissive_format(self):
+        """create_version stores any semantic_version string as-is (no format validation).
+
+        The service accepts arbitrary strings — callers bear responsibility for
+        well-formed semver.  ``semantic_version="invalid"`` is stored verbatim.
+        """
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -509,16 +512,10 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle invalid version gracefully
-        try:
-            VersionHistoryManager.create_version(
-                dataset, semantic_version="invalid", is_current=True
-            )
-            # If succeeds, verify it was created
-            self.assertIsNotNone(dataset)
-        except (ValueError, ValidationError):
-            # If fails, that's acceptable for invalid version
-            pass
+        updated = VersionHistoryManager.create_version(
+            dataset, semantic_version="invalid", is_current=True
+        )
+        self.assertEqual(updated.semantic_version, "invalid")
 
     # ========== EDGE CASES ==========
 
@@ -564,7 +561,7 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
     # ========== ERROR HANDLING ==========
 
     def test_semantic_versioning_integration_create_succeeds(self):
-        """Test error handling in semantic versioning integration"""
+        """create_version succeeds for a valid, persisted dataset."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -575,11 +572,9 @@ class VersionDiffVisualizationIntegrationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle errors gracefully
-        try:
-            VersionHistoryManager.create_version(dataset, semantic_version="1.0.0", is_current=True)
-            # Should succeed
-            self.assertIsNotNone(dataset)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("create_version should handle errors gracefully")
+        updated = VersionHistoryManager.create_version(
+            dataset, semantic_version="1.0.0", is_current=True
+        )
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.semantic_version, "1.0.0")
+        self.assertTrue(updated.is_current)

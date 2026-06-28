@@ -193,9 +193,10 @@ class URLPatternResolutionTest(TestCase):
                 # We're just verifying the resolution mechanism works
                 pass
 
-        # At least some patterns should resolve with parameters
-        self.assertGreater(
-            resolved_count, 0, "At least some patterns with parameters should resolve correctly"
+        # At least half of the tested patterns should resolve with parameters
+        self.assertGreaterEqual(
+            resolved_count, len(test_cases) * 0.5,
+            f"Only {resolved_count}/{len(test_cases)} parametrized patterns resolved"
         )
 
     def test_pattern_resolution_consistency(self):
@@ -219,8 +220,12 @@ class URLPatternResolutionTest(TestCase):
             except (Resolver404, Exception):
                 pass
 
-        # At least some patterns should resolve
-        self.assertGreater(resolved_count, 0, "At least some collection patterns should resolve")
+        # At least half of the collection patterns should resolve
+        total_tested = min(len(collection_patterns), 20)
+        self.assertGreaterEqual(
+            resolved_count, total_tested * 0.5,
+            f"Only {resolved_count}/{total_tested} collection patterns resolved"
+        )
 
 
 class URLPatternReverseLookupTest(TestCase):
@@ -356,9 +361,10 @@ class URLPatternReverseLookupTest(TestCase):
             except (NoReverseMatch, Resolver404):  # noqa: no-reverse-match — URL validation cataloging
                 pass
 
-        # At least some should be consistent
-        self.assertGreater(
-            consistent_count, 0, "At least some reverse/resolve pairs should be consistent"
+        # At least half of the tested URL names should be consistent
+        self.assertGreaterEqual(
+            consistent_count, len(test_url_names) * 0.5,
+            f"Only {consistent_count}/{len(test_url_names)} reverse/resolve pairs consistent"
         )
 
 
@@ -571,13 +577,13 @@ class URLPatternValidatorEdgeCasesTest(TestCase):
             "line_number": None,
         }
         errors = self.validator.validate_kebab_case(pattern_info)
-        # The validator should handle file extensions by checking the base name
-        # If there's an error, it should be about the segment structure, not the extension itself
-        # Let's verify the validator processes file extensions (the logic path is what matters)
-        kebab_errors = [e for e in errors if e.rule == "kebab_case"]
-        # The test verifies the code path handles extensions - actual behavior may vary
-        # What matters is that the code doesn't crash and processes the pattern
-        self.assertIsInstance(kebab_errors, list, "Should return a list of errors")
+        # The validator should handle file extensions without crashing.
+        # Whether it flags ".json" as an error depends on the implementation.
+        self.assertIsInstance(errors, list)
+        # Verify the validator processed the pattern without raising
+        for error in errors:
+            self.assertIsNotNone(error.rule)
+            self.assertIsNotNone(error.message)
 
     def test_kebab_case_snake_case_detection(self):
         """Test that snake_case violations are detected"""
@@ -624,18 +630,20 @@ class URLPatternValidatorEdgeCasesTest(TestCase):
             self.assertIn("unclear", warnings[0].message.lower())
 
     def test_strict_mode_treats_warnings_as_errors(self):
-        """Test that strict mode converts warnings to errors"""
-        # Create a validator and run validation in strict mode
+        """Test that strict mode converts warnings to errors.
+
+        When validate_all(strict=True) is called, any warnings must cause
+        passed=False (warnings are elevated to error status in strict mode).
+        """
         result = self.validator.validate_all(strict=True)
         self.assertIsNotNone(result)
 
-        # In strict mode, warnings should be included in errors
-        # (This depends on whether there are actual warnings, but the logic should work)
         if result.warnings:
-            # If there are warnings and strict=True, they should be treated as errors
-            # But the current implementation might not do this correctly
-            # Let's verify the strict mode logic is executed
-            pass
+            self.assertFalse(
+                result.passed,
+                "strict=True with warnings must set passed=False "
+                f"({len(result.warnings)} warnings found)"
+            )
 
     def test_format_errors_with_errors(self):
         """Test error formatting when there are errors"""
@@ -736,10 +744,9 @@ class URLPatternValidatorEdgeCasesTest(TestCase):
             "line_number": None,
         }
         errors = self.validator.validate_plural_resources(pattern_info)
-        # Should detect singular 'contract' and suggest 'contracts'
-        if errors:
-            self.assertEqual(errors[0].rule, "plural_resources")
-            self.assertIn("plural", errors[0].message.lower())
+        self.assertGreater(len(errors), 0, "Should detect singular 'contract'")
+        self.assertEqual(errors[0].rule, "plural_resources")
+        self.assertIn("plural", errors[0].message.lower())
 
     def test_kebab_case_invalid_characters(self):
         """Test that invalid characters in segments are detected"""
@@ -751,9 +758,9 @@ class URLPatternValidatorEdgeCasesTest(TestCase):
             "line_number": None,
         }
         errors = self.validator.validate_kebab_case(pattern_info)
-        if errors:
-            self.assertEqual(errors[0].rule, "kebab_case")
-            self.assertIn("invalid", errors[0].message.lower() or "kebab-case")
+        self.assertGreater(len(errors), 0, "Should detect invalid '@' character")
+        self.assertEqual(errors[0].rule, "kebab_case")
+        self.assertIn("invalid", errors[0].message.lower() or "kebab-case")
 
     def test_pattern_with_view_class_callback(self):
         """Test pattern extraction handles view_class callbacks"""

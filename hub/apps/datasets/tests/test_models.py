@@ -143,25 +143,27 @@ class DatasetModelTest(DatasetsTestBase):
     def test_create_dataset_missing_required_fields(self):
         """Test dataset creation with missing required fields (failure scenario)"""
         # Missing tenant — the NOT NULL FK constraint raises IntegrityError.
-        with self.assertRaises(IntegrityError):
+        with self.assertRaises(IntegrityError) as cm:
             Dataset.objects.create(file=self.file, version=1, format="CSV")
+        self.assertIn("tenant", str(cm.exception).lower(),
+                      "IntegrityError must reference the missing tenant_id column")
 
     def test_create_dataset_invalid_file(self):
         """Test dataset creation with invalid file reference raises IntegrityError"""
         fake_file_id = uuid.uuid4()
 
-        # Django defers FK checks until transaction commit
-        # Force immediate FK validation using PostgreSQL constraint check
+        # Force immediate FK constraint check BEFORE the INSERT so the
+        # Statement raises IntegrityError eagerly rather than relying on
+        # deferred-constraint-commit semantics.
         from django.db import connection
+
+        with connection.cursor() as cursor:
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
         with self.assertRaises(IntegrityError):
             Dataset.objects.create(
                 tenant=self.tenant, file_id=fake_file_id, version=1, format="CSV"
             )
-            # Force FK constraint check immediately (PostgreSQL specific)
-            # This will trigger the FK validation that Django normally defers until commit
-            with connection.cursor() as cursor:
-                cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
     # ========== EDGE CASES ==========
 

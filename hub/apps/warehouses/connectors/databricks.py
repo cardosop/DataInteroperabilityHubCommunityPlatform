@@ -122,8 +122,19 @@ class DatabricksConnector(WarehouseConnector):
         # DESCRIBE TABLE is universally supported across Databricks versions
         # (INFORMATION_SCHEMA.COLUMNS requires fine-grained UC permissions on
         # some workspaces).
+        # Validate table_name to prevent SQL injection via f-string interpolation.
+        # Databricks identifiers: catalog.schema.table (each part alphanumeric + underscore).
+        import re
+        if not re.match(r"^[a-zA-Z_][a-zA-Z0-9_.]*$", table_name):
+            raise ValueError(
+                f"Invalid table_name for schema reflection: {table_name!r}"
+            )
+        import time
         sql = f"DESCRIBE TABLE {table_name}"
+        t0 = time.monotonic()
         result = self.execute_query(sql)
+        elapsed = time.monotonic() - t0
+        self._record_cost(self._tenant_id, max(elapsed, 60.0) / 3600.0 * 0.55, "databricks-dbu")
         return [
             SchemaColumn(
                 name=r[0],

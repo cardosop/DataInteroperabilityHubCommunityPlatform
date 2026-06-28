@@ -337,7 +337,7 @@ class DataProviderPersonaTest(E2ETestBase):
         call_command("seed_default_plans")
 
         email = f"personal-dp-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "Secure@Pass123"
         name = "Personal Data Provider"
 
         reg = self.client.post(

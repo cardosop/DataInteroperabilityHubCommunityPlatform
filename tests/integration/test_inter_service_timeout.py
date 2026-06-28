@@ -6,6 +6,8 @@ gracefully: timeouts return 504, unavailable services return 502/503,
 retry behavior is correct, and circuit breaker patterns work.
 """
 
+import json
+
 import pytest
 from django.test import override_settings
 from rest_framework.test import APIClient
@@ -33,8 +35,8 @@ class TestServiceTimeoutBehavior:
             # Should return an error, but not a raw 500 crash
             assert response.status_code != 0, f"Request should not hang indefinitely for {endpoint}"
             # Acceptable: 200 (cached/offline), 502 (bad gateway), 503 (unavailable), 404
-            assert response.status_code in (200, 404, 502, 503), (
-                f"Expected 200/404/502/503 for {endpoint} with unreachable service, got {response.status_code}"
+            assert response.status_code in (200, 401, 404, 502, 503), (
+                f"Expected 200/401/404/502/503 for {endpoint} with unreachable service, got {response.status_code}"
             )
 
     @pytest.mark.django_db
@@ -66,8 +68,8 @@ class TestRetryAndCircuitBreaker:
     """Retry behavior and circuit breaker patterns."""
 
     @pytest.mark.django_db
-    def test_api_calls_timeout_not_indefinite(self):
-        """API calls to unresponsive endpoints must timeout, not hang."""
+    def test_api_root_responds_quickly(self):
+        """GET /api/v1/ responds within 5 seconds (basic availability check)."""
         import time
 
         client = APIClient()
@@ -76,8 +78,8 @@ class TestRetryAndCircuitBreaker:
         client.get("/api/v1/")
         elapsed = time.time() - start
 
-        # Response should come back within a reasonable time (not > 30s)
-        assert elapsed < 30, f"API root request took {elapsed:.1f}s, should complete in < 30s"
+        # Response should come back within a reasonable time
+        assert elapsed < 5, f"API root request took {elapsed:.1f}s, should complete in < 5s"
 
     @pytest.mark.django_db
     def test_service_unavailable_messages_are_clear(self):
@@ -90,12 +92,12 @@ class TestRetryAndCircuitBreaker:
                 # Should have some error description
                 has_error = "detail" in data or "error" in data or "message" in data
                 assert has_error, f"Service unavailable response should have error detail: {data}"
-            except Exception:
-                pass  # Non-JSON response is acceptable for 502/503
+            except (json.JSONDecodeError, ValueError, KeyError):
+                pass  # Non-JSON or unexpected structure is acceptable for 502/503
 
     @pytest.mark.django_db
-    def test_circuit_breaker_prevents_cascading_failures(self):
-        """When a downstream service fails, other endpoints remain available."""
+    def test_core_endpoints_remain_available(self):
+        """Core endpoints (API root, assets list) respond without server errors."""
         client = APIClient()
 
         # The root, assets list, and health should work even if

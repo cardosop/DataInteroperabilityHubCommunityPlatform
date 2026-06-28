@@ -306,8 +306,8 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
         analyzer = VersionImpactAnalyzer(max_depth=0)
         result = analyzer.analyze_impact(str(dataset.id))
 
-        # Should handle zero depth gracefully
-        self.assertIsNotNone(result)
+        self.assertIsInstance(result, dict)
+        self.assertIn("source", result)
 
     # ========== ERROR HANDLING ==========
 
@@ -326,9 +326,8 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
         analyzer = VersionImpactAnalyzer()
 
         result = analyzer.analyze_impact(str(dataset.id))
-        self.assertIsNotNone(
-            result, "analyze_impact must return a result for a valid persisted dataset"
-        )
+        self.assertIsInstance(result, dict)
+        self.assertIn("source", result)
 
     def test_analyze_impact_with_tenant_id_filter(self):
         """analyze_impact with tenant_id respects tenant boundaries."""
@@ -351,5 +350,4 @@ class VersionImpactAnalyzerTest(DatasetsTestBase):
             dataset_id=str(dataset.id), tenant_id=str(other.id)
         )
         # Cross-tenant query should return empty or error result
-        self.assertIsNotNone(result)
         self.assertIsInstance(result, dict)

@@ -150,7 +150,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="status-test", name="Status Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -179,7 +179,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="cancel-test", name="Cancel Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -201,7 +201,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="cancel-running-test", name="Cancel Running Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -226,7 +226,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="cancel-completed-test", name="Cancel Completed Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -250,7 +250,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.COMPLETED)
 
-@pytest.mark.skip(reason="f'Redis connection error - job creation requires Redis: {e}'")
+    @pytest.mark.skip(reason="Redis connection error - job creation requires Redis")
     def test_list_jobs_with_filters(self):
         """Test listing jobs with filters"""
         import redis
@@ -263,20 +263,21 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         try:
             create_job(
-                type=JobType.DQ_RUN,
+                job_type=JobType.DQ_RUN,
                 resource_type="ASSET",
                 resource_id=asset_id1,
                 tenant=self.tenant,
                 user=self.user,
             )
             create_job(
-                type=JobType.COMPLIANCE_RUN,
+                job_type=JobType.COMPLIANCE_RUN,
                 resource_type="ASSET",
                 resource_id=asset_id2,
                 tenant=self.tenant,
                 user=self.user,
             )
         except (redis.exceptions.ConnectionError, ConnectionError) as e:
+            pytest.skip(f"Redis connection error - job creation requires Redis: {e}")
 
         # List all jobs
         response = self.client.get("/api/v1/jobs/")
@@ -301,7 +302,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="details-test", name="Details Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -327,7 +328,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="timeout-test", name="Timeout Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -365,7 +366,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="retry-test", name="Retry Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -382,7 +383,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         # Retry job (create new job for retry)
         retry_job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -403,7 +404,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
         for i in range(5):
             asset_id = self.create_asset(key=f"queue-test-{i}", name=f"Queue Test {i}")
             job = create_job(
-                type=JobType.DQ_RUN,
+                job_type=JobType.DQ_RUN,
                 resource_type="ASSET",
                 resource_id=asset_id,
                 tenant=self.tenant,
@@ -429,7 +430,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="result-test", name="Result Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,
@@ -454,7 +455,7 @@ class JobOrchestrationE2ETest(E2ETestBase):
 
         asset_id = self.create_asset(key="error-test", name="Error Test")
         job = create_job(
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="ASSET",
             resource_id=asset_id,
             tenant=self.tenant,

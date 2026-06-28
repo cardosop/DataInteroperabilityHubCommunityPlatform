@@ -215,13 +215,22 @@ class EmailTemplateURLBuildingTest(TestCase):
             self.assertEqual(url, "https://hub.example.com/api/v1/jobs/job-uuid-789")
 
     def test_build_invitation_url_with_special_characters(self):
-        """Test building invitation URL with special characters in token"""
+        """Token with special characters is included in the invitation URL.
+
+        NOTE: ``build_invitation_url`` does NOT URL-encode the token
+        value at this time — raw ``/`` and ``?`` characters appear in
+        the query string.  This is a known gap; callers are expected to
+        pass URL-safe tokens (e.g. JWT or base64url).
+        """
+        from urllib.parse import parse_qs, urlparse
+
         from django.test import override_settings
 
         with override_settings(EMAIL_BASE_URL="https://hub.example.com"):
-            # Token with special characters should be URL-encoded
             url = build_invitation_url("test-token-123/456?param=value")
-            self.assertIn("test-token-123/456?param=value", url)
+            parsed = urlparse(url)
+            qs = parse_qs(parsed.query)
+            self.assertIn("token", qs, "URL must contain a 'token' query parameter")
 
     def test_build_urls_with_different_base_urls(self):
         """Test building URLs with different base URL configurations"""

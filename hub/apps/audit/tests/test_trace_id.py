@@ -275,10 +275,10 @@ class TraceIdFilterTests(TestCase):
         resp = self.client.get(f"/api/v1/audit/audit-events/?trace_id={self.tid}")
         assert resp.status_code == 200
         data = resp.json()
-        assert data["count"] >= 1
+        assert data["count"] == 1, f"Expected exactly 1 event with trace_id filter, got {data['count']}"
         for result in data["results"]:
-            if result["action"] == "FILTER_A":
-                assert result["trace_id"] == str(self.tid)
+            assert result["trace_id"] == str(self.tid)
+            assert result["action"] == "FILTER_A"
 
     def test_filter_by_nonexistent_trace_id_returns_empty(self):
         fake_id = str(uuid.uuid4())
@@ -299,18 +299,27 @@ class TraceIdMigrationSafetyTests(TestCase):
     """Verify the migration is safe (null=True, default=None)."""
 
     def test_migration_exists(self):
-        """Migration 0014 adds trace_id with null=True, default=None."""
+        """Migration 0014 adds trace_id with null=True, blank=True, default=None."""
         from django.db import connections
         from django.db.migrations.loader import MigrationLoader
+        from django.db.migrations import AddField
 
         loader = MigrationLoader(connections["default"])
         migration = loader.disk_migrations.get(("audit", "0014_auditevent_trace_id"))
         assert migration is not None, "Migration 0014_auditevent_trace_id not found"
 
-        # Check the AddField operation
-        for op in migration.operations:
-            if hasattr(op, "field"):
-                field = op.field
-                if hasattr(field, "null"):
-                    assert field.null is True, "trace_id must be null=True"
-                # default=None is the Django default for nullable fields
+        # Verify the AddField operation for trace_id
+        trace_id_ops = [
+            op for op in migration.operations
+            if isinstance(op, AddField) and op.name == "trace_id"
+        ]
+        assert len(trace_id_ops) == 1, (
+            f"Expected exactly 1 AddField for trace_id, got {len(trace_id_ops)}"
+        )
+
+        trace_id_op = trace_id_ops[0]
+        field = trace_id_op.field
+        assert field.null is True, "trace_id must be null=True"
+        assert field.blank is True, "trace_id must be blank=True"
+        assert field.default is None, "trace_id default must be None"
+        assert field.db_index is True, "trace_id must be db_index=True"

@@ -118,6 +118,7 @@ class TestDockerComposeIntegration:
             "redis-exporter-events",
             "redis-exporter-channels",
             "mock-server",  # Distroless image - no shell/curl for healthcheck
+            "compliance-rq-worker",  # Background worker, not HTTP-facing
         }
 
         for service_name, service_config in services.items():
@@ -187,7 +188,10 @@ class TestDockerComposeIntegration:
         job_names = [config.get("job_name") for config in scrape_configs]
 
         # Check for key services
-        required_jobs = []
+        required_jobs = [
+            "api-service",
+            "worker-service",
+        ]
 
         for job_name in required_jobs:
             assert job_name in job_names, f"Prometheus scrape config must include {job_name}"
@@ -225,9 +229,12 @@ class TestDockerComposeIntegration:
             ports = service_config.get("ports", [])
             for port_mapping in ports:
                 if isinstance(port_mapping, str):
-                    host_port = port_mapping.split(":")[0]
+                    parts = port_mapping.split(":")
+                    # Use host:port (first two parts) as the uniqueness key.
+                    # E.g., "127.0.0.1:5432:5432" → key="127.0.0.1:5432"
+                    host_port = ":".join(parts[:2]) if len(parts) >= 2 else parts[0]
                 elif isinstance(port_mapping, dict):
-                    host_port = port_mapping.get("published")
+                    host_port = str(port_mapping.get("published", ""))
                 else:
                     continue
 

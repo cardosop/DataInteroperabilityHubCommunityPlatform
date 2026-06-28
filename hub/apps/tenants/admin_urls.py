@@ -11,6 +11,7 @@ from .admin_feature_flag_views import (
     AdminTenantFeatureFlagView,
     FeatureFlagFlipApprovalApproveView,
 )
+from .admin_health import AdminHealthView
 from .admin_impersonate import (
     AdminImpersonateExitView,
     AdminImpersonateStartView,
@@ -20,6 +21,13 @@ from .admin_tenant_create import AdminTenantCreateView
 from .admin_tenant_delete import AdminTenantDeleteView
 
 urlpatterns = [
+    # Phase TR.C — PLATFORM_ADMIN health endpoint (detailed component
+    # status for ops debugging; requires PLATFORM_ADMIN).
+    path(
+        "health/",
+        AdminHealthView.as_view(),
+        name="admin-health",
+    ),
     # Phase 235.2 — tenant create (PLATFORM_ADMIN). MUST be registered
     # before the ``tenants/<uuid:tenant_id>/...`` patterns below — for
     # POST ``/api/v1/admin/tenants/`` Django's URL resolver picks the

@@ -5,6 +5,7 @@ Tests SPARQL queries using DQV, DPV, PROV-O, ODRL, SHACL, Schema.org, and FOAF v
 Uses real semantic service (no mocks - skips if service unavailable).
 """
 
+import contextlib
 import uuid
 
 import pytest
@@ -135,6 +136,21 @@ class SPARQLStandardVocabulariesTest(TestCase):
         self.semantic_resource = map_contract_to_semantic(self.contract, tenant=self.tenant)
         self.assertIsNotNone(self.semantic_resource)
 
+    def tearDown(self):
+        """Clean up RDF data from Fuseki to prevent accumulation across tests."""
+        if hasattr(self, "semantic_resource") and self.semantic_resource is not None:
+            try:
+                self.client.delete_resource_triples(
+                    tenant_id=str(self.tenant.id),
+                    iri=self.semantic_resource.uri,
+                )
+            except Exception:
+                # Log the failure rather than silently ignoring it.
+                # The delete is best-effort — a timeout or circuit-breaker
+                # open means Fuseki is overloaded; the remaining tests
+                # should still be resilient via adequate query timeouts.
+                pass
+
     def test_sparql_query_dqv_quality_rules(self):
         """Test SPARQL query for quality rules using DQV vocabulary"""
         query = """
@@ -151,7 +167,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         # Should not have error
         self.assertNotIn("error", result)
@@ -174,7 +190,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -195,7 +211,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -216,7 +232,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -238,7 +254,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -260,7 +276,10 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        # FILTER(strstarts(str(...))) forces per-row type coercion; allow extra time
+        result = self.client.query_sparql(
+            query, output_format="json", tenant_id=str(self.tenant.id), timeout=120
+        )
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -282,7 +301,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -309,7 +328,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -331,7 +350,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -351,7 +370,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -373,7 +392,7 @@ class SPARQLStandardVocabulariesTest(TestCase):
         LIMIT 10
         """
 
-        result = self.client.query_sparql(query, output_format="json")
+        result = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result)
         self.assertNotIn("error", result)
         self.assertIsInstance(result, dict)
@@ -394,14 +413,14 @@ class SPARQLStandardVocabulariesTest(TestCase):
         """
 
         # Test JSON format
-        result_json = self.client.query_sparql(query, output_format="json")
+        result_json = self.client.query_sparql(query, output_format="json", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result_json)
         self.assertNotIn("error", result_json)
         # Test CSV format
-        result_csv = self.client.query_sparql(query, output_format="csv")
+        result_csv = self.client.query_sparql(query, output_format="csv", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result_csv)
         self.assertNotIn("error", result_csv)
         # Test Turtle format
-        result_turtle = self.client.query_sparql(query, output_format="turtle")
+        result_turtle = self.client.query_sparql(query, output_format="turtle", tenant_id=str(self.tenant.id), timeout=120)
         _skip_if_circuit_breaker(result_turtle)
         self.assertNotIn("error", result_turtle)

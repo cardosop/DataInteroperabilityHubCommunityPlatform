@@ -28,7 +28,12 @@ from hub.apps.dsar.packaging import (
     registry_backup_for_erasure,
 )
 from hub.apps.dsar.sla_scan import run_dsar_statutory_clock_scan
-from hub.apps.dsar.workflow import create_dsar_public, transition_status
+from hub.apps.dsar.workflow import (
+    create_dsar_public,
+    set_legal_hold,
+    submit_email_otp,
+    transition_status,
+)
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import UserStatus
@@ -260,3 +265,95 @@ class DsarErasureWarmCompletenessTests(TestCase):
         latest = ErasureRequest.objects.filter(user=user).order_by("-requested_at").first()
         self.assertIsNotNone(latest)
         self.assertEqual(latest.status, ErasureRequestStatus.COMPLETED)
+
+    # ── ERASURE ZIP content branch (previously untested) ──────────────
+
+    def test_erasure_zip_contains_notice_txt(self):
+        """build_dsar_zip_bytes for ERASURE produces ERASURE/NOTICE.txt."""
+        tenant = Tenant.objects.create(
+            name=f"zip-era-{uuid.uuid4().hex[:8]}",
+            slug=f"zip-era-{uuid.uuid4().hex[:8]}",
+        )
+        dsar = DSARRequest.objects.create(
+            tenant=tenant,
+            request_type=DSARRequestType.ERASURE,
+            regimes=["GDPR"],
+            subject_email="erasure@example.com",
+            status=DSARStatus.SUBMITTED,
+        )
+        raw, _agg = build_dsar_zip_bytes(dsar)
+        self.assertGreater(len(raw), 50, "ERASURE ZIP must be larger than an empty ZIP")
+        buf = io.BytesIO(raw)
+        with zipfile.ZipFile(buf) as zf:
+            names = zf.namelist()
+            self.assertIn("ERASURE/NOTICE.txt", names)
+            self.assertIn("MANIFEST.json", names)
+
+    # ── Legal-hold workflow (previously untested) ─────────────────────
+
+    def test_set_legal_hold_activate(self):
+        """set_legal_hold(active=True) sets legal_hold=True and logs SLA suspended."""
+        tenant = Tenant.objects.create(
+            name=f"lh-act-{uuid.uuid4().hex[:8]}",
+            slug=f"lh-act-{uuid.uuid4().hex[:8]}",
+        )
+        dsar = DSARRequest.objects.create(
+            tenant=tenant,
+            request_type=DSARRequestType.ACCESS,
+            regimes=["GDPR"],
+            subject_email="legal@example.com",
+            status=DSARStatus.UNDER_REVIEW,
+        )
+        self.assertFalse(dsar.legal_hold)
+        self.assertFalse(dsar.sla_suspended_event_logged)
+
+        set_legal_hold(dsar, active=True, reason="Litigation hold", actor_user=None)
+
+        dsar.refresh_from_db()
+        self.assertTrue(dsar.legal_hold)
+        self.assertEqual(dsar.legal_hold_reason, "Litigation hold")
+        self.assertTrue(dsar.sla_suspended_event_logged)
+
+    def test_set_legal_hold_deactivate(self):
+        """set_legal_hold(active=False) clears legal_hold."""
+        tenant = Tenant.objects.create(
+            name=f"lh-deact-{uuid.uuid4().hex[:8]}",
+            slug=f"lh-deact-{uuid.uuid4().hex[:8]}",
+        )
+        dsar = DSARRequest.objects.create(
+            tenant=tenant,
+            request_type=DSARRequestType.ACCESS,
+            regimes=["GDPR"],
+            subject_email="unhold@example.com",
+            status=DSARStatus.UNDER_REVIEW,
+            legal_hold=True,
+            legal_hold_reason="Old hold",
+        )
+        set_legal_hold(dsar, active=False, reason="Released", actor_user=None)
+        dsar.refresh_from_db()
+        self.assertFalse(dsar.legal_hold)
+
+    # ── OTP submission (previously untested) ──────────────────────────
+
+    def test_submit_otp_wrong_code(self):
+        """submit_email_otp returns False for an incorrect OTP code."""
+        tenant = Tenant.objects.create(
+            name=f"otp-bad-{uuid.uuid4().hex[:8]}",
+            slug=f"otp-bad-{uuid.uuid4().hex[:8]}",
+        )
+        dsar = DSARRequest.objects.create(
+            tenant=tenant,
+            request_type=DSARRequestType.ACCESS,
+            regimes=["GDPR"],
+            subject_email="otp@example.com",
+            status=DSARStatus.SUBMITTED,
+            verification_method=DSARVerificationMethod.EMAIL_OTP,
+        )
+        dsar.issue_email_otp()  # generates a real code
+        # Passing a code that does NOT match the generated digest
+        result = submit_email_otp(dsar, "000000")
+        self.assertFalse(result)
+        # Status must not have advanced
+        dsar.refresh_from_db()
+        self.assertEqual(dsar.status, DSARStatus.SUBMITTED)
+        self.assertEqual(dsar.email_otp_attempts, 1)

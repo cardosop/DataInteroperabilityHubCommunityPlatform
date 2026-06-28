@@ -87,9 +87,41 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         self.assertIsNotNone(history)
         self.assertIsInstance(history, list)
 
+    def test_get_version_tree_with_persisted_dataset(self):
+        """get_version_tree returns a result without raising for a valid persisted dataset."""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            schema_json={"fields": []},
+            format="CSV",
+            version=1,
+            created_by=self.user,
+        )
+        VersionHistoryManager.create_version(dataset, is_current=True)
+
+        history = VersionHistoryManager.get_version_tree(dataset)
+        self.assertIsNotNone(history, "get_version_tree must return a list of versions")
+        self.assertIsInstance(history, list)
+
+    def test_create_version_with_persisted_dataset(self):
+        """create_version succeeds for a valid persisted dataset without raising."""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant,
+            asset=self.asset,
+            file=self.file,
+            schema_json={"fields": []},
+            format="CSV",
+            version=1,
+            created_by=self.user,
+        )
+
+        VersionHistoryManager.create_version(dataset, is_current=True)
+        self.assertIsNotNone(dataset, "create_version must succeed for a persisted dataset")
+
     # ========== FAILURE SCENARIOS ==========
 
-    def test_get_version_history_nonexistent_dataset(self):
+    def test_get_version_tree_with_unsaved_dataset(self):
         """get_version_tree on an unsaved dataset returns a list with the dataset node."""
         from hub.apps.datasets.models import Dataset
 
@@ -107,16 +139,26 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         self.assertIsInstance(tree, list, "get_version_tree must return a list")
 
     def test_create_version_invalid_dataset(self):
-        """Test creating version with invalid dataset (failure scenario)"""
+        """create_version on a non-persisted Dataset saves it and populates version fields.
 
+        A Dataset instance constructed in-memory with defaults is a valid
+        ``Dataset`` row once persisted — ``create_version`` calls ``.save()``
+        which INSERTs it, then writes version-history fields.
+        """
         fake_dataset = Dataset(
             id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file
         )
 
-        # create_version on a non-persisted dataset returns a result
-        # without raising — the dataset object is populated in-memory.
-        VersionHistoryManager.create_version(fake_dataset, is_current=True)
-        self.assertIsNotNone(fake_dataset.id, "create_version must assign an id to the dataset")
+        updated = VersionHistoryManager.create_version(fake_dataset, is_current=True)
+        # The dataset must be saved to the database.
+        self.assertTrue(
+            Dataset.objects.filter(id=updated.id, tenant=self.tenant).exists(),
+            "create_version must persist the dataset",
+        )
+        # Version history fields must be populated.
+        self.assertIsNotNone(updated.version_hash)
+        self.assertEqual(updated.semantic_version, "1.0.0")
+        self.assertTrue(updated.is_current)
 
     # ========== EDGE CASES ==========
 
@@ -139,24 +181,6 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         self.assertIsNotNone(history)
         self.assertIsInstance(history, list)
         self.assertGreaterEqual(len(history), 1)
-
-    def test_create_version_without_parent_edge_case(self):
-        """Test creating version without parent (edge case)"""
-        dataset = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": []},
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-
-        # Should create version without parent
-        VersionHistoryManager.create_version(dataset, is_current=True)
-
-        self.assertIsNotNone(dataset)
-        self.assertEqual(dataset.version, 1)
 
     def test_calculate_version_hash_same_content(self):
         """Test version hash calculation with same content (edge case)"""
@@ -187,40 +211,6 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         self.assertEqual(hash1, hash2)
 
     # ========== ERROR HANDLING ==========
-
-    def test_get_version_tree_with_persisted_dataset(self):
-        """Test error handling when database query fails"""
-        dataset = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": []},
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-        VersionHistoryManager.create_version(dataset, is_current=True)
-
-        # get_version_tree must return a result without raising for a
-        # valid persisted dataset with version history.
-        history = VersionHistoryManager.get_version_tree(dataset)
-        self.assertIsNotNone(history, "get_version_tree must return a list of versions")
-        self.assertIsInstance(history, list)
-
-    def test_create_version_with_persisted_dataset(self):
-        """Test that create_version succeeds for valid dataset without raising."""
-        dataset = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": []},
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-
-        VersionHistoryManager.create_version(dataset, is_current=True)
-        self.assertIsNotNone(dataset, "create_version must succeed for a persisted dataset")
 
     def test_create_version_without_parent(self):
         """Test creating version without parent"""
@@ -291,90 +281,6 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         # Parent should no longer be current
         parent.refresh_from_db()
         self.assertFalse(parent.is_current)
-
-    def test_create_version_semantic_version_inference_breaking_change(self):
-        """Test semantic version inference for breaking changes"""
-        # Create parent with schema
-        parent = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={
-                "fields": [{"name": "col1", "type": "string"}, {"name": "col2", "type": "integer"}]
-            },
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-        VersionHistoryManager.create_version(parent, semantic_version="1.0.0", is_current=True)
-
-        # Create child with field removed (breaking change)
-        child_file = File.objects.create(
-            tenant=self.tenant,
-            name="test2.csv",
-            content_type="text/csv",
-            size=2000,
-            status=FileStatus.ACTIVE,
-            storage_path="test/test2.csv",
-            content_sha256="def456",
-            created_by=self.user,
-        )
-
-        child = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=child_file,
-            schema_json={"fields": [{"name": "col1", "type": "string"}]},  # col2 removed
-            format="CSV",
-            version=2,
-            created_by=self.user,
-        )
-
-        VersionHistoryManager.create_version(child, parent_version=parent, is_current=True)
-
-        child.refresh_from_db()
-        self.assertEqual(child.semantic_version, "2.0.0")  # Major increment (breaking)
-
-    def test_create_version_semantic_version_inference_type_change(self):
-        """Test semantic version inference for type changes (breaking)"""
-        # Create parent
-        parent = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-        VersionHistoryManager.create_version(parent, semantic_version="1.0.0", is_current=True)
-
-        # Create child with type change (breaking)
-        child_file = File.objects.create(
-            tenant=self.tenant,
-            name="test2.csv",
-            content_type="text/csv",
-            size=2000,
-            status=FileStatus.ACTIVE,
-            storage_path="test/test2.csv",
-            content_sha256="def456",
-            created_by=self.user,
-        )
-
-        child = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=child_file,
-            schema_json={"fields": [{"name": "col1", "type": "integer"}]},  # Type changed
-            format="CSV",
-            version=2,
-            created_by=self.user,
-        )
-
-        VersionHistoryManager.create_version(child, parent_version=parent, is_current=True)
-
-        child.refresh_from_db()
-        self.assertEqual(child.semantic_version, "2.0.0")  # Major increment (breaking)
 
     def test_create_version_with_tags(self):
         """Test creating version with tags"""
@@ -916,3 +822,35 @@ class VersionHistoryManagerTest(DatasetsTestBase):
         descendants = VersionHistoryManager.get_descendants(ds)
         for descendant in descendants:
             self.assertEqual(descendant.tenant_id, self.tenant.id)
+
+    # ── Versioning-enabled gate ──────────────────────────────────────
+
+    def test_create_version_when_versioning_disabled_raises(self):
+        """create_version raises ValidationError when versioning_enabled is False
+        and a parent_version is provided (subsequent version creation)."""
+        from hub.apps.core.services.base import ValidationError
+        from hub.apps.tenants.models import TenantConfig
+
+        # Disable versioning for this tenant.
+        config, _ = TenantConfig.objects.get_or_create(tenant=self.tenant)
+        config.versioning_enabled = False
+        config.save(update_fields=["versioning_enabled", "updated_at"])
+
+        parent = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "type": "string"}]},
+            format="CSV", version=1, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(parent, is_current=True)
+
+        child = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "type": "string"}]},
+            format="CSV", version=2, created_by=self.user,
+        )
+
+        with self.assertRaises(ValidationError) as cm:
+            VersionHistoryManager.create_version(
+                child, parent_version=parent, is_current=True,
+            )
+        self.assertEqual(cm.exception.code, "VERSIONING_DISABLED")

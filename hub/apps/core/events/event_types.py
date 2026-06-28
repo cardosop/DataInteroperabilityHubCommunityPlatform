@@ -2498,6 +2498,35 @@ EVENT_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
             },
         }
     },
+    # ── ML Training Job Events ─────────────────────────────────────────
+    "ml.training.job.submitted": {
+        "data": {
+            "type": "object",
+            "required": ["model_id", "dataset_id", "odh_job_id"],
+            "properties": {
+                "model_id": {"type": "string", "format": "uuid"},
+                "dataset_id": {"type": "string", "format": "uuid"},
+                "odh_job_id": {"type": "string"},
+                "hub_job_id": {"type": "string"},
+                "submitted_at": {"type": "string", "format": "date-time"},
+            },
+        }
+    },
+    "ml.training.job.completed": {
+        "data": {
+            "type": "object",
+            "required": ["model_id", "odh_job_id", "status"],
+            "properties": {
+                "model_id": {"type": "string", "format": "uuid"},
+                "odh_job_id": {"type": "string"},
+                "hub_job_id": {"type": ["string", "null"]},
+                "asset_id": {"type": ["string", "null"], "format": "uuid"},
+                "status": {"type": "string"},
+                "metrics": {"type": "object"},
+                "completed_at": {"type": "string", "format": "date-time"},
+            },
+        }
+    },
 }
 
 

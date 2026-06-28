@@ -210,32 +210,59 @@ class DataConsumerPersonaTest(E2ETestBase):
         self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
     def test_data_consumer_rate_limit_retry_after(self):
-        """Test rate limit Retry-After header for DATA_CONSUMER"""
-        response = None
-        for _i in range(20):
-            response = self.client.get("/api/v1/contracts/")
-            if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-                break
+        """Rate limit Retry-After header is present on 429 responses.
 
-        if response and response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        Rate limiting is disabled by default in the test environment
+        (``RATE_LIMIT_ENABLED=false`` in docker-compose.test.yml) so the
+        middleware is a no-op.  We override the setting for this test so
+        the full middleware + Redis sliding-window path is exercised
+        end-to-end.
+        """
+        from django.test import override_settings
+
+        with override_settings(RATE_LIMIT_ENABLED=True):
+            response = None
+            for _i in range(60):  # user burst for catalog_read is 50/10s
+                response = self.client.get("/api/v1/contracts/")
+                if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+                    break
+
+        if response is not None and response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
             self.assertIn("Retry-After", response.headers or {})
         else:
-            self.skipTest("Did not reach rate limit after 20 requests")
+            import pytest
+            pytest.skip(
+                "Rate limit not reached after 60 requests — "
+                "RATE_LIMIT_E2E_RELAX may be active or Redis may be unavailable"
+            )
 
     def test_data_consumer_rate_limit_error_format(self):
-        """Test rate limit error format for DATA_CONSUMER"""
-        response = None
-        for _i in range(20):
-            response = self.client.get("/api/v1/contracts/")
-            if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
-                break
+        """Rate limit 429 body has the structured error shape.
 
-        if response and response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+        Rate limiting is disabled by default in the test environment;
+        we temporarily enable it via ``override_settings``.
+        """
+        from django.test import override_settings
+
+        with override_settings(RATE_LIMIT_ENABLED=True):
+            response = None
+            for _i in range(60):  # user burst for catalog_read is 50/10s
+                response = self.client.get("/api/v1/contracts/")
+                if response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
+                    break
+
+        if response is not None and response.status_code == status.HTTP_429_TOO_MANY_REQUESTS:
             data = get_response_data(response) or {}
             self.assertIn("error", data)
             error = data["error"]
             self.assertIn("code", error)
             self.assertIn("message", error)
+        else:
+            import pytest
+            pytest.skip(
+                "Rate limit not reached after 60 requests — "
+                "RATE_LIMIT_E2E_RELAX may be active or Redis may be unavailable"
+            )
 
     def test_data_consumer_rate_limit_per_user(self):
         """Test rate limits are enforced per user for DATA_CONSUMER"""
@@ -261,7 +288,8 @@ class DataConsumerPersonaTest(E2ETestBase):
             user_id=str(self.consumer_user.id),
             api_key_id=None,
         )
-        result1 = {"allowed": allowed1, "results": results1}
+        self.assertIsNotNone(allowed1, "Rate limit check should return allowed boolean")
+        self.assertIsNotNone(results1, "Rate limit check should return results list")
 
         request2 = HttpRequest()
         request2.path = "/api/v1/contracts/"
@@ -275,7 +303,6 @@ class DataConsumerPersonaTest(E2ETestBase):
             user_id=str(other_consumer.id),
             api_key_id=None,
         )
-        result2 = {"allowed": allowed2, "results": results2}
 
-        self.assertIn("allowed", result1)
-        self.assertIn("allowed", result2)
+        self.assertIsNotNone(allowed2, "Rate limit check should return allowed boolean")
+        self.assertIsNotNone(results2, "Rate limit check should return results list")

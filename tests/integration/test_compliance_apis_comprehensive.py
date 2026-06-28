@@ -17,7 +17,6 @@ import uuid
 
 import pytest
 
-pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -45,7 +44,7 @@ from tests.fixtures.test_data_factories import (
 )
 
 # Use regular django_db marker - TestCase handles transactions efficiently
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 User = get_user_model()
 
 

@@ -43,14 +43,14 @@ class SecurityAuditLogStorageIntegrationTest(TestCase):
         )
 
         # Try to update (should raise ValueError)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             log.description = "Updated description"
             log.save()
 
         self.assertIn("immutable", str(cm.exception).lower())
 
         # Try to delete (should raise ValueError)
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as cm:
             log.delete()
 
         self.assertIn("immutable", str(cm.exception).lower())

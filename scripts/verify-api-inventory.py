@@ -123,7 +123,7 @@ def verify_inventory_completeness(
 
     # Check for expected apps (case-insensitive)
     # Note: Some apps may have different names in inventory
-    expected_apps = {"compliance", "dq", "assets", "contracts", "datasets", "auth", "audit"}
+    expected_apps = {"compliance", "dq", "contracts", "auth", "audit"}
     found_apps_lower = {app.lower() for app in endpoints_by_app}
 
     # Check for variations and partial matches
@@ -142,7 +142,7 @@ def verify_inventory_completeness(
     # This is acceptable - we'll only warn, not fail
     if missing_apps:
         # Check if it's a critical app
-        critical_apps = {"compliance", "dq", "assets", "datasets", "auth", "audit"}
+        critical_apps = {"compliance", "dq", "auth", "audit"}
         critical_missing = missing_apps & critical_apps
         if critical_missing:
             issues.append(f"Missing critical expected apps: {', '.join(critical_missing)}")

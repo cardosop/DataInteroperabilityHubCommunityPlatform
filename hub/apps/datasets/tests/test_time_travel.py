@@ -99,35 +99,6 @@ class TimeTravelQueryTest(DatasetsTestBase):
         )
         self.assertEqual(result2.id, v2.id, "After v2 timestamp, v2 should be the current version")
 
-    # ========== SUCCESS SCENARIOS ==========
-
-    def test_get_version_at_timestamp_success(self):
-        """Test successfully getting version at specific timestamp"""
-        # Create version with known timestamp
-        v1 = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": [{"name": "col1", "type": "string"}]},
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-        target_timestamp = timezone.now() - timedelta(days=2)
-        v1.created_at = target_timestamp
-        v1.save()
-
-        # Query must return the version
-        t_after = target_timestamp + timedelta(hours=1)
-        result = TimeTravelQuery.get_version_at_timestamp(
-            asset_id=self.asset.id,
-            tenant_id=self.tenant.id,
-            timestamp=t_after,
-        )
-        self.assertIsNotNone(result)
-        self.assertEqual(result.id, v1.id)
-        self.assertEqual(result.version, 1)
-
     # ========== FAILURE SCENARIOS ==========
 
     def test_get_version_at_timestamp_not_found(self):
@@ -175,8 +146,6 @@ class TimeTravelQueryTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Should return version created at exact timestamp
-        self.assertIsNotNone(v1)
         # Use approximate comparison due to microsecond differences
         time_diff = abs((v1.created_at - exact_timestamp).total_seconds())
         self.assertLess(time_diff, 1.0)  # Within 1 second
@@ -255,8 +224,6 @@ class TimeTravelQueryTest(DatasetsTestBase):
         )
 
         # Should return one of the versions (typically the latest v2)
-        self.assertIsNotNone(v1)
-        self.assertIsNotNone(v2)
         # Use approximate comparison due to microsecond differences
         time_diff = abs((v1.created_at - v2.created_at).total_seconds())
         self.assertLess(time_diff, 1.0)  # Within 1 second

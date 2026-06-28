@@ -61,7 +61,7 @@ class WarehouseConnectionPoolTests(SimpleTestCase):
         pool = WarehouseConnectionPool(max_connections=2)
         pool.acquire("t1", "snowflake", lambda: object())
         pool.acquire("t2", "snowflake", lambda: object())
-        with self.assertRaises(WarehouseConnectionError):
+        with self.assertRaises(WarehouseConnectionError) as ctx:
             pool.acquire("t3", "snowflake", lambda: object())
         assert "exhausted" in str(ctx.exception).lower()
 

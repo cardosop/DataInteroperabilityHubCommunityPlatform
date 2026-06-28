@@ -167,8 +167,8 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
         )
         self.assertEqual(create_events.count(), 1, "Should have ODPS_CREATED audit event")
 
-    def test_audit_log_creation_for_odps_export(self):
-        """Test that audit logs are created for ODPS export operations."""
+    def test_odps_export_succeeds(self):
+        """Test that ODPS export operation completes successfully."""
         odps_service = ODPSService(
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
@@ -922,9 +922,8 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
         details = audit_event.details_json
         self.assertEqual(details.get("original_format"), "JSON", "Original format should match")
 
-    def test_audit_log_timestamps(self):
-        """Test that audit logs have correct timestamps."""
-        timezone.now()
+    def test_audit_log_creation_creates_audit_event(self):
+        """Test that ODPS creation produces an audit event."""
         odps_service = ODPSService(tenant_id=str(self.tenant1.id), user_id=str(self.user1.id))
 
         odps_raw = json.dumps(self.base_odps_contract)
@@ -934,7 +933,6 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
-        timezone.now()
 
         # Get audit event
         audit_event = AuditEvent.objects.filter(
@@ -948,7 +946,6 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
 
     def test_audit_log_timestamps_has_timestamp(self):
         """Test that audit logs have timestamp."""
-        timezone.now()
         odps_service = ODPSService(tenant_id=str(self.tenant1.id), user_id=str(self.user1.id))
 
         odps_raw = json.dumps(self.base_odps_contract)
@@ -958,7 +955,6 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
-        timezone.now()
 
         audit_event = AuditEvent.objects.filter(
             resource_type="ODPS",
@@ -981,7 +977,6 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
             tenant_id=str(self.tenant1.id),
             user_id=str(self.user1.id),
         )
-        timezone.now()
 
         audit_event = AuditEvent.objects.filter(
             resource_type="ODPS",
@@ -996,7 +991,6 @@ class AuditLogVerificationTest(ODPSAuditComprehensiveValidationBase):
 
     def test_audit_log_timestamps_before_creation_end(self):
         """Test that audit log timestamp is before creation end."""
-        timezone.now()
         odps_service = ODPSService(tenant_id=str(self.tenant1.id), user_id=str(self.user1.id))
 
         odps_raw = json.dumps(self.base_odps_contract)
@@ -1319,8 +1313,9 @@ class AuditTrailCompletenessTest(ODPSAuditComprehensiveValidationBase):
 
         create_event = creation_events.filter(action="ODPS_CREATED").first()
         # Verify request_id is consistent
-        if create_event.details_json.get("request_id"):
-            self.assertEqual(create_event.details_json.get("request_id"), request_id)
+        self.assertIn("request_id", create_event.details_json,
+            "request_id must be present in audit event details")
+        self.assertEqual(create_event.details_json.get("request_id"), request_id)
 
     def test_complete_audit_trail_for_linking_operations(self):
         """Test complete audit trail for ODPS linking operations."""
@@ -2330,7 +2325,7 @@ class AuditLogQueryingTest(ODPSAuditComprehensiveValidationBase):
         past_events = AuditEvent.objects.filter(
             resource_type="ODPS", tenant=self.tenant1, timestamp__lt=now
         )
-        self.assertGreaterEqual(past_events.count(), 0, "Should have past events")
+        self.assertGreater(past_events.count(), 0, "Should have past events")
 
     def test_audit_log_querying_by_date_range_future_events(self):
         """Test audit log querying by date range for future events."""
@@ -2339,7 +2334,7 @@ class AuditLogQueryingTest(ODPSAuditComprehensiveValidationBase):
         future_events = AuditEvent.objects.filter(
             resource_type="ODPS", tenant=self.tenant1, timestamp__gt=tomorrow
         )
-        self.assertGreaterEqual(future_events.count(), 0, "Should have minimal future events")
+        self.assertGreaterEqual(future_events.count(), 0, "Should have minimal or zero future events")
 
     def test_audit_log_querying_performance(self):
         """Test audit log querying performance."""
@@ -2349,16 +2344,14 @@ class AuditLogQueryingTest(ODPSAuditComprehensiveValidationBase):
         odps_service = ODPSService(tenant_id=str(self.tenant1.id), user_id=str(self.user1.id))
         odps_raw = json.dumps(self.base_odps_contract)
 
-        # Create 10 contracts
-        contracts = []
+        # Create 10 contracts for performance measurement
         for _i in range(10):
-            contract = odps_service.create_odps(
+            odps_service.create_odps(
                 odps_raw=odps_raw,
                 odps_format="json",
                 tenant_id=str(self.tenant1.id),
                 user_id=str(self.user1.id),
             )
-            contracts.append(contract)
 
         # Measure query performance
         start_time = time.time()
@@ -2536,6 +2529,8 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
             self.assertLess(
                 audit_event.timestamp, retention_cutoff, "Event should be beyond retention period"
             )
+        else:
+            self.fail("audit_event not found — cannot verify retention period")
 
     def test_audit_log_deletion_after_retention_period_immutability(self):
         """Test audit log deletion after retention period immutability."""
@@ -2560,6 +2555,8 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
             # Verify event cannot be deleted normally (immutability)
             with self.assertRaises(ValueError):
                 audit_event.delete()
+        else:
+            self.fail("audit_event not found — cannot verify immutability")
 
     def test_audit_log_deletion_after_retention_period_identifies_old_events(self):
         """Test audit log deletion after retention period identifies old events."""
@@ -2582,13 +2579,12 @@ class AuditLogRetentionTest(ODPSAuditComprehensiveValidationBase):
             audit_event.refresh_from_db()
 
             retention_cutoff = timezone.now() - timedelta(days=3 * 365)
-            from hub.apps.audit.management.commands.archive_old_audit_events import Command
-
-            Command()
             old_events = AuditEvent.objects.filter(timestamp__lt=retention_cutoff)
             self.assertGreaterEqual(
                 old_events.count(), 1, "Should identify events beyond retention period"
             )
+        else:
+            self.fail("audit_event not found — cannot identify old events")
 
     def test_audit_log_compliance_verification(self):
         """Test audit log compliance verification."""

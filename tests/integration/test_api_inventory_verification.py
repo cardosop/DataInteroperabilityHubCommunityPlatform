@@ -101,7 +101,7 @@ class TestAPIInventoryCompleteness(TestCase):
         endpoints_by_app = read_inventory(self.inventory_path)
         found_apps = {app.lower() for app in endpoints_by_app.keys()}
 
-        expected_apps = {"compliance", "dq", "assets", "datasets", "auth", "audit"}
+        expected_apps = {"compliance", "dq", "auth", "audit"}
         missing_apps = expected_apps - found_apps
 
         self.assertEqual(

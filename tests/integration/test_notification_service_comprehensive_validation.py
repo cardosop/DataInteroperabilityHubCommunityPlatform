@@ -607,7 +607,7 @@ class NotificationChannelTest(TestCase):
 
         except EmailServiceError:
             # Email service not configured for testing - acceptable
-            pass
+            self.skipTest("Email service unavailable in test environment")
 
     def test_notification_channel_failure_handling(self):
         """Test notification channel failure handling"""
@@ -647,8 +647,8 @@ class NotificationChannelTest(TestCase):
                     self.assertIsNotNone(delivery.error_message)
                     self.assertGreater(delivery.retry_count, 0)
 
-        except Exception:
-            # Email service error is acceptable in test environment
+        except (EmailServiceError, ConnectionError, OSError):
+            # Email service error or network issue is acceptable in test environment
             pass
 
 

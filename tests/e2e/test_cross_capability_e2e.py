@@ -68,7 +68,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
         job1 = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.DQ_RUN,
+            job_type=JobType.DQ_RUN,
             resource_type="DQ_RUN",
             resource_id=str(uuid.uuid4()),
             details_json={"dq_run_id": str(uuid.uuid4())},
@@ -415,7 +415,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
             job = create_job(
                 tenant=self.tenant,
                 user=self.user,
-                type=JobType.DQ_RUN,
+                job_type=JobType.DQ_RUN,
                 resource_type="DQ_RUN",
                 resource_id=str(uuid.uuid4()),
                 details_json={"dq_run_id": str(uuid.uuid4())},
@@ -478,7 +478,7 @@ class CrossCapabilityE2ETest(E2ETestBase):
         )
 
         client = APIClient()
-        with self.assertRaises(ClickException):
+        with self.assertRaises(ClickException) as cm:
             client._handle_response(response)
         self.assertIsNotNone(str(cm.exception))
 

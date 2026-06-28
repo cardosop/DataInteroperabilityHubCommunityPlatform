@@ -15,7 +15,7 @@ from hub.apps.datasets.business_rules import DatasetsBusinessRules, DatasetsRule
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.tests.factories import DatasetFactory
 from hub.apps.datasets.tests.test_base import DatasetsTestBase
-from hub.apps.files.models import File, FileStatus
+from hub.apps.files.models import File, FileScanStatus, FileStatus
 from hub.apps.tenants.models import KYCStatus, Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -24,6 +24,7 @@ User = get_user_model()
 
 class DatasetsBusinessRulesInitializationTest(DatasetsTestBase):
     """Test DatasetsBusinessRules initialization"""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
@@ -82,6 +83,7 @@ class DatasetsBusinessRulesInitializationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesRegistrationTest(DatasetsTestBase):
     """Test DatasetsBusinessRules registration in business rules registry"""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
@@ -127,6 +129,7 @@ class DatasetsBusinessRulesRegistrationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
     """Test DatasetsBusinessRules validation methods"""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
@@ -148,74 +151,30 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
         result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
         self.assertTrue(result.is_valid)
 
-    def test_validate_with_valid_dataset_includes_validation_checks(self):
-        """Test validate method with valid dataset includes validation_checks in details"""
+    def test_validate_with_valid_dataset_includes_all_validation_check_types(self):
+        """validate() with validation_type='all' includes every expected
+        check type key in result.details['validation_checks']."""
         dataset = DatasetFactory.create_dataset(
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
         result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
+        self.assertTrue(result.is_valid)
         self.assertIn("validation_checks", result.details)
 
-    def test_validate_with_valid_dataset_includes_all_check_types(self):
-        """Test validate method with valid dataset includes all check types"""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
-        validation_checks = result.details["validation_checks"]
-        self.assertIn("structure", validation_checks)
-
-    def test_validate_with_valid_dataset_includes_schema_check(self):
-        """Test validate method with valid dataset includes schema check"""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
-        validation_checks = result.details["validation_checks"]
-        self.assertIn("schema", validation_checks)
-
-    def test_validate_with_valid_dataset_includes_tenant_context_check(self):
-        """Test validate method with valid dataset includes tenant_context check"""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
-        validation_checks = result.details["validation_checks"]
-        self.assertIn("tenant_context", validation_checks)
-
-    def test_validate_with_valid_dataset_includes_permissions_check(self):
-        """Test validate method with valid dataset includes permissions check"""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
-        validation_checks = result.details["validation_checks"]
-        self.assertIn("permissions", validation_checks)
-
-    def test_validate_with_valid_dataset_includes_version_check(self):
-        """Test validate method with valid dataset includes version check"""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
-        validation_checks = result.details["validation_checks"]
-        self.assertIn("version", validation_checks)
-
-    def test_validate_with_valid_dataset_includes_file_relationship_check(self):
-        """Test validate method with valid dataset includes file_relationship check"""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, tenant=self.tenant, user=self.user)
-        validation_checks = result.details["validation_checks"]
-        self.assertIn("file_relationship", validation_checks)
+        checks = result.details["validation_checks"]
+        for check_type in (
+            "structure",
+            "schema",
+            "tenant_context",
+            "permissions",
+            "version",
+            "file_relationship",
+        ):
+            self.assertIn(
+                check_type, checks,
+                f"validation_checks must include '{check_type}'",
+            )
 
     def test_validate_with_datasets_rule_execution_context(self):
         """Test validate method with DatasetsRuleExecutionContext"""
@@ -529,9 +488,121 @@ class DatasetsBusinessRulesValidationTest(DatasetsTestBase):
         self.assertFalse(result.is_valid)
         self.assertIn("does not match", result.errors[0])
 
+    # ========== FILE SCAN STATUS GATING (Phase 260.2.D) ==========
+
+    def test_validate_structure_blocks_infected_file(self):
+        """Structure validation rejects a dataset whose source file has
+        scan_status=INFECTED."""
+        infected_file = File.objects.create(
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            name="infected.csv",
+            content_type="text/csv",
+            size=10,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.INFECTED,
+        )
+        dataset = DatasetFactory.create_dataset(
+            tenant=self.tenant, file=infected_file, format="CSV", version=1
+        )
+        result = self.rules.validate(dataset=dataset, validation_type="structure")
+        self.assertFalse(
+            result.is_valid,
+            "Structure validation must reject dataset on INFECTED file",
+        )
+        self.assertTrue(
+            any("infected" in e.lower() for e in result.errors),
+            f"Errors must mention infected/malware; got {result.errors}",
+        )
+
+    def test_validate_structure_blocks_pending_scan_when_clamav_enabled(self):
+        """Structure validation rejects a dataset whose source file has
+        scan_status=PENDING_SCAN when CLAMAV is enabled."""
+        from django.test import override_settings
+
+        pending_file = File.objects.create(
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            name="pending_scan.csv",
+            content_type="text/csv",
+            size=10,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.PENDING_SCAN,
+        )
+        dataset = DatasetFactory.create_dataset(
+            tenant=self.tenant, file=pending_file, format="CSV", version=1
+        )
+        with override_settings(CLAMAV_ENABLED=True):
+            result = self.rules.validate(dataset=dataset, validation_type="structure")
+        self.assertFalse(
+            result.is_valid,
+            "Structure validation must reject dataset on PENDING_SCAN file "
+            "when CLAMAV_ENABLED is True",
+        )
+        self.assertTrue(
+            any("pending" in e.lower() for e in result.errors),
+            f"Errors must mention pending scan; got {result.errors}",
+        )
+
+    # ========== FILE_ACTIVE VALIDATION (Phase 260.5.B) ==========
+
+    def test_validate_file_active_rejects_pending_file(self):
+        """file_active validation rejects a PENDING file."""
+        pending_file = File.objects.create(
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            name="pending_upload.csv",
+            content_type="text/csv",
+            size=10,
+            status=FileStatus.PENDING,
+        )
+        dataset = DatasetFactory.create_dataset(
+            tenant=self.tenant, file=pending_file, format="CSV", version=1
+        )
+        result = self.rules.validate(
+            dataset=dataset, file=pending_file, validation_type="file_active"
+        )
+        self.assertFalse(
+            result.is_valid,
+            "file_active validation must reject a PENDING file",
+        )
+        self.assertIn("file_active", result.details["validation_checks"])
+        self.assertFalse(
+            result.details["validation_checks"]["file_active"].get("admitted", True),
+            "PENDING file must not be admitted for dataset creation",
+        )
+
+    # ========== FORMAT-MISMATCH WARNING ==========
+
+    def test_validate_structure_warns_format_mismatch(self):
+        """Structure validation warns when dataset format disagrees with
+        the file extension."""
+        mismatch_file = File.objects.create(
+            id=uuid.uuid4(),
+            tenant=self.tenant,
+            name="data.json",
+            content_type="application/json",
+            size=10,
+            status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
+        )
+        dataset = DatasetFactory.create_dataset(
+            tenant=self.tenant, file=mismatch_file, format="CSV", version=1
+        )
+        result = self.rules._validate_dataset_structure(dataset)
+        self.assertTrue(
+            any("may not match" in w.lower() for w in result.warnings),
+            f"Warnings must include format-mismatch hint; got {result.warnings}",
+        )
+        self.assertFalse(
+            result.details.get("format_matches_file", True),
+            "format_matches_file must be False when CSV format is set on a .json file",
+        )
+
 
 class DatasetsBusinessRulesSchemaValidationTest(DatasetsTestBase):
     """Test comprehensive dataset schema validation"""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
@@ -546,9 +617,6 @@ class DatasetsBusinessRulesSchemaValidationTest(DatasetsTestBase):
                 {"name": "value", "type": "integer", "nullable": True},
             ]
         }
-        DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1, schema_json=schema
-        )
 
         result = self.rules._validate_schema_structure(schema)
         self.assertTrue(result.is_valid)
@@ -817,12 +885,16 @@ class DatasetsBusinessRulesSchemaValidationTest(DatasetsTestBase):
 
 
 class DatasetsBusinessRulesSchemaValidationIntegrationTest(DatasetsTestBase):
-    """Integration tests for schema validation with DatasetService"""
+    """Integration tests for schema validation via DatasetsBusinessRules.
+
+    Validates schema structure and field validation through the business
+    rules layer using factory-created datasets (does NOT go through
+    DatasetService — the DatasetService integration is tested elsewhere)."""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
         super().setUp()
-        self.dataset_service = self.service
         self.rules = DatasetsBusinessRules(tenant_id=str(self.tenant.id), user_id=str(self.user.id))
 
     def test_dataset_service_with_schema_validation(self):
@@ -864,6 +936,7 @@ class DatasetsBusinessRulesSchemaValidationIntegrationTest(DatasetsTestBase):
 
 class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
     """Test cases for dataset versioning validation methods."""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
@@ -1362,21 +1435,41 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
             tenant=self.tenant, file=self.file, format="CSV", version=1
         )
 
-        result = self.rules.validate(dataset, validation_type="structure")
+        result = self.rules.validate(dataset=dataset, validation_type="structure")
         self.assertIsNotNone(
             result, "validate on a persisted dataset must return a ValidationResult"
         )
+        self.assertTrue(
+            result.is_valid,
+            "Persisted dataset with valid structure must validate: "
+            f"errors={result.errors}",
+        )
+        self.assertIn("validation_checks", result.details)
+        self.assertIn("structure", result.details["validation_checks"])
 
     def test_validate_error_handling_invalid_dataset(self):
-        """Test error handling with invalid dataset"""
+        """Test error handling with a non-persisted Dataset.
+
+        A Dataset that exists only in-memory (no DB row) lacks a file
+        FK and a format value, so structure validation must return
+        is_valid=False with material errors about missing fields —
+        not crash with an ORM exception."""
         import uuid
 
         fake_dataset = Dataset(id=uuid.uuid4(), tenant=self.tenant)
 
-        # Non-persisted Dataset must return a result with errors (not crash)
-        result = self.rules.validate(fake_dataset, validation_type="structure")
+        result = self.rules.validate(dataset=fake_dataset, validation_type="structure")
         self.assertIsNotNone(
             result, "Validate on non-persisted dataset must return a ValidationResult"
+        )
+        self.assertFalse(
+            result.is_valid,
+            "Non-persisted Dataset must fail structure validation; "
+            f"got is_valid=True, errors={result.errors}",
+        )
+        self.assertGreater(
+            len(result.errors), 0,
+            "Must return at least one validation error (missing file, missing format, etc.)",
         )
 
     def test_validate_error_handling_none_dataset(self):
@@ -1384,17 +1477,8 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         # Validate(None) must return a result without crashing
         result = self.rules.validate(None, validation_type="structure")
         self.assertIsNotNone(result, "validate(None) must return a ValidationResult (with errors)")
-
-    def test_validate_structure_with_persisted_dataset(self):
-        """Test that structure validation handles persisted datasets without raising."""
-        dataset = DatasetFactory.create_dataset(
-            tenant=self.tenant, file=self.file, format="CSV", version=1
-        )
-
-        result = self.rules.validate(dataset=dataset, validation_type="structure")
-        self.assertIsNotNone(
-            result, "validate_structure on a persisted dataset must return a ValidationResult"
-        )
+        self.assertFalse(result.is_valid, "validate(None) must return is_valid=False")
+        self.assertIn("Dataset is required", result.errors[0])
 
     def test_validate_schema_with_persisted_dataset(self):
         """Test that schema validation handles persisted datasets without raising."""
@@ -1406,3 +1490,9 @@ class DatasetsBusinessRulesVersioningTest(DatasetsTestBase):
         self.assertIsNotNone(
             result, "validate_dataset_schema on a persisted dataset must return a ValidationResult"
         )
+        self.assertTrue(
+            result.is_valid,
+            "Persisted dataset with schema must produce a valid result; "
+            f"errors={result.errors}, warnings={result.warnings}",
+        )
+        self.assertIn("validation_checks", result.details)

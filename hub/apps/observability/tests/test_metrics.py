@@ -93,12 +93,18 @@ class MetricsFailureTest(TestCase):
         self.assertIn(response.status_code, [200, 503])
 
     def test_metrics_with_invalid_labels(self):
-        """Test metrics with None label values are accepted (converted to string)"""
-        http_requests_total.labels(method=None, route="/api/v1/test/", status_class="2xx").inc()
+        """Test metrics with None label values are converted to string 'None'"""
+        labeled = http_requests_total.labels(method=None, route="/api/v1/test/", status_class="2xx")
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_metrics_with_missing_labels(self):
-        """Test metrics with incomplete labels raises or fills defaults"""
-        http_requests_total.labels(method="GET").inc()
+        """Test metrics with partial labels work correctly"""
+        labeled = http_requests_total.labels(method="GET")
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
 
 class MetricsEdgeCasesTest(TestCase):
@@ -114,22 +120,34 @@ class MetricsEdgeCasesTest(TestCase):
 
     def test_metrics_with_empty_string_labels(self):
         """Test metrics with empty string labels"""
-        http_requests_total.labels(method="", route="", status_class="").inc()
+        labeled = http_requests_total.labels(method="", route="", status_class="")
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_metrics_with_very_long_labels(self):
         """Test metrics with very long label values"""
         long_route = "/api/v1/" + "a" * 1000 + "/"
-        http_requests_total.labels(method="GET", route=long_route, status_class="2xx").inc()
+        labeled = http_requests_total.labels(method="GET", route=long_route, status_class="2xx")
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_metrics_with_special_characters(self):
         """Test metrics with special characters in labels"""
-        http_requests_total.labels(
+        labeled = http_requests_total.labels(
             method="GET", route="/api/v1/test!@#$%^&*()/", status_class="2xx"
-        ).inc()
+        )
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_metrics_with_unicode(self):
         """Test metrics with unicode characters in labels"""
-        http_requests_total.labels(method="GET", route="/api/v1/测试/", status_class="2xx").inc()
+        labeled = http_requests_total.labels(method="GET", route="/api/v1/测试/", status_class="2xx")
+        before = labeled._value.get()
+        labeled.inc()
+        self.assertEqual(labeled._value.get(), before + 1)
 
     def test_metrics_multiple_increments(self):
         """Test multiple increments to same metric"""

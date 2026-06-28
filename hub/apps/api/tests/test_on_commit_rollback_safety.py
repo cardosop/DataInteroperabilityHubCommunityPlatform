@@ -22,6 +22,7 @@ from django.db import IntegrityError, transaction
 from django.test import TestCase, override_settings
 
 from hub.apps.jobs.models import Job, JobStatus
+from hub.apps.users.models import User
 
 pytestmark = pytest.mark.django_db(transaction=True)
 
@@ -111,10 +112,14 @@ class NotificationSignalRollbackTest(TestCase):
         mock_task.delay.assert_called_once_with(str(instance.id))
 
 
-class WebhookDeliveryRollbackTest(TestCase):
+class DjangoOnCommitRollbackWebhookPatternTest(TestCase):
     """
-    Proves that async webhook delivery tasks are NOT dispatched
-    when the enclosing transaction rolls back.
+    Documentation-level test: verifies Django's ``transaction.on_commit``
+    + rollback suppresses deferred callbacks.
+
+    Does NOT verify that ``WebhookDeliveryService`` actually calls
+    ``transaction.on_commit`` — a separate integration test against
+    ``hub.apps.webhooks.service`` is needed for that.
     """
 
     @override_settings(WEBHOOK_ASYNC_DELIVERY=True)
@@ -150,10 +155,13 @@ class WebhookDeliveryRollbackTest(TestCase):
         mock_deliver.delay.assert_called_once_with(_did)
 
 
-class ComplianceEnqueueRollbackTest(TestCase):
+class DjangoOnCommitRollbackCompliancePatternTest(TestCase):
     """
-    Proves that the compliance poll_compliance_job enqueue is
-    NOT dispatched when the enclosing transaction rolls back.
+    Documentation-level test: verifies Django's ``transaction.on_commit``
+    + rollback suppresses deferred callbacks.
+
+    Does NOT verify that the production compliance service actually calls
+    ``transaction.on_commit`` — a separate integration test is needed.
     """
 
     def test_enqueue_not_dispatched_on_rollback(self):
@@ -203,10 +211,14 @@ class ComplianceEnqueueRollbackTest(TestCase):
         )
 
 
-class ContractNotificationRollbackTest(TestCase):
+class DjangoOnCommitRollbackContractNotificationPatternTest(TestCase):
     """
-    Proves that contract-related notification email tasks are
-    NOT dispatched when the enclosing transaction rolls back.
+    Documentation-level test: verifies Django's ``transaction.on_commit``
+    + rollback suppresses deferred callbacks.
+
+    Does NOT verify that ``ContractService.create_contract`` /
+    ``ODPSContractService.link_odps_to_odcs`` actually call
+    ``transaction.on_commit`` — a separate integration test is needed.
     """
 
     @patch("hub.apps.notifications.tasks.send_odps_normalization_failure_email")
@@ -329,7 +341,7 @@ class InvitationEmailRollbackTest(TestCase):
         from hub.apps.users.views import UserViewSet
 
         viewset = UserViewSet()
-        fake_user = MagicMock()
+        fake_user = MagicMock(spec=User)
         fake_user.id = uuid.uuid4()
 
         try:
@@ -353,7 +365,7 @@ class InvitationEmailRollbackTest(TestCase):
         from hub.apps.users.views import UserViewSet
 
         viewset = UserViewSet()
-        fake_user = MagicMock()
+        fake_user = MagicMock(spec=User)
         fake_user.id = uuid.uuid4()
 
         with self.captureOnCommitCallbacks(execute=True), transaction.atomic():

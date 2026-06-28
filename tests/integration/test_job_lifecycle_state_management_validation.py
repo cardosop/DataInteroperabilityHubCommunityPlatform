@@ -589,16 +589,16 @@ class JobRetryLogicTest(TestCase):
         backoff_factor = get_job_retry_backoff_factor(job_type)
 
         # Retry 0: initial_delay * (backoff_factor ^ 0) = initial_delay
-        delay_0 = calculate_retry_delay(0, type=job_type)
+        delay_0 = calculate_retry_delay(0, job_type=job_type)
         self.assertEqual(delay_0, initial_delay)
 
         # Retry 1: initial_delay * (backoff_factor ^ 1)
-        delay_1 = calculate_retry_delay(1, type=job_type)
+        delay_1 = calculate_retry_delay(1, job_type=job_type)
         expected_1 = int(initial_delay * (backoff_factor**1))
         self.assertEqual(delay_1, expected_1)
 
         # Retry 2: initial_delay * (backoff_factor ^ 2)
-        delay_2 = calculate_retry_delay(2, type=job_type)
+        delay_2 = calculate_retry_delay(2, job_type=job_type)
         expected_2 = int(initial_delay * (backoff_factor**2))
         self.assertEqual(delay_2, expected_2)
 
@@ -634,7 +634,7 @@ class JobRetryLogicTest(TestCase):
         # Calculate delays for multiple retries
         delays = []
         for retry_count in range(5):
-            delay = calculate_retry_delay(retry_count, type=job_type)
+            delay = calculate_retry_delay(retry_count, job_type=job_type)
             delays.append(delay)
             # Verify delay is capped at max_delay
             self.assertLessEqual(delay, max_delay)

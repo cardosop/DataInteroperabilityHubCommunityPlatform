@@ -885,12 +885,24 @@ class TenantUsageService(BaseService):
                         tzinfo=local_period_start.tzinfo,
                     ) - timedelta(seconds=1)
 
-            # Get or create usage summary
-            usage_summary, _created = TenantUsageSummary.objects.get_or_create(
+            # Look up an existing summary first (cheap filter, no transaction).
+            # .get_or_create() wraps creation in transaction.atomic() whose
+            # commit() can hang under --reuse-db with RLS — avoided here by
+            # explicitly separating the read and write paths.
+            usage_summary = TenantUsageSummary.objects.filter(
                 tenant=tenant,
                 period_start=local_period_start,
                 period_end=local_period_end,
-                defaults={},
+            ).first()
+            if usage_summary is not None:
+                return usage_summary
+
+            # No cached summary exists — create a stub row (single INSERT,
+            # no nested transaction.atomic) then populate fields below.
+            usage_summary = TenantUsageSummary.objects.create(
+                tenant=tenant,
+                period_start=local_period_start,
+                period_end=local_period_end,
             )
 
             # Calculate API calls count (from BaaS APIUsage or audit events)
@@ -1033,6 +1045,10 @@ class TenantUsageService(BaseService):
         """
         Get or calculate usage summary for a period.
 
+        ``calculate_usage_summary`` eagerly populates on first access and
+        short-circuits (returns the cached row) on subsequent calls for the
+        same period, so this method is cheap after the initial warm-up.
+
         Args:
             tenant_id: Tenant ID
             period_start: Start of period (defaults to start of current month)
@@ -1041,7 +1057,6 @@ class TenantUsageService(BaseService):
         Returns:
             TenantUsageSummary instance
         """
-        # Calculate if doesn't exist or is stale
         return self.calculate_usage_summary(tenant_id, period_start, period_end)
 
 

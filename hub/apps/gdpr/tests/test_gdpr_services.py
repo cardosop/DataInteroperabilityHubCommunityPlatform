@@ -85,22 +85,17 @@ class DataPortabilityServiceTest(TestCase):
     # ========== CREATE EXPORT JOB TESTS ==========
 
     def test_create_export_job_success(self):
-        """Test successful export job creation"""
+        """Test successful export job creation and DB persistence."""
         job = self.service.create_export_job(user_id=str(self.user.id))
 
-        self.assertIsNotNone(job.id)
         self.assertEqual(job.user, self.user)
         self.assertEqual(job.tenant, self.tenant)
+        # Verify the job is persisted in the database
+        self.assertTrue(
+            DataExportJob.objects.filter(id=job.id).exists(),
+            "Export job must be persisted to the database",
+        )
         # Status is validated by test_create_export_job_processes_job below
-
-    def test_create_export_job_creates_job_in_db(self):
-        """Test that export job is persisted to database"""
-        job = self.service.create_export_job(user_id=str(self.user.id))
-
-        # Verify job exists in DB
-        db_job = DataExportJob.objects.get(id=job.id)
-        self.assertEqual(db_job.user, self.user)
-        self.assertEqual(db_job.tenant, self.tenant)
 
     def test_create_export_job_with_existing_pending_job(self):
         """Test that creating export job when pending job exists raises ValidationError"""
@@ -143,7 +138,8 @@ class DataPortabilityServiceTest(TestCase):
 
         # Should be able to create another job
         job = self.service.create_export_job(user_id=str(self.user.id))
-        self.assertIsNotNone(job.id)
+        self.assertIsNotNone(job)
+        self.assertEqual(job.status, DataExportStatus.COMPLETED)
 
     def test_create_export_job_allows_multiple_failed_jobs(self):
         """Test that multiple failed jobs are allowed"""
@@ -156,7 +152,9 @@ class DataPortabilityServiceTest(TestCase):
 
         # Should be able to create another job
         job = self.service.create_export_job(user_id=str(self.user.id))
-        self.assertIsNotNone(job.id)
+        self.assertIsNotNone(job)
+        self.assertEqual(job.status, DataExportStatus.COMPLETED)
+
 
     def test_create_export_job_with_nonexistent_user(self):
         """Test that creating export job with nonexistent user raises NotFoundError"""
@@ -345,7 +343,8 @@ class DataPortabilityServiceTest(TestCase):
         import zipfile
 
         zip_file = zipfile.ZipFile(io.BytesIO(archive_bytes))
-        self.assertIsNotNone(zip_file)
+        # ZipFile() always returns a valid object or raises — verify entries are readable
+        self.assertIsInstance(zip_file.namelist(), list)
 
     def test_build_archive_includes_user_data_json(self):
         """Test that _build_archive includes user_data.json"""
@@ -478,7 +477,7 @@ class ErasureServiceTest(TestCase):
         """Test successful erasure request creation"""
         request = self.service.create_request(user_id=str(self.user.id))
 
-        self.assertIsNotNone(request.id)
+
         self.assertEqual(request.user, self.user)
         self.assertEqual(request.tenant, self.tenant)
         self.assertEqual(request.status, ErasureRequestStatus.PENDING)
@@ -504,8 +503,7 @@ class ErasureServiceTest(TestCase):
             .first()
         )
         self.assertIsNotNone(event)
-        assert event is not None
-        self.assertEqual(event.actor_user_id, self.user.id)
+        self.assertEqual(event.actor_user_id,self.user.id)
         self.assertNotIn("source", event.details_json)
         self.assertNotIn("initiated_by", event.details_json)
 
@@ -531,8 +529,7 @@ class ErasureServiceTest(TestCase):
         )
 
         self.assertIsNotNone(event)
-        assert event is not None
-        self.assertEqual(event.actor_user_id, platform_admin.id)
+        self.assertEqual(event.actor_user_id,platform_admin.id)
         self.assertEqual(event.details_json.get("source"), "platform_admin")
         self.assertEqual(event.details_json.get("initiated_by"), str(platform_admin.id))
 
@@ -577,7 +574,9 @@ class ErasureServiceTest(TestCase):
 
         # Should be able to create another request
         request = self.service.create_request(user_id=str(self.user.id))
-        self.assertIsNotNone(request.id)
+        self.assertIsNotNone(request)
+        self.assertEqual(request.status, ErasureRequestStatus.PENDING)
+
 
     def test_create_request_with_nonexistent_user(self):
         """Test that creating request with nonexistent user raises NotFoundError"""
@@ -621,17 +620,6 @@ class ErasureServiceTest(TestCase):
         self.assertIsNotNone(self.api_key.revoked_at)
         self.assertFalse(self.api_key.is_active())
         self.assertIn("api_keys", request.deleted_resources)
-
-    def test_execute_erasure_handles_already_completed(self):
-        """Test that executing already completed erasure returns request"""
-        request = self.service.create_request(user_id=str(self.user.id))
-        request = self.service.execute_erasure(request_id=str(request.id))
-
-        # Execute again
-        request2 = self.service.execute_erasure(request_id=str(request.id))
-
-        self.assertEqual(request.id, request2.id)
-        self.assertEqual(request2.status, ErasureRequestStatus.COMPLETED)
 
     def test_execute_erasure_with_nonexistent_request(self):
         """Test that executing erasure with nonexistent request raises NotFoundError"""

@@ -251,11 +251,127 @@ class PersistenceRetryTest(TestCase):
         self.assertEqual(event_id, event_data["event_id"])
         self.assertTrue(Event.objects.filter(event_id=event_data["event_id"]).exists())
 
-    def test_persist_event_async_retry_on_failure(self):
-        """Retry-on-transient-failure requires real DB failure; no mocks per project policy."""
-        self.skipTest(
-            "Retry-on-transient-failure scenario requires real DB failure injection; "
-            "no mocks. Success path covered by test_persist_event_async_retry."
+    def test_persist_event_async_retry_on_transient_failure(self):
+        """persist_event_async recovers after a transient lock-timeout failure.
+
+        Uses a helper thread that acquires an ``EXCLUSIVE`` table lock on the
+        ``events`` table via a raw *psycopg2* connection.  The test sets a
+        short ``lock_timeout`` so the first ``INSERT`` attempt fails with
+        ``OperationalError`` (canceling statement due to lock timeout).  The
+        retry loop catches the exception and sleeps; a release thread drops
+        the lock before the second attempt, so the retry succeeds.
+
+        The helper uses ``LOCK TABLE … NOWAIT`` so that if the lock cannot
+        be acquired immediately (e.g. another test's transaction still holds
+        a conflicting lock in a ``--reuse-db`` run), the test retries the
+        whole setup once rather than hanging.
+
+        No mocks — real PostgreSQL locking, real Django error handling, real
+        retry loop.
+        """
+        import threading
+        import time
+
+        from django.conf import settings
+        from django.db import connection
+
+        db = settings.DATABASES["default"]
+
+        # ── Helper: hold an EXCLUSIVE lock on the events table ──────────
+        lock_acquired = threading.Event()
+        release_lock = threading.Event()
+        helper_error: list[Exception | None] = [None]
+
+        def _hold_table_lock():
+            import psycopg2
+
+            try:
+                conn = psycopg2.connect(
+                    dbname=db["NAME"],
+                    user=db["USER"],
+                    password=db["PASSWORD"],
+                    host=db.get("HOST", "localhost"),
+                    port=db.get("PORT", "5432"),
+                    connect_timeout=5,
+                )
+                conn.autocommit = False
+                try:
+                    # NOWAIT fails immediately if another transaction holds a
+                    # conflicting lock — no hanging, clear error message.
+                    conn.cursor().execute("LOCK TABLE events IN EXCLUSIVE MODE NOWAIT")
+                    lock_acquired.set()
+                    release_lock.wait(timeout=30)
+                finally:
+                    conn.rollback()
+                    conn.close()
+            except Exception as exc:
+                helper_error[0] = exc
+
+        # Try the whole lock setup up to twice — the first attempt may fail
+        # when another test's transaction hasn't released its locks yet
+        # (common with --reuse-db).
+        for _attempt in range(2):
+            lock_acquired.clear()
+            release_lock.clear()
+            helper_error[0] = None
+
+            locker = threading.Thread(target=_hold_table_lock, daemon=True)
+            locker.start()
+            acquired = lock_acquired.wait(timeout=5)
+            if acquired:
+                break
+            locker.join(timeout=2)
+            # Brief pause to let stale transactions release their locks
+            time.sleep(1)
+        else:
+            self.fail(
+                "Helper thread could not acquire EXCLUSIVE table lock on "
+                "'events' after 2 attempts (NOWAIT).  A concurrent "
+                "transaction may be holding a conflicting lock.  "
+                f"Last helper error: {helper_error[0]!r}"
+            )
+
+        # ── Release thread: drop the lock while the retry loop sleeps ──
+        def _release_after_delay(delay: float):
+            time.sleep(delay)
+            release_lock.set()
+
+        threading.Thread(target=_release_after_delay, args=(0.2,), daemon=True).start()
+
+        event_data = {
+            "event_id": str(uuid.uuid4()),
+            "event_type": "contract.created",
+            "event_version": "1.0.0",
+            "timestamp": timezone.now().isoformat(),
+            "source": {
+                "service": "hub",
+                "tenant_id": str(self.tenant.id),
+                "user_id": str(self.user.id),
+            },
+            "data": {"contract_id": str(uuid.uuid4())},
+            "metadata": {},
+        }
+
+        # Set a short lock_timeout so the INSERT fails quickly instead of
+        # blocking until the lock is released.
+        # Reset in finally so downstream tests aren't affected.
+        try:
+            with connection.cursor() as cursor:
+                cursor.execute("SET lock_timeout = '100ms'")
+
+            event_id = persist_event_async(
+                event_data, max_retries=1, retry_delay_seconds=0.5
+            )
+        finally:
+            with connection.cursor() as cursor:
+                cursor.execute("SET lock_timeout = '0'")
+
+        locker.join(timeout=5)
+
+        self.assertEqual(event_id, event_data["event_id"])
+        self.assertTrue(
+            Event.objects.filter(event_id=event_data["event_id"]).exists(),
+            "Event should be persisted after retry recovers from lock timeout.",
         )
 
     def test_persist_events_batch_async_retry(self):
@@ -321,7 +437,8 @@ class ConsistencyValidationTest(TestCase):
         _validate_event_persistence(event_data["event_id"], event_data)
 
         # Should not raise exception
-        self.assertIsNotNone(True)  # Operation completed without raising
+        # Validation completed without raising — function under test uses
+        # raise on failure, so reaching this point is the success assertion.
 
     def test_validate_event_persistence_failure(self):
         """Test event persistence validation detects failures."""
@@ -370,7 +487,8 @@ class ConsistencyValidationTest(TestCase):
         _validate_batch_persistence(events_data, 5)
 
         # Should not raise exception
-        self.assertIsNotNone(True)  # Operation completed without raising
+        # Validation completed without raising — function under test uses
+        # raise on failure, so reaching this point is the success assertion.
 
 
 class DualWriteOptimizationTest(TestCase):

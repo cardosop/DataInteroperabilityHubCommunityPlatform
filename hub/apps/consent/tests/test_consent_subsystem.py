@@ -188,7 +188,6 @@ class ConsentApiIntegrationTests(TestCase):
             tenant=self.tenant, action="CONSENT_PURPOSE_CHANGED", resource_id=str(pid)
         ).first()
         self.assertIsNotNone(ev)
-        assert ev is not None
         self.assertEqual(ev.details_json.get("operation"), "created")
         self.assertEqual(ev.details_json.get("purpose_key"), f"api-created-{slug}")
 
@@ -307,3 +306,15 @@ class ConsentWebhookGateTests(TestCase):
             event_types=[str(WebhookEventType.ASSET_CREATED)],
         )
         self.assertIsNotNone(wh.id)
+        # Verify the consent gate was enforced: the webhook-purpose consent
+        # record must exist and be in GRANTED state.
+        from hub.apps.consent.models import ConsentRecord
+
+        granted = ConsentRecord.objects.filter(
+            tenant=self.tenant,
+            user=self.user,
+            purpose__key=WEBHOOK_PURPOSE_KEY,
+            status=ConsentRecordStatus.GRANTED,
+        ).exists()
+        self.assertTrue(granted,
+                        "Webhook consent gate: GRANTED record must exist")

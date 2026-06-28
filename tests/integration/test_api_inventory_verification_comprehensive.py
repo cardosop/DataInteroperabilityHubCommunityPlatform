@@ -129,8 +129,8 @@ class TestAPIInventoryVerificationScript:
         assert "endpoints" in result.stdout.lower(), (
             f"Script should report endpoint count.\nSTDOUT:\n{result.stdout}"
         )
-        # Should have a number
-        assert re.search(r"\d+\s+endpoints?", result.stdout, re.IGNORECASE), (
+        # Should report endpoint count — the script outputs "Total endpoints: NNN"
+        assert re.search(r"endpoints?:\s+\d+", result.stdout, re.IGNORECASE), (
             f"Script should report numeric endpoint count.\nSTDOUT:\n{result.stdout}"
         )
 
@@ -164,18 +164,24 @@ class TestAPIInventoryFile:
         )
 
     def test_inventory_file_has_no_old_compliance_patterns(self):
-        """Test that inventory file has no old compliance patterns"""
+        """Test that inventory file has no old compliance patterns in endpoint tables"""
         content = self.inventory_path.read_text(encoding="utf-8")
-        # Should not have old pattern
-        assert "/compliance-runs/" not in content, (
-            "Inventory should not contain old '/compliance-runs/' pattern"
+        # Exclude the Notes section which documents old→new pattern mappings
+        # for reference; only endpoint table rows should use standardized patterns.
+        body = content.split("## Notes")[0] if "## Notes" in content else content
+        assert "/compliance-runs/" not in body, (
+            "Inventory should not contain old '/compliance-runs/' pattern in endpoint tables"
         )
 
     def test_inventory_file_has_no_old_dq_patterns(self):
-        """Test that inventory file has no old DQ patterns"""
+        """Test that inventory file has no old DQ patterns in endpoint tables"""
         content = self.inventory_path.read_text(encoding="utf-8")
-        # Should not have old pattern
-        assert "/dq-runs/" not in content, "Inventory should not contain old '/dq-runs/' pattern"
+        # Exclude the Notes section which documents old→new pattern mappings
+        # for reference; only endpoint table rows should use standardized patterns.
+        body = content.split("## Notes")[0] if "## Notes" in content else content
+        assert "/dq-runs/" not in body, (
+            "Inventory should not contain old '/dq-runs/' pattern in endpoint tables"
+        )
 
     def test_inventory_file_has_standardized_runs_patterns(self):
         """Test that inventory file uses standardized runs patterns"""

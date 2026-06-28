@@ -6,6 +6,8 @@ asset, dataset, contract created. Uses real storage when available.
 No mocks/stubs in critical paths.
 """
 
+import hashlib
+import json
 import uuid
 
 import pytest
@@ -19,7 +21,7 @@ from hub.apps.contracts.models import Contract
 from hub.apps.datasets.models import Dataset
 from hub.apps.files.models import File, FileStatus
 from hub.apps.files.storage import S3StorageClient
-from hub.apps.tenants.models import Tenant
+from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import UserStatus
@@ -32,13 +34,17 @@ class TestDataFirstAssetFlowIntegration(TestCase):
     """Integration tests for data-first asset creation API."""
 
     def setUp(self):
+        from django.core.cache import cache
+
+        cache.clear()
         self.client = APIClient()
         uid = str(uuid.uuid4())[:8]
         self.tenant = Tenant.objects.create(
             name=f"Data First Flow Tenant {uid}",
             slug=f"data-first-flow-{uid}",
             status="ACTIVE",
-            kyc_status="UNVERIFIED",
+            kyc_status=KYCStatus.VERIFIED,
+            compliance_fail_closed_enabled=False,
         )
         ensure_tenant_has_active_subscription(self.tenant)
         self.user = User.objects.create_user(
@@ -79,15 +85,25 @@ class TestDataFirstAssetFlowIntegration(TestCase):
         """POST data-first with valid file creates asset, dataset, contract."""
         self.client.force_authenticate(user=self.user)
         key = f"integration-asset-{uuid.uuid4().hex[:8]}"
+        body = {
+            "file_id": str(self.file_obj.id),
+            "key": key,
+            "name": "Integration Test Asset",
+            "description": "Created via integration test",
+        }
+        # Use canonical JSON bytes so the idempotency-key SHA matches
+        # what the server computes from request.body (see
+        # IdempotencyService.canonical_body_bytes and
+        # hub/apps/testing/idempotency_helpers.py).
+        canonical_body = json.dumps(
+            body, sort_keys=True, separators=(",", ":")
+        ).encode("utf-8")
+        idem_key = f"{self.tenant.id}:{hashlib.sha256(canonical_body).hexdigest()}"
         response = self.client.post(
             "/api/v1/assets/data-first/",
-            {
-                "file_id": str(self.file_obj.id),
-                "key": key,
-                "name": "Integration Test Asset",
-                "description": "Created via integration test",
-            },
-            format="json",
+            canonical_body,
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=idem_key,
         )
         self.assertEqual(
             response.status_code,

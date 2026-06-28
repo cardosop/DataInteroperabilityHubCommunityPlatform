@@ -26,6 +26,25 @@ RUN apt-get update && \
     libcairo2 \
     && rm -rf /var/lib/apt/lists/*
 
+# Install Docker CLI + Compose v2 plugin (needed for Docker Compose integration
+# tests that run inside the container; docker.sock is mounted from the host).
+RUN curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.3.1.tgz \
+    -o /tmp/docker.tgz && \
+    tar -xzf /tmp/docker.tgz -C /tmp && \
+    mv /tmp/docker/docker /usr/local/bin/docker && \
+    chmod +x /usr/local/bin/docker && \
+    rm -rf /tmp/docker /tmp/docker.tgz && \
+    mkdir -p /usr/local/lib/docker/cli-plugins && \
+    curl -fsSL "https://github.com/docker/compose/releases/download/v2.29.1/docker-compose-linux-x86_64" \
+    -o /usr/local/lib/docker/cli-plugins/docker-compose && \
+    chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Install kubectl (needed for Kubernetes manifest integration tests;
+# validates kustomize build output via apply --dry-run=client).
+RUN curl -fsSL "https://dl.k8s.io/release/$(curl -fsSL https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl" \
+    -o /usr/local/bin/kubectl && \
+    chmod +x /usr/local/bin/kubectl
+
 # Create non-root user early — this layer is cacheable until the base
 # image changes (rare).  G3.1 (glittery-herding-graham): security hardening
 # matching services/prefect-integration/Dockerfile.

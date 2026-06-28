@@ -129,11 +129,12 @@ class EventBusPerformanceTest(TestCase):
         num_events = 500
         event_type = "contract.created"
 
-        # Use synchronous persistence for accurate performance measurement
+        # Baseline count to isolate this test's events from --reuse-db leftovers
+        baseline = Event.objects.filter(event_type=event_type).count()
+
         with override_settings(
             EVENT_BUS_ASYNC_PERSISTENCE=False, EVENT_BUS_WRITE_BEHIND_ENABLED=False
         ):
-            # Measure persistence time
             start_time = time.time()
             for i in range(num_events):
                 self.event_bus.publish(
@@ -146,13 +147,10 @@ class EventBusPerformanceTest(TestCase):
             persistence_throughput = num_events / elapsed_time
 
             # Verify events were persisted (synchronous, so should be immediate)
-            # Note: If event bus is unavailable (503), events may not be persisted
-            persisted_count = Event.objects.filter(event_type=event_type).count()
-            # Allow for service unavailability - if persisted_count is less, that's acceptable
-            # The test verifies performance, not exact persistence count
+            persisted_count = Event.objects.filter(event_type=event_type).count() - baseline
             if persisted_count < num_events:
                 self.skipTest(
-                    f"Event bus may be unavailable (persisted {persisted_count}/{num_events} events)"
+                    f"Event bus may be unavailable (persisted {persisted_count}/{num_events})"
                 )
             self.assertEqual(persisted_count, num_events)
 

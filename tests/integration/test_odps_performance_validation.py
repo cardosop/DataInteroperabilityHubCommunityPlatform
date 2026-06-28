@@ -76,6 +76,9 @@ def _get_semantic_service_url():
 
 
 SEMANTIC_SERVICE_URL = _get_semantic_service_url()
+_SEMANTIC_AUTH_HEADERS = {
+    "X-Internal-Api-Key": os.getenv("INTERNAL_API_KEY", "test-internal-api-key-for-test-env")
+}
 
 # Performance targets (from task 10.1.6)
 # Note: Targets adjusted based on actual performance measurements in Docker Compose environment
@@ -492,7 +495,6 @@ class TestExportGenerationPerformance:
 class TestSemanticMappingPerformance:
     """Performance tests for semantic mapping (target: <200ms)"""
 
-@pytest.mark.skip(reason="f'Semantic service not available at {SEMANTIC_SERVICE_URL}'")
     def test_semantic_mapping_performance_basic(self, sample_odps_product):
         """Test semantic mapping performance for basic product"""
         product_uuid = f"perf-semantic-{uuid.uuid4().hex[:8]}"
@@ -503,7 +505,8 @@ class TestSemanticMappingPerformance:
             response = httpx.post(
                 f"{SEMANTIC_SERVICE_URL}/map/odps",
                 json={"product": sample_odps_product, "product_uuid": product_uuid},
-                timeout=60.0,  # Increased timeout for complex operations
+                headers=_SEMANTIC_AUTH_HEADERS,
+                timeout=60.0,
             )
             mapping_time_ms = (time.time() - start_time) * 1000
 
@@ -523,8 +526,8 @@ class TestSemanticMappingPerformance:
             )
 
         except httpx.ConnectError:
+            pytest.skip("Semantic service not available for performance testing")
 
-@pytest.mark.skip(reason="f'Semantic service not available at {SEMANTIC_SERVICE_URL}'")
     def test_semantic_mapping_performance_complex(self, sample_odps_product):
         """Test semantic mapping performance for complex product"""
         # Create a copy to avoid modifying the fixture
@@ -548,7 +551,8 @@ class TestSemanticMappingPerformance:
         try:
             response = httpx.post(
                 f"{SEMANTIC_SERVICE_URL}/map/odps",
-                json={"product": product, "product_uuid": product_uuid},
+            json={"product": product, "product_uuid": product_uuid},
+                headers=_SEMANTIC_AUTH_HEADERS,
                 timeout=60.0,  # Increased timeout for complex operations
             )
             mapping_time_ms = (time.time() - start_time) * 1000
@@ -564,8 +568,8 @@ class TestSemanticMappingPerformance:
             )
 
         except httpx.ConnectError:
+            pytest.skip("Semantic service not available for performance testing")
 
-@pytest.mark.skip(reason="f'Semantic service not available at {SEMANTIC_SERVICE_URL}'")
     def test_semantic_mapping_performance_multilingual(self, sample_odps_product):
         """Test semantic mapping performance for multilingual product"""
         # Create a copy to avoid modifying the fixture
@@ -592,7 +596,8 @@ class TestSemanticMappingPerformance:
         try:
             response = httpx.post(
                 f"{SEMANTIC_SERVICE_URL}/map/odps",
-                json={"product": product, "product_uuid": product_uuid},
+            json={"product": product, "product_uuid": product_uuid},
+                headers=_SEMANTIC_AUTH_HEADERS,
                 timeout=60.0,  # Increased timeout for complex operations
             )
             mapping_time_ms = (time.time() - start_time) * 1000
@@ -610,8 +615,8 @@ class TestSemanticMappingPerformance:
             )
 
         except httpx.ConnectError:
+            pytest.skip("Semantic service not available for performance testing")
 
-@pytest.mark.skip(reason="f'Semantic service not available at {SEMANTIC_SERVICE_URL}'")
     def test_semantic_mapping_performance_batch(self, sample_odps_product):
         """Test semantic mapping performance for batch of products"""
         mapping_times = []
@@ -627,7 +632,8 @@ class TestSemanticMappingPerformance:
                 start_time = time.time()
                 response = httpx.post(
                     f"{SEMANTIC_SERVICE_URL}/map/odps",
-                    json={"product": product, "product_uuid": product_uuid},
+            json={"product": product, "product_uuid": product_uuid},
+                    headers=_SEMANTIC_AUTH_HEADERS,
                     timeout=60.0,  # Increased timeout for complex operations
                 )
                 mapping_time_ms = (time.time() - start_time) * 1000
@@ -646,12 +652,12 @@ class TestSemanticMappingPerformance:
             )
 
         except httpx.ConnectError:
+            pytest.skip("Semantic service not available for performance testing")
 
 
 class TestPerformanceComprehensive:
     """Comprehensive performance tests combining all aspects"""
 
-@pytest.mark.skip(reason="f'Semantic service not available at {SEMANTIC_SERVICE_URL}'")
     def test_end_to_end_performance(self, sample_odps_product, authenticated_client):
         """Test end-to-end performance: ingestion + mapping + export"""
         client, _tenant, _user = authenticated_client
@@ -684,7 +690,8 @@ class TestPerformanceComprehensive:
         try:
             mapping_response = httpx.post(
                 f"{SEMANTIC_SERVICE_URL}/map/odps",
-                json={"product": sample_odps_product, "product_uuid": product_uuid},
+            json={"product": sample_odps_product, "product_uuid": product_uuid},
+                headers=_SEMANTIC_AUTH_HEADERS,
                 timeout=60.0,  # Increased timeout for complex operations
             )
             mapping_time = (time.time() - mapping_start) * 1000
@@ -693,6 +700,7 @@ class TestPerformanceComprehensive:
                 f"Semantic mapping failed: {mapping_response.text}"
             )
         except httpx.ConnectError:
+            pytest.skip("Semantic service not available for performance testing")
 
         # Step 3: Export
         export_start = time.time()

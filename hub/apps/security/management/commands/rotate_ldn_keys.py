@@ -141,7 +141,7 @@ class Command(BaseCommand):
             client = _build_client()
             try:
                 client.update_secret(SecretId=secret_id, SecretString=secret_body)
-            except Exception:
+            except client.exceptions.ResourceNotFoundException:
                 # Secret doesn't exist yet — create it.
                 client.create_secret(Name=secret_id, SecretString=secret_body)
         except Exception as exc:

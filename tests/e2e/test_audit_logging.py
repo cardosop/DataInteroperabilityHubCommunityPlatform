@@ -20,7 +20,10 @@ from rest_framework import status
 from hub.apps.audit.models import AuditEvent
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
-from hub.apps.testing.role_support import ensure_user_has_data_provider_role
+from hub.apps.testing.role_support import (
+    ensure_user_has_data_provider_role,
+    ensure_user_has_tenant_admin_role,
+)
 from hub.apps.users.models import UserStatus
 
 from .conftest import E2ETestBase, get_response_data
@@ -231,6 +234,7 @@ class AuditLoggingE2ETest(E2ETestBase):
             status=UserStatus.ACTIVE,
         )
         ensure_user_has_data_provider_role(other_user)
+        ensure_user_has_tenant_admin_role(other_user)
 
         # Switch to other user
         self.client.force_authenticate(user=other_user)

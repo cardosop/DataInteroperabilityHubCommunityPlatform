@@ -342,7 +342,7 @@ class JobProcessorsTest(TestCase):
 
         self.assertIn("Unknown job type", str(cm.exception))
 
-    def test_execute_job_logic_dq_run(self):
+    def test_execute_job_logic_dq_run_raises_value_error_for_missing_run(self):
         """Test _execute_job_logic routes to DQ_RUN processor"""
         dq_run_id = uuid.uuid4()
         job = JobFactory.create_job(
@@ -359,7 +359,7 @@ class JobProcessorsTest(TestCase):
         with self.assertRaises(ValueError):
             _execute_job_logic(job, JobType.DQ_RUN)
 
-    def test_execute_job_logic_compliance_run(self):
+    def test_execute_job_logic_compliance_run_raises_value_error_for_missing_run(self):
         """Test _execute_job_logic routes to COMPLIANCE_RUN processor"""
         compliance_run_id = uuid.uuid4()
         job = JobFactory.create_job(
@@ -376,7 +376,7 @@ class JobProcessorsTest(TestCase):
         with self.assertRaises(ValueError):
             _execute_job_logic(job, JobType.COMPLIANCE_RUN)
 
-    def test_execute_job_logic_contract_validation(self):
+    def test_execute_job_logic_contract_validation_raises_value_error(self):
         """Test _execute_job_logic routes to CONTRACT_VALIDATION processor"""
         contract_id = uuid.uuid4()
         job = JobFactory.create_job(
@@ -392,7 +392,7 @@ class JobProcessorsTest(TestCase):
         with self.assertRaises(ValueError):
             _execute_job_logic(job, JobType.CONTRACT_VALIDATION)
 
-    def test_execute_job_logic_semantic_mapping(self):
+    def test_execute_job_logic_semantic_mapping_raises_value_error(self):
         """Test _execute_job_logic routes to SEMANTIC_MAPPING processor"""
         job = JobFactory.create_job(
             tenant=self.tenant,
@@ -408,7 +408,7 @@ class JobProcessorsTest(TestCase):
         with self.assertRaises(ValueError):
             _execute_job_logic(job, JobType.SEMANTIC_MAPPING)
 
-    def test_execute_job_logic_contract_migration(self):
+    def test_execute_job_logic_contract_migration_raises_value_error(self):
         """Test _execute_job_logic routes to CONTRACT_MIGRATION processor"""
         contract_id = uuid.uuid4()
         job = JobFactory.create_job(

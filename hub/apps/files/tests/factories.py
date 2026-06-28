@@ -72,7 +72,7 @@ class FileFactory:
 
         scan_status = kwargs.pop("scan_status", None)
         if scan_status is None:
-            if status in (FileStatus.ACTIVE, FileStatus.COMPLETED):
+            if status == FileStatus.ACTIVE:
                 scan_status = FileScanStatus.CLEAN
             else:
                 scan_status = FileScanStatus.PENDING_SCAN

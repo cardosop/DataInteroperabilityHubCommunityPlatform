@@ -31,6 +31,11 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
         self.tenant.compliance_consent_enabled = True
         self.tenant.save(update_fields=["compliance_consent_enabled"])
 
+        # ConsentPurpose create/update requires TENANT_ADMIN role (IsTenantAdmin permission)
+        # Consent dashboard requires TENANT_ADMIN or DPO (IsTenantAdminOrDPO permission)
+        from hub.apps.testing.role_support import ensure_user_has_tenant_admin_role
+        ensure_user_has_tenant_admin_role(self.user)
+
         # Configure consent signing keys so grant/revoke operations succeed
         cfg = {str(self.tenant.id): [_hex_key(88)]}
         self._keys = override_settings(CONSENT_SIGNING_KEYS_JSON=cfg)
@@ -51,7 +56,7 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
         """End-to-end: grant consent → verify record + audit → revoke → verify."""
         # ── Grant consent ──────────────────────────────────────────
         grant_resp = self.client.post(
-            "/api/v1/governance/consent-records/",
+            "/api/v1/consent/consent-records/",
             {"purpose_id": str(self.purpose.id), "payload": {"channel": "email", "version": 1}},
             format="json",
         )
@@ -78,7 +83,7 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
 
         # ── Revoke consent ─────────────────────────────────────────
         revoke_resp = self.client.post(
-            f"/api/v1/governance/consent-records/{record_id}/revoke/",
+            f"/api/v1/consent/consent-records/{record_id}/revoke/",
             {},
             format="json",
         )
@@ -97,7 +102,7 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
 
     def test_consent_dashboard_accessible(self):
         """Verify consent dashboard returns 200 for TENANT_ADMIN."""
-        dash_resp = self.client.get("/api/v1/governance/consent-dashboard/")
+        dash_resp = self.client.get("/api/v1/consent/consent-dashboard/")
         self.assertEqual(dash_resp.status_code, status.HTTP_200_OK)
         self.assertIn("purposes", dash_resp.data)
 
@@ -105,9 +110,9 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
         """Verify CONSENT_PURPOSE_CHANGED emits on both create and update."""
         # Create
         create_resp = self.client.post(
-            "/api/v1/governance/consent-purposes/",
+            "/api/v1/consent/consent-purposes/",
             {
-                "key": "e2e.create.test",
+                "key": "e2e-create-test",
                 "name": "E2E Created Purpose",
                 "description": "Testing create audit",
                 "retention_days": 60,
@@ -129,9 +134,9 @@ class ConsentGrantRevokeE2ETests(E2ETestBase):
 
         # Update
         update_resp = self.client.put(
-            f"/api/v1/governance/consent-purposes/{pid}/",
+            f"/api/v1/consent/consent-purposes/{pid}/",
             {
-                "key": "e2e.create.test",
+                "key": "e2e-create-test",
                 "name": "E2E Updated Purpose",
                 "description": "Testing update audit",
                 "retention_days": 90,

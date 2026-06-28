@@ -191,8 +191,9 @@ class SlidingWindowAlgorithmTest(TestCase):
 
         sliding_window_check(key="test-key", limit=10, window=60, current_time=150.0)
 
-        # Should call Redis
-        mock_client.zcard.assert_called_once()
+        # zcard is called twice in the sliding-window flow (before and after
+        # the zadd), matching the production code at utils.py:243 and :271.
+        self.assertEqual(mock_client.zcard.call_count, 2)
         mock_client.zadd.assert_called_once()
 
     @patch("hub.apps.rate_limiting.utils.cache")
@@ -327,8 +328,10 @@ class MultipleTimeWindowsTest(TestCase):
 
         # Sliding window should prevent burst
         # (In real scenario, entries from 100-110 would still be in window)
-        # This test verifies the algorithm correctly removes expired entries
-        mock_client.zremrangebyscore.assert_called_once()
+        # This test verifies the algorithm correctly removes expired entries.
+        # zremrangebyscore is called twice in the sliding-window flow
+        # (before zcard at utils.py:236 and during cleanup at :336).
+        self.assertEqual(mock_client.zremrangebyscore.call_count, 2)
 
 
 class GetRateLimitInfoTest(TestCase):

@@ -850,29 +850,35 @@ class DataMeshServicePolicyOperationsTest(TestCase):
         self.assertIn("active", str(cm.exception).lower())
 
     def test_apply_policy_validates_overrides_structure(self):
-        """Test that apply_policy validates overrides structure"""
-        # Test with valid overrides (dict)
+        """Test that apply_policy validates overrides is a dict."""
+        # Test with valid overrides (dict) — should succeed
         application = self.service.apply_policy(
             domain_id=str(self.domain.id), policy_id=str(self.policy.id), overrides={"priority": 50}
         )
         self.assertIsNotNone(application)
 
-        # The validation for invalid overrides happens at the model level
-        # when PolicyApplication.clean() is called, which validates overrides is a dict
-        # This is tested in test_policy_compliance_models.py
+        # Test with invalid overrides (non-dict) — should raise ValidationError
+        with self.assertRaises(ValidationError):
+            self.service.apply_policy(
+                domain_id=str(self.domain.id), policy_id=str(self.policy.id),
+                overrides="not-a-dict",
+            )
 
     def test_apply_policy_creates_compliance_check(self):
-        """Test that apply_policy creates compliance check"""
+        """Test that apply_policy creates a compliance report for the domain."""
         from hub.apps.mesh.models import ComplianceReport
+
+        # Count compliance reports before
+        count_before = ComplianceReport.objects.filter(domain=self.domain).count()
 
         application = self.service.apply_policy(
             domain_id=str(self.domain.id), policy_id=str(self.policy.id)
         )
 
-        # Check that compliance report was created or updated
-        ComplianceReport.objects.filter(domain=self.domain)
-        # Compliance checking may create or update reports
-        # The exact behavior depends on implementation
+        # Verify a compliance report was created
+        count_after = ComplianceReport.objects.filter(domain=self.domain).count()
+        self.assertGreater(count_after, count_before,
+                           "apply_policy should create at least one compliance report")
         self.assertIsNotNone(application)
 
     @override_settings(

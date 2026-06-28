@@ -156,9 +156,16 @@ class Command(BaseCommand):
         total_count = eligible.count()
 
         if total_count == 0:
-            self.stdout.write(
-                self.style.SUCCESS("No unarchived audit events older than retention period.")
-            )
+            if dry_run:
+                self.stdout.write(
+                    self.style.WARNING(
+                        "DRY RUN: No unarchived audit events older than retention period."
+                    )
+                )
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS("No unarchived audit events older than retention period.")
+                )
             return
 
         if dry_run:

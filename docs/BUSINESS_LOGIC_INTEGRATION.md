@@ -11,9 +11,11 @@ composed into ordered chains via `@register_chain("chain.name")`.
 
 ### Framework Components
 
-- **Base Class**: `hub.apps.core.business_rules.base.BusinessRules` — abstract foundation for all rule implementations
-- **Chain Registry**: `hub.apps.core.business_rules.chain_registry` — centralized registration of rule chains
-- **Chain Runner**: `execute_chain("chain.name", ctx, **kwargs)` — executes an ordered sequence of rules
+- **Base Classes** (`hub/apps/core/business_rules/base.py`) — abstract foundation for all rule implementations (`BusinessRules`, `RuleExecutionContext`)
+- **Common Utilities** (`hub/apps/core/business_rules/utils.py`) — shared validation helpers: `get_field_path` (dotted-path nested dict access), `validate_tenant_context` (tenant-ID consistency check), `check_value_overlap` (value overlap detection), `collect_errors` (declarative error collection), `make_validation_result` (convenience constructor)
+- **Chain Registry** (`hub.apps/core/business_rules/chain_registry.py`) — centralized registration of all business rule chains
+- **Chain Runner** — `execute_chain("chain.name", ctx, **kwargs)` executes an ordered sequence of rules
+- **Registry** (`hub/apps/core/business_rules/registry.py`) — decorator-based registration of individual rules (`@register_rule`)
 - **Validation Result**: Standardized output with domain-specific variants for contracts, mesh, and virtualization
 
 ### Existing Chains

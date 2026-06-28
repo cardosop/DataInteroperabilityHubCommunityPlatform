@@ -244,8 +244,6 @@ def runner(e2e_api_key, django_db_blocker):
 
 
 @pytest.fixture
-@pytest.mark.skip(reason="f'No models available and failed to create test model: {create_response.status_code} - {create_response.text}'")
-@pytest.mark.skip(reason="f'Failed to set up test model: {e}'")
 def test_model_id(api_available, e2e_api_key, django_db_blocker):
     """Get or create a test model for CLI tests.
 
@@ -396,6 +394,7 @@ def test_model_id(api_available, e2e_api_key, django_db_blocker):
             f"No models available and failed to create test model: {create_response.status_code} - {create_response.text}"
         )
     except Exception as e:
+        pytest.skip(f"Failed to set up test model: {e}")
 
 
 @pytest.fixture

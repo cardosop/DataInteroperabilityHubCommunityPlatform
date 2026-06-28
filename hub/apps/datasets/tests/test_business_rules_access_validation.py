@@ -28,6 +28,7 @@ User = get_user_model()
 
 class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
     """Test dataset access validation with GovernanceService integration"""
+    _needs_storage = False
 
     def setUp(self):
         """Set up test fixtures"""
@@ -111,6 +112,11 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         # Cross-tenant must NOT have access
         self.assertIn("abac_policy_checked", result.details)
         self.assertTrue(result.details["abac_policy_checked"])
+        self.assertTrue(
+            result.is_valid,
+            "Same-tenant user must have write access; "
+            f"got is_valid=False, errors={result.errors}",
+        )
 
     def test_validate_dataset_write_access_cross_tenant(self):
         """Test write access validation for cross-tenant user"""
@@ -132,7 +138,7 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         # Cross-tenant must NOT have access
         self.assertTrue(result.details["tenant_isolation"]["cross_tenant"])
         self.assertFalse(
-            result.is_valid, "Cross-tenant user must NOT have read access; got is_valid=True"
+            result.is_valid, "Cross-tenant user must NOT have write access; got is_valid=True"
         )
         self.assertIn("abac_policy_checked", result.details)
 
@@ -160,6 +166,11 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertTrue(result.details["access_request_checked"])
         # Access may still be denied if ABAC denies, but access request is checked
         self.assertIn("access_request", result.details)
+        self.assertTrue(
+            result.is_valid,
+            "User with approved READ access request must have read access; "
+            f"got is_valid=False, errors={result.errors}",
+        )
 
     def test_validate_dataset_write_access_with_approved_request(self):
         """Test write access validation with approved access request"""
@@ -184,6 +195,11 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertIn("access_request_checked", result.details)
         self.assertTrue(result.details["access_request_checked"])
         self.assertIn("access_request", result.details)
+        self.assertTrue(
+            result.is_valid,
+            "User with approved WRITE access request must have write access; "
+            f"got is_valid=False, errors={result.errors}",
+        )
 
     def test_validate_dataset_read_access_with_expired_request(self):
         """Expired access request does NOT grant read access.
@@ -245,6 +261,11 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertIn("abac_policy_checked", result.details)
         self.assertTrue(result.details["abac_policy_checked"])
         self.assertIn("abac_result", result.details)
+        self.assertTrue(
+            result.is_valid,
+            "User with ALLOW ABAC policy must have read access; "
+            f"got is_valid=False, errors={result.errors}",
+        )
 
     def test_validate_dataset_write_access_with_abac_policy(self):
         """Test write access validation with ABAC policy"""
@@ -272,6 +293,11 @@ class DatasetsBusinessRulesAccessValidationTest(DatasetsTestBase):
         self.assertIn("abac_policy_checked", result.details)
         self.assertTrue(result.details["abac_policy_checked"])
         self.assertIn("abac_result", result.details)
+        self.assertTrue(
+            result.is_valid,
+            "User with ALLOW ABAC policy must have write access; "
+            f"got is_valid=False, errors={result.errors}",
+        )
 
     def test_abac_engine_consulted_for_read_access(self):
         """ABAC engine is consulted when a DENY policy targets the dataset.
@@ -595,6 +621,8 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
             "validate_dataset_read_access must return a ValidationResult "
             "even for non-existent datasets",
         )
+        self.assertIn("tenant_isolation", result.details,
+                       "Result must include tenant isolation details even for non-persisted dataset")
 
     def test_validate_dataset_write_access_failure_nonexistent_dataset(self):
         """Test write access validation with non-existent dataset returns result."""
@@ -609,6 +637,8 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
             "validate_dataset_write_access must return a ValidationResult "
             "even for non-existent datasets",
         )
+        self.assertIn("tenant_isolation", result.details,
+                       "Result must include tenant isolation details even for non-persisted dataset")
 
     # ========== EDGE CASES ==========
 
@@ -624,6 +654,12 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         self.assertIsNotNone(
             result, "validate_dataset_read_access(user=None) must return a ValidationResult"
         )
+        # Without a user, validation passes but read access isn't conclusively determined
+        self.assertTrue(
+            result.is_valid,
+            "Validation itself passes (skips user-based checks); got errors=%s"
+            % result.errors,
+        )
 
     def test_validate_dataset_write_access_edge_case_none_user(self):
         """Test write access validation with None user (edge case)"""
@@ -637,6 +673,10 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
         self.assertIsNotNone(
             result, "validate_dataset_write_access(user=None) must return a ValidationResult"
         )
+        # Without a user, validation passes but write access is denied
+        self.assertTrue(result.is_valid,
+                        "Validation itself passes (skips user-based checks)")
+        self.assertFalse(result.details["write_access_allowed"])
 
     def test_validate_dataset_read_access_edge_case_different_tenant(self):
         """Test read access validation with different tenant (edge case)"""
@@ -669,6 +709,15 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
 
         result = self.rules.validate_dataset_read_access(dataset, user=self.user)
         self.assertIsNotNone(result, "validate_dataset_read_access must return a ValidationResult")
+        self.assertTrue(
+            result.is_valid,
+            "Same-tenant read access must be valid; errors=%s" % result.errors,
+        )
+        self.assertIn("tenant_isolation", result.details)
+        self.assertTrue(
+            result.details["tenant_isolation_valid"],
+            "Same-tenant isolation must be valid",
+        )
 
     def test_validate_dataset_write_access_error_handling(self):
         """Test that write access validation handles persisted datasets without raising."""
@@ -678,3 +727,5 @@ class DatasetsBusinessRulesAccessValidationIntegrationTest(TestCase):
 
         result = self.rules.validate_dataset_write_access(dataset, user=self.user)
         self.assertIsNotNone(result, "validate_dataset_write_access must return a ValidationResult")
+        self.assertIn("tenant_isolation", result.details)
+        self.assertTrue(result.details["tenant_isolation_valid"])

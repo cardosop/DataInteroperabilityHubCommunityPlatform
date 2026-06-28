@@ -7,19 +7,17 @@ including retry scheduling, delay calculation, and retry exhaustion.
 All tests use real implementations (no mocks/stubs) and follow engineering best practices.
 """
 
-import structlog
 from django.test import TestCase
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.jobs.utils import (
     calculate_retry_delay,
     get_job_max_retries,
+    get_job_retry_max_delay,
     is_transient_failure,
     retry_job,
 )
 from tests.factories import TenantFactory, UserFactory
-
-logger = structlog.get_logger(__name__)
 
 
 class JobRetryLogicIntegrationTest(TestCase):
@@ -115,16 +113,15 @@ class JobRetryLogicIntegrationTest(TestCase):
 
     def test_retry_delay_calculation(self):
         """Test that retry delay is calculated correctly"""
-        delay_0 = calculate_retry_delay(0, type=JobType.DQ_RUN)
-        delay_1 = calculate_retry_delay(1, type=JobType.DQ_RUN)
-        delay_2 = calculate_retry_delay(2, type=JobType.DQ_RUN)
+        delay_0 = calculate_retry_delay(0, job_type=JobType.DQ_RUN)
+        delay_1 = calculate_retry_delay(1, job_type=JobType.DQ_RUN)
+        delay_2 = calculate_retry_delay(2, job_type=JobType.DQ_RUN)
 
         # Verify exponential backoff
         self.assertLess(delay_0, delay_1)
         self.assertLess(delay_1, delay_2)
 
         # Verify delay is capped at max_delay
-        from hub.apps.jobs.utils import get_job_retry_max_delay
 
         max_delay = get_job_retry_max_delay(JobType.DQ_RUN)
         self.assertLessEqual(delay_0, max_delay)

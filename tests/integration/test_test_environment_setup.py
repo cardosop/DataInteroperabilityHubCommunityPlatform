@@ -104,6 +104,9 @@ class TestTestEnvironmentDockerCompose:
             "redis-exporter-channels-test",
             "mock-server-test",
             "mailhog-test",
+            "migrate-test-db",
+            "compliance-rq-worker-test",
+            "ensure-prefect-work-pool",
         }
         for service_name, service_config in services.items():
             if service_name in skip_healthcheck:
@@ -188,166 +191,150 @@ class TestTestEnvironmentDockerCompose:
 
 
 class TestTestEnvironmentServices:
-    """Tests for test environment services (requires services to be running)."""
+    """Tests for test environment services.
 
-    @pytest.fixture(scope="class")
-    def test_services_running(self):
-        """Check if test services are running."""
-        try:
-            result = subprocess.run(
-                ["docker", "compose", "-f", "docker-compose.test.yml", "ps", "--format", "json"],
-                check=False,
-                cwd=project_root,
-                capture_output=True,
-                text=True,
-                timeout=10,
-            )
-            if result.returncode == 0:
-                services = [line for line in result.stdout.strip().split("\n") if line]
-                running_services = [
-                    s for s in services if '"State":"running"' in s or '"State":"healthy"' in s
-                ]
-                return len(running_services) > 0
-        except Exception:
-            pass
-        return False
+    Auto-detects whether it is running inside a Docker container (where
+    services are accessible via their docker-compose service names and
+    *internal* ports) or on the host (``localhost`` + published ports).
+    """
 
-    @pytest.mark.skipif(
-        not globals().get("PSYCOPG2_AVAILABLE", False),
-        reason="psycopg2 not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running. Start with: ./scripts/setup-test-environment.sh start",
-    )
+    # (host_port, docker_host, docker_port) — internal ports from
+    # docker-compose.test.yml.
+    _SERVICE_PORTS: dict[str, tuple[int, str, int]] = {
+        "postgres":    (5434, "postgres-test", 5432),
+        "redis":       (6379, "redis-cache-test", 6379),
+        "minio":       (9010, "minio-test", 9000),
+        "api":         (8001, "api-service-test", 8000),
+        "datacontract": (8093, "datacontract-service-test", 8080),
+        "dq":          (8084, "dq-service-test", 8083),
+        "compliance":  (8085, "compliance-service-test", 8082),
+        "semantic":    (8086, "semantic-service-test", 8081),
+    }
+
+    @staticmethod
+    def _is_docker() -> bool:
+        """Return True when running inside a Docker container."""
+        return os.path.exists("/.dockerenv")
+
+    @classmethod
+    def _endpoint(cls, service: str) -> tuple[str, int]:
+        """Return (host, port) for *service*, appropriate for the environment."""
+        host_port, docker_host, docker_port = cls._SERVICE_PORTS[service]
+        if cls._is_docker():
+            return (docker_host, docker_port)
+        return ("localhost", host_port)
+
+    # -- PostgreSQL -----------------------------------------------------------
+
     def test_postgres_test_service_accessible(self):
         """Test that PostgreSQL test service is accessible."""
         try:
-            conn = psycopg2.connect(
-                host="localhost",
-                port=5434,
+            import psycopg2 as _psycopg2
+        except ImportError:
+            pytest.skip("psycopg2 not available")
+
+        host, port = self._endpoint("postgres")
+        try:
+            conn = _psycopg2.connect(
+                host=host,
+                port=port,
                 user="hub_test",
                 password="hub_test",
                 database="hub_test",
                 connect_timeout=5,
             )
             conn.close()
-            assert True
         except Exception as e:
-            pytest.fail(f"PostgreSQL test service not accessible: {e}")
+            pytest.fail(f"PostgreSQL test service not accessible at {host}:{port}: {e}")
 
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- Redis ----------------------------------------------------------------
+
     def test_redis_test_service_accessible(self):
         """Test that Redis test service is accessible."""
         import redis
 
+        host, port = self._endpoint("redis")
         try:
-            r = redis.Redis(host="localhost", port=6380, db=0, socket_connect_timeout=5)
+            r = redis.Redis(host=host, port=port, db=0, socket_connect_timeout=5)
             r.ping()
-            assert True
         except Exception as e:
-            pytest.fail(f"Redis test service not accessible: {e}")
+            pytest.fail(f"Redis test service not accessible at {host}:{port}: {e}")
 
-    @pytest.mark.skipif(
-        not globals().get("REQUESTS_AVAILABLE", False),
-        reason="requests not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- MinIO ----------------------------------------------------------------
+
     def test_minio_test_service_accessible(self):
         """Test that MinIO test service is accessible."""
+        host, port = self._endpoint("minio")
+        url = f"http://{host}:{port}/minio/health/live"
         try:
-            response = requests.get("http://localhost:9010/minio/health/live", timeout=5)
+            response = requests.get(url, timeout=5)
             assert response.status_code == 200
         except Exception as e:
-            pytest.fail(f"MinIO test service not accessible: {e}")
+            pytest.fail(f"MinIO test service not accessible at {url}: {e}")
 
-    @pytest.mark.skipif(
-        not globals().get("REQUESTS_AVAILABLE", False),
-        reason="requests not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- API ------------------------------------------------------------------
+
     def test_api_test_service_accessible(self):
         """Test that API test service is accessible."""
+        host, port = self._endpoint("api")
+        url = f"http://{host}:{port}/health"
         try:
-            response = requests.get("http://localhost:8001/health", timeout=10)
-            assert response.status_code == 200
+            response = requests.get(url, timeout=10)
+            assert response.status_code == 200, (
+                f"API health returned {response.status_code}"
+            )
             data = response.json()
-            assert "status" in data
+            assert "status" in data, f"Missing 'status' in API health response: {data}"
         except Exception as e:
-            pytest.fail(f"API test service not accessible: {e}")
+            pytest.fail(f"API test service not accessible at {url}: {e}")
 
-    @pytest.mark.skipif(
-        not globals().get("REQUESTS_AVAILABLE", False),
-        reason="requests not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- DataContract ---------------------------------------------------------
+
     def test_datacontract_service_test_accessible(self):
         """Test that DataContract test service is accessible."""
+        host, port = self._endpoint("datacontract")
+        url = f"http://{host}:{port}/health"
         try:
-            response = requests.get("http://localhost:8093/health", timeout=5)
+            response = requests.get(url, timeout=5)
             assert response.status_code == 200
         except Exception as e:
-            pytest.fail(f"DataContract test service not accessible: {e}")
+            pytest.fail(f"DataContract test service not accessible at {url}: {e}")
 
-    @pytest.mark.skipif(
-        not globals().get("REQUESTS_AVAILABLE", False),
-        reason="requests not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- DQ -------------------------------------------------------------------
+
     def test_dq_service_test_accessible(self):
         """Test that DQ test service is accessible."""
+        host, port = self._endpoint("dq")
+        url = f"http://{host}:{port}/health"
         try:
-            response = requests.get("http://localhost:8084/health", timeout=5)
+            response = requests.get(url, timeout=5)
             assert response.status_code == 200
         except Exception as e:
-            pytest.fail(f"DQ test service not accessible: {e}")
+            pytest.fail(f"DQ test service not accessible at {url}: {e}")
 
-    @pytest.mark.skipif(
-        not globals().get("REQUESTS_AVAILABLE", False),
-        reason="requests not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- Compliance -----------------------------------------------------------
+
     def test_compliance_service_test_accessible(self):
         """Test that Compliance test service is accessible."""
+        host, port = self._endpoint("compliance")
+        url = f"http://{host}:{port}/health"
         try:
-            response = requests.get("http://localhost:8085/health", timeout=5)
+            response = requests.get(url, timeout=5)
             assert response.status_code == 200
         except Exception as e:
-            pytest.fail(f"Compliance test service not accessible: {e}")
+            pytest.fail(f"Compliance test service not accessible at {url}: {e}")
 
-    @pytest.mark.skipif(
-        not globals().get("REQUESTS_AVAILABLE", False),
-        reason="requests not available",
-    )
-    @pytest.mark.skipif(
-        not os.getenv("TEST_ENV_SERVICES_RUNNING", "").lower() == "true",
-        reason="Test services not running",
-    )
+    # -- Semantic -------------------------------------------------------------
+
     def test_semantic_service_test_accessible(self):
         """Test that Semantic test service is accessible."""
+        host, port = self._endpoint("semantic")
+        url = f"http://{host}:{port}/health"
         try:
-            response = requests.get("http://localhost:8086/health", timeout=5)
+            response = requests.get(url, timeout=5)
             assert response.status_code == 200
         except Exception as e:
-            pytest.fail(f"Semantic test service not accessible: {e}")
+            pytest.fail(f"Semantic test service not accessible at {url}: {e}")
 
 
 class TestTestEnvironmentConfiguration:

@@ -49,11 +49,12 @@ class BreachServiceTests(TestCase):
 
     def test_breach_model_exists(self):
         """Verify BreachIncident model is importable and field contract is intact."""
-        assert self.tenant.id is not None
+        self.assertIsNotNone(self.tenant.id)
 
         fields = {f.name for f in BreachIncident._meta.get_fields()}
         for required in ("tenant", "title", "status", "discovered_at"):
-            assert required in fields, f"BreachIncident must have '{required}' field"
+            self.assertIn(required, fields,
+                          f"BreachIncident must have '{required}' field")
 
     def test_service_create(self):
         """create_breach_incident() creates incident + notifications + audit."""
@@ -66,12 +67,12 @@ class BreachServiceTests(TestCase):
             regimes=regimes,
             discovered_at=timezone.now(),
         )
-        assert incident.status == BreachIncidentStatus.OPEN
-        assert incident.tenant == self.tenant
-        assert incident.title == "Service-created breach"
-        assert incident.regimes == regimes
+        self.assertEqual(incident.status, BreachIncidentStatus.OPEN)
+        self.assertEqual(incident.tenant, self.tenant)
+        self.assertEqual(incident.title, "Service-created breach")
+        self.assertEqual(incident.regimes, regimes)
         # Notifications are spawned per regime
-        assert incident.notifications.count() >= len(regimes)
+        self.assertGreaterEqual(incident.notifications.count(), len(regimes))
 
     def test_notification_workflow(self):
         """mark_notification_sent() transitions notification + records proof hash."""
@@ -85,8 +86,8 @@ class BreachServiceTests(TestCase):
             discovered_at=timezone.now(),
         )
         notification = incident.notifications.first()
-        assert notification is not None
-        assert notification.status == BreachNotificationStatus.PENDING
+        self.assertIsNotNone(notification)
+        self.assertEqual(notification.status, BreachNotificationStatus.PENDING)
 
         mark_notification_sent(
             notification=notification,
@@ -94,9 +95,9 @@ class BreachServiceTests(TestCase):
             outbound_reference="REF-001",
         )
         notification.refresh_from_db()
-        assert notification.status == BreachNotificationStatus.SENT
-        assert notification.outbound_reference == "REF-001"
-        assert len(notification.delivery_proof_sha256) == 64
+        self.assertEqual(notification.status, BreachNotificationStatus.SENT)
+        self.assertEqual(notification.outbound_reference, "REF-001")
+        self.assertEqual(len(notification.delivery_proof_sha256), 64)
 
 
 class BreachApiTests(TestCase):
@@ -128,9 +129,9 @@ class BreachApiTests(TestCase):
     def test_list_endpoint(self):
         """GET /api/v1/breach/incidents/ returns paginated results."""
         resp = self.client.get("/api/v1/breach/incidents/")
-        assert resp.status_code == 200
+        self.assertEqual(resp.status_code, 200)
         # Should return a paginated response structure
-        assert "results" in resp.data or isinstance(resp.data, list)
+        self.assertTrue("results" in resp.data or isinstance(resp.data, list))
 
     def test_permission_checks(self):
         """Non-responder user gets 403 on breach endpoints."""
@@ -144,7 +145,7 @@ class BreachApiTests(TestCase):
         plain_client = APIClient()
         plain_client.force_authenticate(user=plain_user)
         resp = plain_client.get("/api/v1/breach/incidents/")
-        assert resp.status_code == 403
+        self.assertEqual(resp.status_code, 403)
 
 
 class BreachFeatureFlagTests(TestCase):
@@ -185,15 +186,18 @@ class BreachFeatureFlagTests(TestCase):
             },
             format="json",
         )
-        # Should be denied when breach workflow is disabled
-        assert resp.status_code != 201
+        # Should be denied with 403 when breach workflow is disabled
+        self.assertEqual(resp.status_code, 403,
+                         f"Expected 403, got {resp.status_code}: {resp.data}")
+        self.assertIn("error", resp.data)
+        self.assertIn("disabled", resp.data["error"].lower())
 
     def test_flag_enabled_accessible(self):
         """When compliance_breach_enabled=True, breach endpoints return 200."""
         self.tenant.compliance_breach_enabled = True
         self.tenant.save(update_fields=["compliance_breach_enabled"])
         resp = self.client.get("/api/v1/breach/incidents/")
-        assert resp.status_code == 200
+        self.assertEqual(resp.status_code, 200)
 
 
 class BreachAuditTests(TestCase):
@@ -238,7 +242,7 @@ class BreachAuditTests(TestCase):
             resource_type="BREACH_INCIDENT",
             action="BREACH_INCIDENT_OPENED",
         ).count()
-        assert after == before + 1
+        self.assertEqual(after, before + 1)
 
     def test_update_audit(self):
         """Transitioning incident status emits BREACH_INCIDENT_STATUS_CHANGED audit."""
@@ -264,4 +268,4 @@ class BreachAuditTests(TestCase):
             resource_type="BREACH_INCIDENT",
             action="BREACH_INCIDENT_STATUS_CHANGED",
         ).count()
-        assert after == before + 1
+        self.assertEqual(after, before + 1)

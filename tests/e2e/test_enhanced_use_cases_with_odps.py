@@ -588,9 +588,14 @@ class UC_CM_001_Enhanced_TechnicalFirstFlowWithODPSTest(E2ETestBase):
             extensions = linked_odps_again.hub_contract_json.get("extensions", {})
             x_odps = extensions.get("x_odps", {})
             self.assertEqual(x_odps.get("odcs_link"), str(contract_id))
-        except Exception:
-            # Expected if duplicate linking is not allowed
-            pass
+        except Exception as e:
+            # Expected if duplicate linking is rejected; verify the error is about
+            # linking, not an unrelated failure.
+            error_msg = str(e).lower()
+            self.assertTrue(
+                any(kw in error_msg for kw in ["already", "duplicate", "exists", "linked"]),
+                f"Expected duplicate-link error, got: {e}",
+            )
 
 
 # ============================================================================

@@ -33,12 +33,13 @@ def check_semantic_service_available():
         return False
 
 
-@pytest.mark.skipif(not check_semantic_service_available(), reason="Semantic service not available")
 class RDFMappingEdgeCaseTest(TestCase):
     """Edge case tests for RDF mapping"""
 
     def setUp(self):
         """Set up test fixtures"""
+        if not check_semantic_service_available():
+            self.skipTest("Semantic service not available")
         self.tenant = TenantFactory.create_tenant()
         self.user = User.objects.create_user(
             email=f"test-{uuid.uuid4().hex[:8]}@example.com",
@@ -65,12 +66,11 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource (may be DEGRADED)
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            self.assertIn(
-                semantic_resource.status,
-                [SemanticResourceStatus.ACTIVE, SemanticResourceStatus.DEGRADED],
-            )
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        self.assertIn(
+            semantic_resource.status,
+            [SemanticResourceStatus.ACTIVE, SemanticResourceStatus.DEGRADED],
+        )
 
     def test_map_contract_missing_schema_section(self):
         """Test RDF mapping with missing schema section"""
@@ -88,8 +88,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource (may be DEGRADED)
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_missing_quality_section(self):
         """Test RDF mapping with missing quality section"""
@@ -104,10 +103,9 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # Quality rules should not be in RDF if section missing
-            # No quality-related triples should be created
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # Quality rules should not be in RDF if section missing
+        # No quality-related triples should be created
 
     def test_map_contract_missing_compliance_section(self):
         """Test RDF mapping with missing compliance section"""
@@ -121,9 +119,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # Compliance triples should not be created
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # Compliance triples should not be created
 
     def test_map_contract_missing_lifecycle_section(self):
         """Test RDF mapping with missing lifecycle section"""
@@ -137,8 +134,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_missing_marketplace_section(self):
         """Test RDF mapping with missing marketplace section"""
@@ -152,8 +148,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_all_optional_sections_missing(self):
         """Test RDF mapping with all optional sections missing"""
@@ -171,9 +166,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource with minimal data
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # Only basic contract and schema triples should be created
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # Only basic contract and schema triples should be created
 
     # Invalid Vocabulary Mappings Tests
 
@@ -197,9 +191,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still map, but may have warnings or use default dimension
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # Invalid dimension should be handled gracefully
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # Invalid dimension should be handled gracefully
 
     def test_map_contract_invalid_dpv_category(self):
         """Test RDF mapping with invalid DPV category"""
@@ -219,8 +212,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still map, invalid category handled gracefully
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_invalid_dpv_jurisdiction(self):
         """Test RDF mapping with invalid DPV jurisdiction"""
@@ -240,8 +232,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still map
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_invalid_dpv_legal_basis(self):
         """Test RDF mapping with invalid DPV legal basis"""
@@ -261,8 +252,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still map
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_invalid_schema_org_type(self):
         """Test RDF mapping with invalid Schema.org type"""
@@ -283,8 +273,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still map
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_mixed_valid_invalid_vocabularies(self):
         """Test RDF mapping with mix of valid and invalid vocabularies"""
@@ -318,8 +307,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still map, valid vocabularies used, invalid ones handled
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     # Large Contracts Tests
 
@@ -344,13 +332,12 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle large number of fields
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # All fields should be mapped to RDF
-            metadata = semantic_resource.metadata_json or {}
-            triples_count = metadata.get("triples_count", 0)
-            # Should have triples for all fields
-            self.assertGreater(triples_count, 0)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # All fields should be mapped to RDF
+        metadata = semantic_resource.metadata_json or {}
+        triples_count = metadata.get("triples_count", 0)
+        # Should have triples for all fields
+        self.assertGreater(triples_count, 0)
 
     def test_map_contract_50_quality_rules(self):
         """Test RDF mapping with 50+ quality rules"""
@@ -374,9 +361,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle large number of rules
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # All rules should be mapped to RDF using DQV
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # All rules should be mapped to RDF using DQV
 
     def test_map_contract_20_owners(self):
         """Test RDF mapping with 20+ owners"""
@@ -393,9 +379,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle large number of owners
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # All owners should be mapped using FOAF
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # All owners should be mapped using FOAF
 
     def test_map_contract_100_tags(self):
         """Test RDF mapping with 100+ tags"""
@@ -410,9 +395,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle large number of tags
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # All tags should be mapped
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # All tags should be mapped
 
     def test_map_contract_all_large_sections(self):
         """Test RDF mapping with all large sections (100 fields, 50 rules, 20 owners, 100 tags)"""
@@ -440,12 +424,11 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle all large sections
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            metadata = semantic_resource.metadata_json or {}
-            triples_count = metadata.get("triples_count", 0)
-            # Should have many triples for all sections
-            self.assertGreater(triples_count, 0)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        metadata = semantic_resource.metadata_json or {}
+        triples_count = metadata.get("triples_count", 0)
+        # Should have many triples for all sections
+        self.assertGreater(triples_count, 0)
 
     # Additional Edge Cases
 
@@ -460,8 +443,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_empty_quality_rules(self):
         """Test RDF mapping with empty quality rules"""
@@ -474,8 +456,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_empty_owners(self):
         """Test RDF mapping with empty owners"""
@@ -488,8 +469,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_empty_tags(self):
         """Test RDF mapping with empty tags"""
@@ -502,13 +482,23 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should still create semantic resource
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_no_hub_contract_json(self):
         """Test RDF mapping with contract having no hub_contract_json"""
-        contract = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant, created_by=self.user, hub_contract_json=None
+        # Create contract directly (not via factory) because
+        # ContractFactoryEnhanced.create_contract treats hub_contract_json=None
+        # as "use default" and auto-generates a default value.
+        from hub.apps.contracts.models import Contract, NormalizationStatus, OriginalFormat, OriginalSpecType
+
+        contract = Contract.objects.create(
+            tenant=self.tenant,
+            original_spec_type=OriginalSpecType.ODCS,
+            original_format=OriginalFormat.JSON,
+            original_raw='{"id": "test-contract-no-hub"}',
+            hub_contract_json=None,
+            normalization_status=NormalizationStatus.NORMALIZED_OK,
+            created_by=self.user,
         )
 
         # Should return None if no hub_contract_json
@@ -516,25 +506,10 @@ class RDFMappingEdgeCaseTest(TestCase):
 
         self.assertIsNone(semantic_resource)
 
-    def test_map_contract_semantic_service_unavailable(self):
-        """Test RDF mapping when semantic service is unavailable"""
-        # This test will be skipped if service is available
-        # If service becomes unavailable, should handle gracefully
-        hub_contract = ContractFactoryEnhanced.create_hub_contract_json()
-
-        contract = ContractFactoryEnhanced.create_contract(
-            tenant=self.tenant, created_by=self.user, hub_contract_json=hub_contract
-        )
-
-        # If service unavailable, should return None or create DEGRADED resource
-        semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
-
-        # Should handle gracefully (None or DEGRADED)
-        if semantic_resource:
-            self.assertIn(
-                semantic_resource.status,
-                [SemanticResourceStatus.ACTIVE, SemanticResourceStatus.DEGRADED],
-            )
+    # test_map_contract_semantic_service_unavailable removed — the setUp-based
+    # health check gates all tests on service availability, making an
+    # "unavailable" scenario unreachable. The map_contract_to_semantic function
+    # handles connection failures gracefully in its own try/except logic.
 
     def test_map_contract_uri_generation(self):
         """Test URI generation for semantic resources"""
@@ -562,10 +537,11 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource2 = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should update existing resource, not create duplicate
-        if semantic_resource1 and semantic_resource2:
-            self.assertEqual(semantic_resource1.id, semantic_resource2.id)
-            # Should have same resource_id
-            self.assertEqual(semantic_resource1.resource_id, semantic_resource2.resource_id)
+        self.assertIsNotNone(semantic_resource1, "First mapping should produce a resource")
+        self.assertIsNotNone(semantic_resource2, "Second mapping should produce a resource")
+        self.assertEqual(semantic_resource1.id, semantic_resource2.id)
+        # Should have same resource_id
+        self.assertEqual(semantic_resource1.resource_id, semantic_resource2.resource_id)
 
     def test_map_contract_with_asset_link(self):
         """Test RDF mapping with contract linked to asset"""
@@ -584,10 +560,9 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should create semantic resource with asset link
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            # Asset UUID should be passed to semantic service
-            # May contain asset-related information
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        # Asset UUID should be passed to semantic service
+        # May contain asset-related information
 
     def test_map_contract_unicode_in_names(self):
         """Test RDF mapping with unicode characters in names"""
@@ -605,8 +580,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle unicode correctly
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_special_characters_in_names(self):
         """Test RDF mapping with special characters in names"""
@@ -625,8 +599,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle special characters correctly
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_very_long_names(self):
         """Test RDF mapping with very long names"""
@@ -641,8 +614,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle very long names
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_null_values(self):
         """Test RDF mapping with null values in optional fields"""
@@ -658,8 +630,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle null values gracefully
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_empty_strings(self):
         """Test RDF mapping with empty strings"""
@@ -676,8 +647,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle empty strings
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_nested_structures(self):
         """Test RDF mapping with deeply nested structures"""
@@ -702,8 +672,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle nested structures
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_all_vocabularies(self):
         """Test RDF mapping using all standard vocabularies"""
@@ -745,12 +714,11 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map using all vocabularies
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
-            metadata = semantic_resource.metadata_json or {}
-            triples_count = metadata.get("triples_count", 0)
-            # Should have triples from all vocabularies
-            self.assertGreater(triples_count, 0)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        metadata = semantic_resource.metadata_json or {}
+        triples_count = metadata.get("triples_count", 0)
+        # Should have triples from all vocabularies
+        self.assertGreater(triples_count, 0)
 
     # Additional Edge Cases to Reach 80+ Tests
 
@@ -776,8 +744,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map SHACL constraints
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_prov_o_lifecycle_mapping(self):
         """Test RDF mapping with PROV-O lifecycle tracking"""
@@ -792,8 +759,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map using PROV-O
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_odrl_marketplace_mapping(self):
         """Test RDF mapping with ODRL marketplace policies"""
@@ -812,8 +778,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map using ODRL
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_foaf_owner_mapping(self):
         """Test RDF mapping with FOAF owner information"""
@@ -831,8 +796,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map owners using FOAF
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_multiple_invalid_vocabularies(self):
         """Test RDF mapping with multiple invalid vocabulary values"""
@@ -870,8 +834,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle all invalid vocabularies gracefully
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_partial_schema_fields(self):
         """Test RDF mapping with partial schema field information"""
@@ -894,8 +857,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle partial field information
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_missing_field_properties(self):
         """Test RDF mapping with fields missing various properties"""
@@ -918,8 +880,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map fields with missing properties
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_quality_rules_without_field(self):
         """Test RDF mapping with quality rules not tied to specific fields"""
@@ -941,8 +902,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map table-level quality rules
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_compliance_without_retention(self):
         """Test RDF mapping with compliance policy missing retention"""
@@ -963,8 +923,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map compliance without retention policy
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_lifecycle_without_slas(self):
         """Test RDF mapping with lifecycle missing SLAs"""
@@ -983,8 +942,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map lifecycle without SLAs
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_marketplace_without_restrictions(self):
         """Test RDF mapping with marketplace missing restrictions"""
@@ -1003,8 +961,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map marketplace without restrictions
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_very_large_metadata(self):
         """Test RDF mapping with very large metadata structures"""
@@ -1021,8 +978,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle large metadata
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_circular_references(self):
         """Test RDF mapping with potential circular references"""
@@ -1040,8 +996,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should handle references without circular issues
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_mixed_data_types(self):
         """Test RDF mapping with mixed data types in fields"""
@@ -1065,8 +1020,7 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Should map all data types correctly
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
 
     def test_map_contract_semantic_resource_status_tracking(self):
         """Test that semantic resource status is tracked correctly"""
@@ -1079,15 +1033,15 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Status should be tracked
-        if semantic_resource:
-            self.assertIn(
-                semantic_resource.status,
-                [
-                    SemanticResourceStatus.ACTIVE,
-                    SemanticResourceStatus.DEGRADED,
-                    SemanticResourceStatus.STALE,
-                ],
-            )
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        self.assertIn(
+            semantic_resource.status,
+            [
+                SemanticResourceStatus.ACTIVE,
+                SemanticResourceStatus.DEGRADED,
+                SemanticResourceStatus.STALE,
+            ],
+        )
 
     def test_map_contract_triples_count_tracking(self):
         """Test that triples count is tracked in metadata"""
@@ -1100,10 +1054,10 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Triples count should be in metadata
-        if semantic_resource:
-            metadata = semantic_resource.metadata_json or {}
-            # May or may not have triples_count depending on service response
-            self.assertIsInstance(metadata, dict)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        metadata = semantic_resource.metadata_json or {}
+        # May or may not have triples_count depending on service response
+        self.assertIsInstance(metadata, dict)
 
     def test_map_contract_mapping_version_tracking(self):
         """Test that mapping version is tracked"""
@@ -1116,9 +1070,8 @@ class RDFMappingEdgeCaseTest(TestCase):
         semantic_resource = map_contract_to_semantic(contract, tenant=self.tenant)
 
         # Mapping version should be set
-        if semantic_resource:
-            self.assertIsNotNone(semantic_resource.mapping_version)
-            self.assertIsInstance(semantic_resource.mapping_version, str)
+        self.assertIsNotNone(semantic_resource, "Mapping should produce a semantic resource")
+        self.assertIsInstance(semantic_resource.mapping_version, str)
 
     def test_map_contract_last_mapped_at_tracking(self):
         """Test that last_mapped_at timestamp is updated"""
@@ -1130,12 +1083,19 @@ class RDFMappingEdgeCaseTest(TestCase):
 
         semantic_resource1 = map_contract_to_semantic(contract, tenant=self.tenant)
 
-        if semantic_resource1:
-            first_mapped = semantic_resource1.last_mapped_at
+        self.assertIsNotNone(semantic_resource1, "First mapping should produce a resource")
+        first_mapped = semantic_resource1.last_mapped_at
 
-            # Map again
-            semantic_resource2 = map_contract_to_semantic(contract, tenant=self.tenant)
+        # Small delay between mappings to ensure measurable timestamp difference
+        import time
+        time.sleep(0.01)
 
-            if semantic_resource2:
-                # last_mapped_at should be updated
-                self.assertGreaterEqual(semantic_resource2.last_mapped_at, first_mapped)
+        # Map again — timestamp should be strictly updated
+        semantic_resource2 = map_contract_to_semantic(contract, tenant=self.tenant)
+
+        self.assertIsNotNone(semantic_resource2, "Second mapping should produce a resource")
+        self.assertGreater(
+            semantic_resource2.last_mapped_at,
+            first_mapped,
+            "last_mapped_at should be strictly updated after re-mapping",
+        )

@@ -367,8 +367,12 @@ def create_audit_event(
 
                         hex_str = f"{int(raw):032x}"
                         trace_id = str(_uuid.UUID(hex=hex_str))
-        except Exception:
-            pass  # OTel not available or span context invalid
+        except (ImportError, AttributeError, TypeError, RuntimeError, ValueError):
+            # OTel not available, span context invalid, trace_id type mismatch,
+            # internal SDK errors, or UUID formatting edge cases.
+            # The trace_id is best-effort — audit event creation must never fail
+            # because of OTel instrumentation issues.
+            pass
 
         return AuditEvent.objects.create(
             tenant=tenant,

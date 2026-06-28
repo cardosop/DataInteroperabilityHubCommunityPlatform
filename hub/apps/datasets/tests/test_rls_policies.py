@@ -36,8 +36,9 @@ class DatasetsRLSPolicyTests(TestCase):
     @pytest.mark.integration
     def test_dataset_has_rls_policy(self):
         all_content = "\n".join(self.migrations.values())
-        assert re.search(r"CREATE\s+POLICY\s+\S+\s+ON\s+datasets", all_content, re.IGNORECASE), (
-            "Dataset model missing RLS policy"
+        self.assertTrue(
+            re.search(r"CREATE\s+POLICY\s+\S+\s+ON\s+datasets", all_content, re.IGNORECASE),
+            "Dataset model missing RLS policy",
         )
 
     @pytest.mark.integration
@@ -46,8 +47,11 @@ class DatasetsRLSPolicyTests(TestCase):
         Confirm that only the Dataset table needs RLS."""
         all_content = "\n".join(self.migrations.values())
         for table in _DATASET_MODELS:
-            assert re.search(
-                rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
-                all_content,
-                re.IGNORECASE,
-            ), f"{table} RLS policy not found"
+            self.assertTrue(
+                re.search(
+                    rf"CREATE\s+POLICY\s+\S+\s+ON\s+{table}",
+                    all_content,
+                    re.IGNORECASE,
+                ),
+                f"{table} RLS policy not found",
+            )

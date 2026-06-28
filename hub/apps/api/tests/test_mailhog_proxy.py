@@ -30,11 +30,12 @@ import responses
 from django.test import override_settings
 from rest_framework.test import APIClient
 
-# This module exercises the proxy view through the URL conf which means
-# the view's `is_e2e_environment` + `verify_e2e_token` gates run for real.
-# No DB access is required, but `pytest.mark.django_db` ensures the URL
-# conf is loaded under a Django context.
-pytestmark = pytest.mark.django_db
+# No `pytest.mark.django_db` — these tests do not touch the database. They
+# exercise the mailhog proxy through the URL conf with `override_settings`
+# and `responses` mocks. Adding the DB marker introduces unnecessary
+# transaction management that can interact poorly with other test modules
+# that use `pytest.mark.django_db(transaction=True)` (observed: API docs
+# endpoints returning 404 after production-lockout tests run).
 
 
 _E2E_SETTINGS: dict[str, Any] = dict(
@@ -201,6 +202,7 @@ class TestUpstreamFailureModes:
         responses.add(responses.GET, UPSTREAM_LIST, body=ReqConnErr("refused"))
         res = client.get(LIST_URL, HTTP_X_E2E_TOKEN="proxy-test-secret")
         assert res.status_code == 503
+        assert res.json() == {"detail": "mailhog upstream unavailable"}
 
     @override_settings(**_E2E_SETTINGS)
     @responses.activate

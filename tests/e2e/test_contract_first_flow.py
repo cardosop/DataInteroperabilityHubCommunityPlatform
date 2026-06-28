@@ -258,7 +258,7 @@ class ContractFirstE2ETest(TestCase):
         compliance_run = ComplianceRun.objects.get(id=compliance_run_id)
         if compliance_run.job_id:
             try:
-                process_job(str(compliance_run.job_id), type=JobType.COMPLIANCE_RUN)
+                process_job(str(compliance_run.job_id), job_type=JobType.COMPLIANCE_RUN)
             except (ConnectionError, TimeoutError, OSError) as exc:
                 # Compliance service not reachable — skip visibly so
                 # PR 10's skip-counter gate can track infra outages.
@@ -268,7 +268,7 @@ class ContractFirstE2ETest(TestCase):
         dq_run = DQRun.objects.get(id=dq_run_id)
         if dq_run.job_id:
             try:
-                process_job(str(dq_run.job_id), type=JobType.DQ_RUN)
+                process_job(str(dq_run.job_id), job_type=JobType.DQ_RUN)
             except (ConnectionError, TimeoutError, OSError) as exc:
                 self.skipTest(f"DQ service not reachable: {exc}")
         dq_run.refresh_from_db()
@@ -285,13 +285,13 @@ class ContractFirstE2ETest(TestCase):
             ComplianceRunStatus.FAILED,
             f"Compliance run FAILED — this indicates a real defect in the "
             f"contract-first flow, not an environmental skip condition. "
-            f"Error: {compliance_run.error_message!r}",
+            f"Status: {compliance_run.status!r}",
         )
         self.assertNotEqual(
             dq_run.status,
             DQRunStatus.FAILED,
             f"DQ run FAILED — real defect, not an environmental skip. "
-            f"Error: {dq_run.error_message!r}",
+            f"Status: {dq_run.status!r}",
         )
 
         # Step 8: Attach dataset and contract to asset

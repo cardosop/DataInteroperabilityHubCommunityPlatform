@@ -88,7 +88,7 @@ def _uri_path(uri: str) -> str:
     try:
         path = urlparse(uri).path
         return path if path else "unknown"
-    except Exception:
+    except (ValueError, AttributeError):
         return "unknown"
 
 

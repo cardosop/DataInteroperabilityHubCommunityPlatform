@@ -254,11 +254,14 @@ class VirtualizationAuditLoggingTest(TestCase):
         self.assertIsInstance(details.get("sources"), list)
 
     def test_audit_logging_handles_missing_user_gracefully(self):
-        """Test that audit logging handles missing user gracefully"""
-        # Create service without user_id
-        service_no_user = VirtualizationService(tenant_id=str(self.tenant.id), user_id=None)
+        """Audit logging does not crash when user_id is None.
 
-        # Create query execution
+        The query execution itself may fail in a unit-test environment
+        (no real warehouse backend), but the audit-logging guard in
+        _execute_query_sync must not raise a secondary exception that
+        masks the original.
+        """
+        service_no_user = VirtualizationService(tenant_id=str(self.tenant.id), user_id=None)
         execution = QueryExecution.objects.create(
             virtual_dataset=self.virtual_dataset,
             query=self.virtual_dataset.query,
@@ -267,21 +270,20 @@ class VirtualizationAuditLoggingTest(TestCase):
             execution_mode=QueryExecutionMode.SYNC,
         )
 
-        # Should not raise - missing user is handled gracefully
+        # Verify the call runs without crashing at the audit layer.
+        # Warehouse-level failures are expected and harmless here.
         try:
             service_no_user._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution may fail, but audit logging should not crash
-            pass
-
-        # Verify no crash occurred (test passes if no exception raised)
+        except Exception as e:
+            # Acceptable: warehouse backend unavailable in unit tests.
+            # Assert the error is NOT about audit — it should be about
+            # the warehouse connection.
+            self.assertNotIn("audit", str(e).lower(),
+                             f"Audit-related crash with null user: {e}")
 
     def test_audit_logging_handles_missing_tenant_gracefully(self):
-        """Test that audit logging handles missing tenant gracefully"""
-        # Create service without tenant_id
+        """Audit logging does not crash when tenant_id is None."""
         service_no_tenant = VirtualizationService(tenant_id=None, user_id=str(self.user.id))
-
-        # Create query execution
         execution = QueryExecution.objects.create(
             virtual_dataset=self.virtual_dataset,
             query=self.virtual_dataset.query,
@@ -290,11 +292,8 @@ class VirtualizationAuditLoggingTest(TestCase):
             execution_mode=QueryExecutionMode.SYNC,
         )
 
-        # Should not raise - missing tenant is handled gracefully
         try:
             service_no_tenant._execute_query_sync(execution, self.virtual_dataset, {}, 30)
-        except Exception:
-            # Execution may fail, but audit logging should not crash
-            pass
-
-        # Verify no crash occurred (test passes if no exception raised)
+        except Exception as e:
+            self.assertNotIn("audit", str(e).lower(),
+                             f"Audit-related crash with null tenant: {e}")

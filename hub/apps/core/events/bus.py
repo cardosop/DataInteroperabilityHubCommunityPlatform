@@ -177,6 +177,56 @@ class EventBus:
         self.enable_persistence = getattr(settings, "EVENT_BUS_ENABLE_PERSISTENCE", True)
         self.max_retries = getattr(settings, "EVENT_BUS_MAX_RETRIES", 3)
         self.force_sync_persistence = force_sync_persistence
+        # Subscriptions deferred because the app registry wasn't ready yet.
+        # Flushed on first publish() or start_listening() call.
+        self._deferred_subscriptions: list[dict[str, Any]] = []
+
+    def _flush_deferred_subscriptions(self) -> None:
+        """Replay subscriptions that were deferred because the app registry
+        wasn't ready yet during ``AppConfig.ready()``.
+
+        Called automatically on first ``publish()`` or ``start_listening()``
+        so that no events are lost and all handlers are registered before
+        the bus is used.
+        """
+        if not self._deferred_subscriptions:
+            return
+
+        logger.info(
+            "flushing_deferred_subscriptions",
+            count=len(self._deferred_subscriptions),
+        )
+        deferred = self._deferred_subscriptions
+        self._deferred_subscriptions = []
+
+        from django.db import connection
+
+        try:
+            connection.ensure_connection()
+        except Exception:
+            # DB still not ready — re-queue and return
+            self._deferred_subscriptions = deferred
+            return
+
+        for sub in deferred:
+            try:
+                EventSubscription.objects.update_or_create(
+                    subscriber_name=sub["subscriber_name"],
+                    event_type_pattern=sub["event_type_pattern"],
+                    defaults={"is_active": sub["is_active"]},
+                )
+                logger.debug(
+                    "deferred_subscription_flushed",
+                    subscriber_name=sub["subscriber_name"],
+                    event_type_pattern=sub["event_type_pattern"],
+                )
+            except Exception as exc:
+                logger.error(
+                    "deferred_subscription_flush_failed",
+                    subscriber_name=sub["subscriber_name"],
+                    event_type_pattern=sub["event_type_pattern"],
+                    error=str(exc),
+                )
 
     def _create_redis_client(self) -> redis.Redis:
         """
@@ -229,9 +279,11 @@ class EventBus:
         self,
         event_type: str,
         data: dict[str, Any],
+        metadata: dict[str, Any] | None = None,
         tenant_id: str | None = None,
         user_id: str | None = None,
         request_id: str | None = None,
+        idempotency_key: str | None = None,
         correlation_id: str | None = None,
         causation_id: str | None = None,
         tags: list[str] | None = None,
@@ -240,6 +292,9 @@ class EventBus:
     ) -> str:
         """
         Publish an event to the event bus.
+
+        Flushes any deferred subscriptions before publishing so handlers
+        registered during AppConfig.ready() are persisted first.
 
         Args:
             event_type: Event type (e.g., 'contract.created')
@@ -265,6 +320,9 @@ class EventBus:
         # keeps ERROR logs for actual system failures.
         _validate_optional_uuid(tenant_id, "tenant_id")
         _validate_optional_uuid(user_id, "user_id")
+
+        # Flush any subscriptions deferred during AppConfig.ready()
+        self._flush_deferred_subscriptions()
 
         start_time = time.time()
         tenant_label = get_tenant_id(tenant_id)
@@ -645,13 +703,23 @@ class EventBus:
         Raises:
             EventSubscribeError: If subscription fails
         """
-        # Check if database connection is available (works during tests too)
+        # Check if database connection AND app registry are available.
+        # During AppConfig.ready() the connection may be open but the app
+        # registry is still being populated — querying EventSubscription
+        # at that point triggers "Accessing the database during app
+        # initialization" RuntimeWarning and can cause subscription
+        # failures.  We defer when either is unavailable.
         db_available = False
+        apps_not_ready = False
         try:
+            from django.apps import apps
             from django.db import connection
 
-            connection.ensure_connection()
-            db_available = True
+            if not apps.ready:
+                apps_not_ready = True
+            else:
+                connection.ensure_connection()
+                db_available = True
         except Exception:
             db_available = False
 
@@ -663,6 +731,20 @@ class EventBus:
                     subscriber_name=subscriber_name,
                     event_type_pattern=event_type_pattern,
                     defaults={"is_active": is_active},
+                )
+            elif apps_not_ready:
+                # App registry not populated yet — store for later flush
+                self._deferred_subscriptions.append({
+                    "subscriber_name": subscriber_name,
+                    "event_type_pattern": event_type_pattern,
+                    "handler": handler,
+                    "is_active": is_active,
+                })
+                logger.debug(
+                    "event_subscription_deferred",
+                    subscriber_name=subscriber_name,
+                    event_type_pattern=event_type_pattern,
+                    reason="app_registry_not_ready",
                 )
             else:
                 # Database not available - defer subscription registration
@@ -750,6 +832,9 @@ class EventBus:
             subscriber_name: Subscriber identifier
             handler: Event handler function
         """
+        # Flush any subscriptions deferred during AppConfig.ready()
+        self._flush_deferred_subscriptions()
+
         try:
             # Get active subscriptions for this subscriber
             subscriptions = EventSubscription.objects.filter(

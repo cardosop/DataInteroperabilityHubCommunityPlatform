@@ -91,6 +91,8 @@ class APIVersionManagerTest(TestCase):
         )
 
         APIVersionManager.register_deprecated_endpoint(endpoint)
+        key = "GET:/api/v1/old-endpoint/"
+        self.addCleanup(lambda k=key: APIVersionManager.DEPRECATED_ENDPOINTS.pop(k, None))
 
         retrieved = APIVersionManager.get_deprecated_endpoint("/api/v1/old-endpoint/", "GET")
         self.assertIsNotNone(retrieved)

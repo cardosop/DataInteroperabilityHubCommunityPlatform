@@ -293,7 +293,6 @@ class TestMonitoringServicesIntegration:
         except Exception:
             return False
 
-@pytest.mark.skip(reason="Prometheus not accessible")
     def test_prometheus_metrics_endpoint(self):
         """Test that Prometheus metrics endpoint works"""
         if not self._check_service_available(self.prometheus_url):  # noqa: skip-in-body — runtime service dependency
@@ -302,9 +301,9 @@ class TestMonitoringServicesIntegration:
         try:
             response = requests.get(f"{self.prometheus_url}/api/v1/targets", timeout=5)
             assert response.status_code == 200, "Prometheus API should be accessible"
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            pytest.fail(f"Prometheus API request failed: {e}")
 
-@pytest.mark.skip(reason="API service metrics not accessible")
     def test_api_service_metrics_endpoint(self):
         """Test that API service metrics endpoint works"""
         # Use /health/live/ for availability check (always 200 when process is up);
@@ -328,9 +327,9 @@ class TestMonitoringServicesIntegration:
                 assert "http_requests_total" in content or "http_request" in content.lower(), (
                     "Metrics should contain HTTP request metrics"
                 )
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            pytest.fail(f"API service metrics request failed: {e}")
 
-@pytest.mark.skip(reason="Grafana not accessible")
     def test_grafana_accessible(self):
         """Test that Grafana is accessible"""
         if not self._check_service_available(self.grafana_url):  # noqa: skip-in-body — runtime service dependency
@@ -339,7 +338,8 @@ class TestMonitoringServicesIntegration:
         try:
             response = requests.get(f"{self.grafana_url}/api/health", timeout=5)
             assert response.status_code in [200, 401, 403], "Grafana should be accessible"
-        except requests.exceptions.RequestException:
+        except requests.exceptions.RequestException as e:
+            pytest.fail(f"Grafana health check request failed: {e}")
 
 
 if __name__ == "__main__":

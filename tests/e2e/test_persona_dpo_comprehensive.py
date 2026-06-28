@@ -245,9 +245,17 @@ class JourneyDPO001DataFirstOnboardingTests(E2ETestBase):
             wait_time += 2
             compliance_run.refresh_from_db()
 
-        # Verify: a DRAFT asset without passing compliance should not be activatable
-        # (regardless of whether the compliance run completed, the asset hasn't been prepared)
-        activate_response = self.activate_asset(asset_id)
+        # Verify: a DRAFT asset without passing compliance should not be activatable.
+        # Use direct API call (NOT self.activate_asset) because that helper
+        # calls prepare_asset_for_activation which forces compliance_status=PASS.
+        from hub.apps.assets.models import Asset as _Asset2
+
+        _asset2 = _Asset2.objects.get(id=asset_id)
+        activate_response = self.client.post(
+            f"/api/v1/assets/{asset_id}/activate/",
+            {"version": _asset2.version},
+            format="json",
+        )
         self.assertIn(
             activate_response.status_code,
             [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
@@ -285,8 +293,17 @@ class JourneyDPO001DataFirstOnboardingTests(E2ETestBase):
             wait_time += 2
             dq_run.refresh_from_db()
 
-        # Verify: a DRAFT asset without passing DQ should not be activatable
-        activate_response = self.activate_asset(asset_id)
+        # Verify: a DRAFT asset without passing DQ should not be activatable.
+        # Use direct API call (NOT self.activate_asset) because that helper
+        # calls prepare_asset_for_activation which forces dq_status=PASS.
+        from hub.apps.assets.models import Asset as _Asset
+
+        _asset = _Asset.objects.get(id=asset_id)
+        activate_response = self.client.post(
+            f"/api/v1/assets/{asset_id}/activate/",
+            {"version": _asset.version},
+            format="json",
+        )
         self.assertIn(
             activate_response.status_code,
             [status.HTTP_400_BAD_REQUEST, status.HTTP_409_CONFLICT],
@@ -765,8 +782,14 @@ class JourneyDPO003UpdateAssetContractTests(E2ETestBase):
             format="json",
         )
 
-        # Update may succeed, but validation should fail
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST])
+        # Update may succeed (200) with invalid schema stored as-is, or be
+        # rejected (400) at the API layer. Either outcome is acceptable;
+        # the critical check is that validation (below) does NOT return VALID.
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_400_BAD_REQUEST],
+            f"Expected 200 or 400 for update with invalid schema, got {response.status_code}",
+        )
 
         # Try to validate the updated contract — should not be VALID since schema is intentionally bad
         validate_response = self.validate_contract(contract_id, async_mode=False)

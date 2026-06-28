@@ -30,19 +30,28 @@ class ReplayEventsCommandTests(TestCase):
         )
         now = timezone.now()
         cls.event_a = Event.objects.create(
+            event_id=uuid.uuid4(),
             event_type="asset.created",
+            event_version="1.0",
+            source_service="test",
             timestamp=now,
-            payload={"asset_id": "a1"},
+            data={"asset_id": "a1"},
         )
         cls.event_b = Event.objects.create(
+            event_id=uuid.uuid4(),
             event_type="contract.updated",
+            event_version="1.0",
+            source_service="test",
             timestamp=now,
-            payload={"contract_id": "c1"},
+            data={"contract_id": "c1"},
         )
         cls.event_c = Event.objects.create(
+            event_id=uuid.uuid4(),
             event_type="asset.created",
+            event_version="1.0",
+            source_service="test",
             timestamp=now,
-            payload={"asset_id": "a2"},
+            data={"asset_id": "a2"},
         )
 
     def test_command_is_registered(self):
@@ -60,7 +69,8 @@ class ReplayEventsCommandTests(TestCase):
             stdout=out,
             stderr=StringIO(),
         )
-        assert isinstance(out.getvalue(), str)
+        output = out.getvalue()
+        self.assertIn("event", output.lower(), "Dry-run output should indicate result")
 
     def test_command_handles_no_matching_events(self):
         """Command reports zero when no events match."""
@@ -73,7 +83,8 @@ class ReplayEventsCommandTests(TestCase):
             stderr=StringIO(),
         )
         output = out.getvalue()
-        assert isinstance(output, str)
+        self.assertIn("No events found", output,
+            "Should report no events found for nonexistent type")
 
     def test_command_limit_flag_accepted(self):
         """--limit flag restricts the number of events processed."""
@@ -85,7 +96,9 @@ class ReplayEventsCommandTests(TestCase):
             stdout=out,
             stderr=StringIO(),
         )
-        assert isinstance(out.getvalue(), str)
+        output = out.getvalue()
+        self.assertIn("matching", output,
+            "Should report event count (even if zero)")
 
     def test_command_limit_exceeds_10000_raises(self):
         """--limit > 10000 raises CommandError as validated in handle()."""
@@ -109,7 +122,10 @@ class ReplayEventsCommandTests(TestCase):
             stdout=out,
             stderr=StringIO(),
         )
-        assert isinstance(out.getvalue(), str)
+        output = out.getvalue()
+        self.assertIn("event", output.lower(), "Should produce output for event type filter")
+        self.assertIn("matching", output,
+            "Should process command with valid tenant UUID")
 
     def test_command_tenant_filter_with_valid_uuid(self):
         """--tenant-id with a valid UUID is accepted."""
@@ -121,7 +137,8 @@ class ReplayEventsCommandTests(TestCase):
             stdout=out,
             stderr=StringIO(),
         )
-        assert isinstance(out.getvalue(), str)
+        output = out.getvalue()
+        self.assertIn("matching", output, "Should accept valid tenant UUID")
 
     def test_command_tenant_filter_invalid_uuid_raises(self):
         """--tenant-id with a non-UUID value raises CommandError."""
@@ -146,4 +163,6 @@ class ReplayEventsCommandTests(TestCase):
             stdout=out,
             stderr=StringIO(),
         )
-        assert isinstance(out.getvalue(), str)
+        output = out.getvalue()
+        self.assertIn("matching", output,
+            "Should process command with time range")

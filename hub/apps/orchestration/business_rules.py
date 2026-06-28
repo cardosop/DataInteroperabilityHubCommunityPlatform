@@ -789,7 +789,7 @@ class OrchestrationBusinessRules(BusinessRules):
             else:
                 # Fetch steps with timeout protection and query optimization
                 from django.core.exceptions import ObjectDoesNotExist
-                from django.db.utils import DatabaseError, OperationalError
+                from django.db.utils import DatabaseError, InterfaceError, OperationalError
 
                 try:
                     # Try to fetch steps with a limit to prevent huge queries
@@ -799,7 +799,7 @@ class OrchestrationBusinessRules(BusinessRules):
                             "step_index", "step_name", "output_data", "status"
                         ).order_by("step_index")[:100]
                     )  # Limit to 100 steps max
-                except (OperationalError, DatabaseError, ObjectDoesNotExist) as db_error:
+                except (InterfaceError, OperationalError, DatabaseError, ObjectDoesNotExist) as db_error:
                     # If database query fails, log warning and skip step validation
                     logger.warning(
                         f"Could not fetch workflow steps for validation: {db_error!s}",

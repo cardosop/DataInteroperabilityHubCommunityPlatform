@@ -544,7 +544,7 @@ class DeltaShareView(viewsets.ViewSet):
 class WarehouseConnectionACLViewSet(viewsets.ModelViewSet):
     """CRUD for warehouse connection ACLs. Tenant-scoped."""
 
-    queryset = WarehouseConnectionACL.objects.all()
+    queryset = WarehouseConnectionACL.objects.all().order_by("-created_at")
     serializer_class = WarehouseConnectionACLSerializer
     permission_classes = [permissions.IsAuthenticated]
     throttle_classes = [ScopedRateThrottle]
@@ -553,11 +553,11 @@ class WarehouseConnectionACLViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         user = self.request.user
         if hasattr(user, "is_platform_admin") and user.is_platform_admin:
-            return WarehouseConnectionACL.objects.all()
+            return WarehouseConnectionACL.objects.all().order_by("-created_at")
         tenant = _get_tenant(self.request)
         if tenant is None:
             return WarehouseConnectionACL.objects.none()
-        return WarehouseConnectionACL.objects.filter(tenant=tenant)
+        return WarehouseConnectionACL.objects.filter(tenant=tenant).order_by("-created_at")
 
     def perform_create(self, serializer):
         tenant = _get_tenant(self.request)

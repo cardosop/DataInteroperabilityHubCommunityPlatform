@@ -143,12 +143,13 @@ class TransformationPerformanceTest(TestCase):
             preview_time = time.time() - start_time
 
             # Preview generation should complete within 10 seconds for small samples
-            if preview_result:
-                self.assertLess(
-                    preview_time,
-                    10.0,
-                    f"Preview generation took {preview_time:.2f}s, expected < 10.0s",
-                )
+            self.assertIsNotNone(preview_result,
+                "preview_transformation returned None — preview generation failed")
+            self.assertLess(
+                preview_time,
+                10.0,
+                f"Preview generation took {preview_time:.2f}s, expected < 10.0s",
+            )
         except (TransformationExecutionError, StorageObjectNotFoundError) as e:
             # Error path: preview fails due to missing storage or integration issues.
             # StorageObjectNotFoundError is expected in test environments without

@@ -133,8 +133,8 @@ class AuditEventCreationTest(TestCase):
         event = create_audit_event(resource_type="TEST", action="TEST_ACTION", actor_user=self.user)
         original_action = event.action
 
-        # Try to update
-        with self.assertRaises((ValueError, Exception)):
+        # Try to update - AuditEvent raises ValueError (immutable)
+        with self.assertRaises(ValueError):
             event.action = "UPDATED"
             event.save()
 

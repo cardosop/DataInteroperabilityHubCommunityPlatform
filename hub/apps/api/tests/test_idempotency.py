@@ -711,6 +711,115 @@ class TestIdempotencyMiddleware(TestCase):
         # Error should reference idempotency
         self.assertIn("idempotency", response_data["error"]["message"].lower())
 
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
+    @patch("hub.apps.api.middleware.idempotency.acquire_lock")
+    def test_middleware_lock_acquire_is_called_for_new_request(
+        self, mock_acquire_lock, mock_get_redis
+    ):
+        """Test that acquire_lock is called when processing a new idempotency key.
+
+        This verifies the lock-acquisition code path exists and is exercised.
+        The full wait-and-retry path (sleep + recheck) is covered by the
+        idempotency_error_handling integration tests which use real Redis.
+        """
+        idempotency_key = str(uuid.uuid4())
+
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None      # No existing record
+        mock_redis.ttl.return_value = -2        # Key doesn't exist
+        mock_redis.setex.return_value = True
+        mock_get_redis.return_value = mock_redis
+        mock_acquire_lock.return_value = True   # Lock acquired successfully
+
+        get_response = Mock(return_value=JsonResponse({"id": "new-request"}, status=201))
+        middleware = IdempotencyMiddleware(get_response)
+        request = self.factory.post(
+            "/api/v1/assets/",
+            data=json.dumps({"name": "concurrent"}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
+        )
+
+        response = middleware(request)
+
+        # Request processed normally (no existing cached response)
+        self.assertEqual(response.status_code, 201)
+        # acquire_lock must have been called
+        mock_acquire_lock.assert_called_once()
+
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
+    @patch("hub.apps.api.middleware.idempotency.check_idempotency_key_expired")
+    def test_middleware_returns_410_for_expired_key(
+        self, mock_check_expired, mock_get_redis
+    ):
+        """Test middleware returns 410 Gone when the idempotency key has expired."""
+        idempotency_key = str(uuid.uuid4())
+
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = None  # No existing record
+        mock_get_redis.return_value = mock_redis
+        mock_check_expired.return_value = True  # Key has expired
+
+        get_response = Mock(return_value=JsonResponse({"id": "123"}, status=201))
+        middleware = IdempotencyMiddleware(get_response)
+        request = self.factory.post(
+            "/api/v1/assets/",
+            data=json.dumps({"name": "expired"}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
+        )
+
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 410)
+        response_data = json.loads(response.content)
+        self.assertEqual(response_data["error"]["code"], "IDEMPOTENCY_KEY_EXPIRED")
+
+    @patch("hub.apps.api.middleware.idempotency.get_redis_client")
+    def test_get_request_body_uses_drf_data_attribute(self, mock_get_redis):
+        """Test _get_request_body uses request.data when available (DRF path).
+
+        In production, DRF wraps the request and sets .data after parsing the body.
+        This test verifies that when request.data exists, the idempotency hash is
+        computed from the parsed data, not raw request.body.
+        """
+        idempotency_key = str(uuid.uuid4())
+        request_body = {"name": "drf-test"}
+        request_hash = hash_request_body(request_body)
+
+        cached_response = {
+            "request_hash": request_hash,
+            "response": {
+                "status_code": 201,
+                "body": {"id": "drf-cached"},
+                "headers": {},
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+            "created_at": datetime.now(UTC).isoformat(),
+        }
+
+        mock_redis = MagicMock()
+        mock_redis.get.return_value = json.dumps(cached_response)
+        mock_get_redis.return_value = mock_redis
+
+        get_response = Mock(return_value=JsonResponse({"id": "123"}, status=201))
+        middleware = IdempotencyMiddleware(get_response)
+        request = self.factory.post(
+            "/api/v1/assets/",
+            data=json.dumps(request_body),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
+        )
+        # Attach .data to simulate DRF request object
+        request.data = request_body
+
+        response = middleware(request)
+
+        # Should replay the cached response
+        self.assertEqual(response.status_code, 201)
+        self.assertIn("Idempotency-Replayed", response)
+        get_response.assert_not_called()
+
 
 # ============================================================================
 # Edge Cases and Error Handling Tests

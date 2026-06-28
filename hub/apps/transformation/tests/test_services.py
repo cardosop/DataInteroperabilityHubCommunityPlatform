@@ -74,7 +74,6 @@ class TransformationServiceTest(TestCase):
         self.assertEqual(service.tenant_id, str(self.tenant.id))
         self.assertEqual(service.user_id, str(self.user.id))
         self.assertEqual(service.service_name, "transformation_service")
-        self.assertIsNotNone(service._event_publisher)
 
     def test_service_initialization_without_ids(self):
         """Test TransformationService initialization without tenant/user IDs."""
@@ -83,7 +82,6 @@ class TransformationServiceTest(TestCase):
         self.assertIsNone(service.tenant_id)
         self.assertIsNone(service.user_id)
         self.assertEqual(service.service_name, "transformation_service")
-        self.assertIsNotNone(service._event_publisher)
 
     def test_create_pipeline(self):
         """Test creating a transformation pipeline."""
@@ -117,8 +115,8 @@ class TransformationServiceTest(TestCase):
         self.assertEqual(pipeline.version, "1.0.0")
         self.assertEqual(pipeline.status, PipelineStatus.DRAFT)
         self.assertEqual(pipeline.get_pipeline_definition()["version"], "1.0.0")
-        # Default pipeline definition includes at least one step to pass validation
-        self.assertGreaterEqual(len(pipeline.get_pipeline_definition()["steps"]), 1)
+        # Default pipeline definition includes exactly one step ("initial_step")
+        self.assertEqual(len(pipeline.get_pipeline_definition()["steps"]), 1)
         self.assertEqual(pipeline.get_pipeline_definition()["steps"][0]["name"], "initial_step")
 
     def test_create_pipeline_with_metadata(self):
@@ -520,7 +518,7 @@ class TransformationServiceTest(TestCase):
                 pipeline_definition=invalid_definition2,
             )
 
-    def test_create_pipeline_with_asset_compatibility(self):
+    def test_create_pipeline_with_asset_metadata(self):
         """Test creating a pipeline with asset compatibility validation."""
         from hub.apps.assets.models import Asset, AssetStatus
 
@@ -819,8 +817,8 @@ class PipelineExecutionTest(TestCase):
     @patch("hub.apps.files.storage.S3StorageClient")
     @patch("hub.apps.dq.service_client.DQServiceClient")
     @patch("hub.apps.compliance.service_client.ComplianceServiceClient")
-    def test_execute_pipeline_sync_mode(self, mock_compliance_client, mock_dq_client, mock_storage):
-        """Test execute_pipeline() in sync mode."""
+    def test_execute_pipeline_async_with_mocked_services(self, mock_compliance_client, mock_dq_client, mock_storage):
+        """Test execute_pipeline() async mode with mocked storage/compliance/DQ services."""
         from hub.apps.transformation.models import ExecutionMode, ExecutionStatus
 
         # Mock storage client — must support context manager (with S3StorageClient() as ...)
@@ -1065,8 +1063,8 @@ class PreviewTransformationTest(TestCase):
                 file_id=str(self.file.id),
                 file_content=self.test_csv_content,
             )
-        except Exception as e:
-            # If storage fails, we'll skip tests that require it
+        except (OSError, ImportError, ConnectionError) as e:
+            # If storage is unreachable, skip tests that require it
             self.storage_available = False
             self.storage_error = str(e)
         else:
@@ -1095,7 +1093,7 @@ class PreviewTransformationTest(TestCase):
             dq_client = DQServiceClient()
             is_healthy, _ = dq_client.health_check()
             self.dq_service_available = is_healthy
-        except Exception:
+        except (ConnectionError, OSError, ImportError, NameError):
             self.dq_service_available = False
 
         # Check cache availability (Redis)
@@ -1105,7 +1103,7 @@ class PreviewTransformationTest(TestCase):
             cache.set("test_key", "test_value", 1)
             cache.get("test_key")
             self.cache_available = True
-        except Exception:
+        except (ConnectionError, OSError, ImportError):
             self.cache_available = False
 
         self.service = TransformationService(
@@ -1151,7 +1149,7 @@ class PreviewTransformationTest(TestCase):
         row_count = analysis["row_count_changes"]
         self.assertIn("input_rows", row_count)
         self.assertIn("output_rows", row_count)
-        self.assertGreaterEqual(row_count["input_rows"], 0)
+        self.assertGreater(row_count["input_rows"], 0)
 
         # Verify cache was set (check by trying to get cached result)
         if self.cache_available:

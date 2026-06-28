@@ -87,7 +87,9 @@ class Command(BaseCommand):
             try:
                 # Convert pipeline_definition: strip legacy mode,
                 # add a deprecation marker in metadata.
-                pdef = pipeline.pipeline_definition or {}
+                # Use get_pipeline_definition() to transparently decrypt;
+                # the raw field may be stored encrypted.
+                pdef = pipeline.get_pipeline_definition() or {}
                 if isinstance(pdef, dict):
                     pdef.pop("mode", None)
                     pdef["engine"] = "dbt"

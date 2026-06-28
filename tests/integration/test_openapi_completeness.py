@@ -49,6 +49,12 @@ class TestOpenAPISpecCompleteness:
             with open(spec_path) as f:
                 return json.load(f)
 
+        # Fallback to pre-generated spec in docs directory
+        spec_path = project_root / "docs" / "api" / "openapi.yaml"
+        if spec_path.exists():
+            with open(spec_path) as f:
+                return yaml.safe_load(f)
+
         pytest.skip("OpenAPI spec not available")
 
     def test_openapi_version(self, openapi_spec):

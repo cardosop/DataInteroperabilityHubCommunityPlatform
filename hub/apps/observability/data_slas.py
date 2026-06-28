@@ -12,7 +12,7 @@ from django.utils import timezone
 from hub.apps.assets.models import Asset
 from hub.apps.datasets.models import Dataset
 
-from .models import DataSLA
+from .models import DataSLA, PipelineExecution
 
 
 class DataSLAMonitor:

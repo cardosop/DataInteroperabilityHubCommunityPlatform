@@ -306,12 +306,9 @@ class SwaggerUIFunctionalityTest(E2ETestBase):
 
 
 class ReDocFunctionalityTest(E2ETestBase):
-    """Comprehensive tests for ReDoc functionality."""
+    """Comprehensive tests for ReDoc functionality (auth required — 221.4.2)."""
 
-    def setUp(self):
-        """Set up test fixtures."""
-        super().setUp()
-        self.client = APIClient()
+    # Uses authenticated self.client from E2ETestBase.setUp() — do NOT override.
 
     def test_redoc_endpoint_accessible(self):
         """Test ReDoc endpoint is accessible."""

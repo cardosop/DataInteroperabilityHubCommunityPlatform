@@ -350,7 +350,7 @@ class CheckComplianceSerializer(serializers.Serializer):
 class HealthMetricsSerializer(serializers.Serializer):
     """Serializer for domain health metrics"""
 
-    health_score = serializers.IntegerField(help_text="Health score (0-100)")
+    health_score = serializers.IntegerField(min_value=0, max_value=100, help_text="Health score (0-100)")
     policy_count = serializers.IntegerField(help_text="Number of applied policies")
     compliance_status = serializers.ChoiceField(
         choices=MeshComplianceStatus.choices, help_text="Compliance status"

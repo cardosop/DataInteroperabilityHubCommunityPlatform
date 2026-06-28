@@ -17,7 +17,6 @@ import uuid
 
 import pytest
 
-pytestmark = pytest.mark.slow
 from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.test import TestCase
@@ -72,7 +71,7 @@ def _get_wait_for_event_persistence():
     return _wait_for_event_persistence
 
 
-pytestmark = pytest.mark.django_db(transaction=True)
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True)]
 User = get_user_model()
 
 
@@ -276,7 +275,7 @@ class TestDatasetCRUDOperations(TestCase):
         )
 
         # Wait a bit to ensure different timestamps
-        _get_wait_for_event_persistence()()
+
 
         dataset2 = self.service.create_dataset(
             tenant_id=str(self.tenant.id),
@@ -759,13 +758,13 @@ class TestTimeTravelQueries(TestCase):
         )
 
         # Wait to ensure different timestamps
-        _get_wait_for_event_persistence()()
+
 
     def test_time_travel_queries(self):
         """Test time travel queries"""
         # Create version 2
         timestamp_before_v2 = timezone.now()
-        _get_wait_for_event_persistence()()
+
 
         Dataset.objects.create(
             tenant=self.tenant,
@@ -814,11 +813,10 @@ class TestTimeTravelQueries(TestCase):
         self.assertEqual(historical.version, 1)
 
     def test_point_in_time_queries(self):
-        """Test point-in-time queries"""
-        # Create version 2 with delay
+        """Point-in-time queries return the version active at the given timestamp."""
         timestamp_v1 = self.dataset_v1.created_at
-        _get_wait_for_event_persistence()()
 
+        # Create version 2 — its created_at is strictly after v1
         dataset_v2 = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -834,20 +832,36 @@ class TestTimeTravelQueries(TestCase):
 
         timestamp_v2 = dataset_v2.created_at
 
-        # Query at point between v1 and v2
+        # Query at a midpoint between v1 and v2 — must return v1,
+        # since v2 did not exist yet at that time.
         midpoint = timestamp_v1 + (timestamp_v2 - timestamp_v1) / 2
         version_at_midpoint = TimeTravelQuery.get_version_at_timestamp(
             asset_id=self.asset.id, tenant_id=self.tenant.id, timestamp=midpoint
         )
 
-        self.assertIsNotNone(version_at_midpoint)
+        self.assertIsNotNone(
+            version_at_midpoint,
+            "A version must be returned for a timestamp between v1 and v2",
+        )
+        self.assertEqual(
+            version_at_midpoint.id, self.dataset_v1.id,
+            "At midpoint between v1 and v2 (before v2 existed), "
+            "get_version_at_timestamp must return v1",
+        )
+        self.assertEqual(
+            version_at_midpoint.version, 1,
+            "The retrieved version at midpoint must be version 1",
+        )
 
     def test_time_travel_performance(self):
-        """Test time travel performance"""
-        # Create multiple versions
+        """Time travel query correctness across multiple versions.
+
+        Creates 5 versions of a dataset and verifies that
+        get_version_by_number retrieves each one by its version
+        number — a correctness check replacing a brittle wall-clock
+        assertion (assertLess(elapsed, 1.0))."""
         datasets = [self.dataset_v1]
         for i in range(2, 6):
-            _get_wait_for_event_persistence()()
             dataset = Dataset.objects.create(
                 tenant=self.tenant,
                 asset=self.asset,
@@ -862,17 +876,19 @@ class TestTimeTravelQueries(TestCase):
             )
             datasets.append(dataset)
 
-        # Measure query performance
-        import time
-
-        start = time.time()
-        version = TimeTravelQuery.get_version_by_number(
-            asset_id=self.asset.id, tenant_id=self.tenant.id, version_number=1
-        )
-        elapsed = time.time() - start
-
-        self.assertIsNotNone(version)
-        self.assertLess(elapsed, 1.0)  # Should be fast
+        # Verify each version is retrievable by its version number
+        for idx, ds in enumerate(datasets, start=1):
+            retrieved = TimeTravelQuery.get_version_by_number(
+                asset_id=self.asset.id, tenant_id=self.tenant.id, version_number=idx
+            )
+            self.assertIsNotNone(
+                retrieved,
+                f"Version {idx} must be retrievable via get_version_by_number",
+            )
+            self.assertEqual(
+                retrieved.id, ds.id,
+                f"Retrieved version {idx} must match the created Dataset id",
+            )
 
     def test_time_travel_query_validation(self):
         """Test time travel query validation"""
@@ -1228,7 +1244,7 @@ class TestDatasetsODPSIntegration(TestCase):
     def test_odps_time_travel_queries(self):
         """Test ODPS time travel queries"""
         # Create version 2
-        _get_wait_for_event_persistence()()
+
 
         Dataset.objects.create(
             tenant=self.tenant,
@@ -1259,9 +1275,7 @@ class TestDatasetsODPSIntegration(TestCase):
     # ========== EDGE CASES ==========
 
     def test_comprehensive_validation_edge_case_empty_dataset(self):
-        """Test comprehensive validation with empty dataset (edge case)"""
-        # Use a distinct asset with unique key so (tenant, asset, version=1) is unique and we avoid
-        # unique_dataset_version_per_asset / unique_asset_key_per_tenant collisions (e.g. with --reuse-db).
+        """Model accepts a Dataset with an empty schema_json dict (JSONField edge case)."""
         unique_key = f"edge-empty-{uuid.uuid4().hex}"
         edge_asset = Asset.objects.create(
             tenant=self.tenant,
@@ -1279,15 +1293,11 @@ class TestDatasetsODPSIntegration(TestCase):
             version=1,
             created_by=self.user,
         )
-
-        # Should handle empty dataset gracefully
         self.assertIsNotNone(empty_dataset)
         self.assertEqual(empty_dataset.schema_json, {})
 
     def test_comprehensive_validation_edge_case_large_dataset(self):
-        """Test comprehensive validation with large dataset (edge case)"""
-        # Use a distinct asset with unique key so (tenant, asset, version=1) is unique and we avoid
-        # unique_dataset_version_per_asset / unique_asset_key_per_tenant collisions (e.g. with --reuse-db).
+        """Model accepts a Dataset with a 1000-field schema (JSONField edge case)."""
         unique_key = f"edge-large-{uuid.uuid4().hex}"
         edge_asset = Asset.objects.create(
             tenant=self.tenant,
@@ -1297,7 +1307,6 @@ class TestDatasetsODPSIntegration(TestCase):
             created_by=self.user,
         )
         large_schema = {"fields": [{"name": f"col{i}", "data_type": "string"} for i in range(1000)]}
-
         large_dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=edge_asset,
@@ -1307,8 +1316,6 @@ class TestDatasetsODPSIntegration(TestCase):
             version=1,
             created_by=self.user,
         )
-
-        # Should handle large dataset gracefully
         self.assertIsNotNone(large_dataset)
         self.assertEqual(len(large_dataset.schema_json.get("fields", [])), 1000)
 

@@ -162,11 +162,5 @@ class VersionImpactIntegrationTest(DatasetsAPITestBase):
 
         analyzer = VersionImpactAnalyzer()
 
-        # Should handle errors gracefully
-        try:
-            result = analyzer.analyze_impact(str(dataset.id))
-            # Should return result
-            self.assertIsNotNone(result)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("analyze_impact should handle errors gracefully")
+        result = analyzer.analyze_impact(str(dataset.id))
+        self.assertIsNotNone(result)

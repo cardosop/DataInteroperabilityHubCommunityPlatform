@@ -6,6 +6,7 @@ contract create, auth login) result in an audit event. No mocks; uses real DB
 and API client. See tasks.md Phase 15 — Governance: Audit policy and AllowAny review.
 """
 
+import logging
 import uuid
 
 import pytest
@@ -21,6 +22,8 @@ from hub.apps.users.models import Role, UserStatus
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
 
+logger = logging.getLogger(__name__)
+
 # Minimal ODPS original_raw accepted by contract create: product.details + product.dataSchema
 # (required by ODPS structure validation and normalizer; align with contracts/tests/test_odps_*).
 _MINIMAL_ODPS_ORIGINAL_RAW = (
@@ -31,7 +34,6 @@ _MINIMAL_ODPS_ORIGINAL_RAW = (
     "}}"
 )
 # ODPS variant for minimal-schema edge case: product.details + single dataSchema field.
-# (Empty dataSchema.fields can be rejected by normalizer/API; use one field so create returns 201.)
 _MINIMAL_ODPS_EMPTY_SCHEMA_RAW = (
     '{"schema": "https://opendataproducts.org/schema/v4.1", "version": "4.1", '
     '"product": {'
@@ -41,21 +43,45 @@ _MINIMAL_ODPS_EMPTY_SCHEMA_RAW = (
 )
 
 
+def _disconnect_semantic_signals():
+    """Disconnect semantic signal handlers if available; log at debug if unavailable."""
+    from django.db.models.signals import post_save
+
+    try:
+        from hub.apps.assets.models import Asset
+        from hub.apps.contracts.models import Contract
+        from hub.apps.semantic.signals import asset_saved, contract_saved
+
+        post_save.disconnect(contract_saved, sender=Contract)
+        post_save.disconnect(asset_saved, sender=Asset)
+    except (ImportError, AttributeError) as exc:
+        logger.debug(
+            "Could not disconnect semantic signals (may not be installed): %s", exc
+        )
+
+
+def _reconnect_semantic_signals():
+    """Reconnect semantic signal handlers if available; log at debug if unavailable."""
+    from django.db.models.signals import post_save
+
+    try:
+        from hub.apps.assets.models import Asset
+        from hub.apps.contracts.models import Contract
+        from hub.apps.semantic.signals import asset_saved, contract_saved
+
+        post_save.connect(contract_saved, sender=Contract, weak=False)
+        post_save.connect(asset_saved, sender=Asset, weak=False)
+    except (ImportError, AttributeError) as exc:
+        logger.debug(
+            "Could not reconnect semantic signals (may not be installed): %s", exc
+        )
+
+
 class AuditPolicyCriticalPathsTest(TestCase):
     """Test that critical paths emit audit events (Phase 15.1.2)."""
 
     def setUp(self):
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.disconnect(contract_saved, sender=Contract)
-            post_save.disconnect(asset_saved, sender=Asset)
-        except (ImportError, AttributeError):
-            pass
+        _disconnect_semantic_signals()
         self.client = APIClient()
         self.tenant = Tenant.objects.create(
             name="Audit Policy Tenant",
@@ -72,7 +98,6 @@ class AuditPolicyCriticalPathsTest(TestCase):
             tenant=self.tenant,
             status=UserStatus.ACTIVE,
         )
-        # Asset/contract create requires DATA_PROVIDER or TENANT_ADMIN (assets/views.py, contracts/views_base.py)
         data_provider_role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="DATA_PROVIDER",
@@ -82,22 +107,11 @@ class AuditPolicyCriticalPathsTest(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def tearDown(self):
-        from django.db.models.signals import post_save
-
-        try:
-            from hub.apps.assets.models import Asset
-            from hub.apps.contracts.models import Contract
-            from hub.apps.semantic.signals import asset_saved, contract_saved
-
-            post_save.connect(contract_saved, sender=Contract, weak=False)
-            post_save.connect(asset_saved, sender=Asset, weak=False)
-        except (ImportError, AttributeError):
-            pass
+        _reconnect_semantic_signals()
         super().tearDown()
 
-    def test_asset_create_emits_audit_event_returns_201(self):
-        """Asset creation MUST emit ASSET_CREATED audit event returns 201."""
-        AuditEvent.objects.filter(action="ASSET_CREATED", resource_type="ASSET").count()
+    def test_asset_create_endpoint_returns_201(self):
+        """Asset creation endpoint returns 201 Created."""
         response = self.client.post(
             "/api/v1/assets/",
             {"key": "audit-policy-asset", "name": "Audit Policy Asset", "domain": "test"},
@@ -131,15 +145,14 @@ class AuditPolicyCriticalPathsTest(TestCase):
         )
         self.assertEqual(asset_resp.status_code, status.HTTP_201_CREATED)
 
-    def test_contract_create_emits_audit_event_returns_201(self):
-        """Contract creation MUST emit CONTRACT_CREATED audit event returns 201."""
+    def test_contract_create_endpoint_returns_201(self):
+        """Contract creation endpoint returns 201 Created."""
         asset_resp = self.client.post(
             "/api/v1/assets/",
             {"key": "audit-policy-contract-asset", "name": "Contract Asset", "domain": "test"},
             format="json",
         )
         asset_id = asset_resp.data["id"]
-        AuditEvent.objects.filter(action="CONTRACT_CREATED", resource_type="CONTRACT").count()
         response = self.client.post(
             "/api/v1/contracts/",
             {
@@ -160,7 +173,6 @@ class AuditPolicyCriticalPathsTest(TestCase):
             format="json",
         )
         asset_id = asset_resp.data["id"]
-        AuditEvent.objects.filter(action="CONTRACT_CREATED", resource_type="CONTRACT").count()
         response = self.client.post(
             "/api/v1/contracts/",
             {
@@ -182,10 +194,9 @@ class AuditPolicyCriticalPathsTest(TestCase):
             "Contract create must emit CONTRACT_CREATED audit event for this contract",
         )
 
-    def test_login_emits_audit_event_returns_200(self):
-        """Login MUST emit AUTH/LOGIN audit event returns 200."""
+    def test_login_endpoint_returns_200(self):
+        """Login endpoint returns 200 OK."""
         anon_client = APIClient()
-        AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
         response = anon_client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "testpass123"},
@@ -211,34 +222,17 @@ class AuditPolicyCriticalPathsTest(TestCase):
 
     # ========== FAILURE SCENARIOS ==========
 
-    def test_asset_create_failure_emits_audit_event(self):
-        """Test that asset creation failure emits audit event (failure scenario)."""
-        initial_count = AuditEvent.objects.filter(
-            action="ASSET_CREATED", resource_type="ASSET", result="FAILURE"
-        ).count()
-
-        # Try to create asset with invalid data (missing required field)
+    def test_asset_create_failure_returns_400(self):
+        """Test that asset creation with missing required field returns 400."""
         response = self.client.post(
             "/api/v1/assets/",
             {"name": "Invalid Asset"},  # Missing required 'key' field
             format="json",
         )
-
-        # Should fail validation
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-        # Check if failure audit event was created (if implemented)
-        new_count = AuditEvent.objects.filter(
-            action="ASSET_CREATED", resource_type="ASSET", result="FAILURE"
-        ).count()
-
-        # Note: Failure audit events may or may not be created depending on implementation
-        # This test verifies the behavior exists if implemented
-        self.assertGreaterEqual(new_count, initial_count)
-
-    def test_contract_create_failure_emits_audit_event(self):
-        """Test that contract creation failure emits audit event (failure scenario)."""
-        # Create asset first
+    def test_contract_create_failure_returns_validation_error(self):
+        """Test that contract creation with invalid JSON returns validation error."""
         asset_resp = self.client.post(
             "/api/v1/assets/",
             {"key": "failure-test-asset", "name": "Failure Test Asset", "domain": "test"},
@@ -247,11 +241,6 @@ class AuditPolicyCriticalPathsTest(TestCase):
         self.assertEqual(asset_resp.status_code, status.HTTP_201_CREATED)
         asset_id = asset_resp.data["id"]
 
-        initial_count = AuditEvent.objects.filter(
-            action="CONTRACT_CREATED", resource_type="CONTRACT", result="FAILURE"
-        ).count()
-
-        # Try to create contract with invalid JSON
         response = self.client.post(
             "/api/v1/contracts/",
             {
@@ -261,44 +250,32 @@ class AuditPolicyCriticalPathsTest(TestCase):
             },
             format="json",
         )
-
-        # Should fail validation
         self.assertIn(
             response.status_code,
             [status.HTTP_400_BAD_REQUEST, status.HTTP_500_INTERNAL_SERVER_ERROR],
         )
 
-        # Check if failure audit event was created (if implemented)
-        new_count = AuditEvent.objects.filter(
-            action="CONTRACT_CREATED", resource_type="CONTRACT", result="FAILURE"
-        ).count()
-
-        self.assertGreaterEqual(new_count, initial_count)
-
     def test_login_failure_emits_audit_event(self):
-        """Test that login failure emits audit event (failure scenario)."""
+        """Test that login failure emits audit event (if implemented)."""
         anon_client = APIClient()
         initial_count = AuditEvent.objects.filter(
             resource_type="AUTH", action="LOGIN", result="FAILURE"
         ).count()
 
-        # Try to login with wrong password
         response = anon_client.post(
             "/api/v1/auth/login/",
             {"email": self.user.email, "password": "wrongpassword"},
             format="json",
         )
-
-        # Should fail
         self.assertIn(
             response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST]
         )
 
-        # Check if failure audit event was created
+        # Login failure audit events may or may not be created depending on implementation.
+        # When implemented, result="FAILURE" events should increase.
         new_count = AuditEvent.objects.filter(
             resource_type="AUTH", action="LOGIN", result="FAILURE"
         ).count()
-
         self.assertGreaterEqual(new_count, initial_count)
 
     # ========== EDGE CASES ==========
@@ -353,9 +330,11 @@ class AuditPolicyCriticalPathsTest(TestCase):
         self.assertGreater(new_count, initial_count)
 
     def test_login_with_nonexistent_email_emits_audit_event(self):
-        """Test that login with nonexistent email emits audit event (edge case)."""
+        """Test that login attempt with nonexistent email may create an audit event."""
         anon_client = APIClient()
-        initial_count = AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
+        initial_count = AuditEvent.objects.filter(
+            resource_type="AUTH", action="LOGIN"
+        ).count()
 
         response = anon_client.post(
             "/api/v1/auth/login/",
@@ -363,14 +342,12 @@ class AuditPolicyCriticalPathsTest(TestCase):
             format="json",
         )
 
-        # Should fail
         self.assertIn(
             response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_400_BAD_REQUEST]
         )
 
-        # Check if audit event was created (may be SUCCESS or FAILURE)
+        # Audit events for nonexistent email logins may or may not be created.
         new_count = AuditEvent.objects.filter(resource_type="AUTH", action="LOGIN").count()
-
         self.assertGreaterEqual(new_count, initial_count)
 
     # ========== ERROR HANDLING ==========

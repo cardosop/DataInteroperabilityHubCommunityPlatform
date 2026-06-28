@@ -99,9 +99,10 @@ class TenantManagementE2ETest(E2ETestBase):
         import uuid
 
         unique_name = f"Test Tenant Get {uuid.uuid4().hex[:8]}"
+        slug = f"test-tenant-get-{uuid.uuid4().hex[:8]}"
         tenant = Tenant.objects.create(
             name=unique_name,
-            slug=f"test-tenant-get-{uuid.uuid4().hex[:8]}",
+            slug=slug,
             kyc_status=KYCStatus.VERIFIED,
         )
 
@@ -111,7 +112,7 @@ class TenantManagementE2ETest(E2ETestBase):
         data = get_response_data(response) or {}
         self.assertEqual(data.get("id"), str(tenant.id))
         self.assertEqual(data.get("name"), unique_name)
-        self.assertEqual(data.get("slug"), "test-tenant-get")
+        self.assertEqual(data.get("slug"), slug)
         self.assertEqual(data.get("status"), TenantStatus.ACTIVE)
         self.assertEqual(data.get("kyc_status"), KYCStatus.VERIFIED)
 

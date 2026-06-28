@@ -72,7 +72,17 @@ class CostTrackingService:
         except Exception:
             flsc_result = None
 
-        if flsc_result and flsc_result.get("total_cents", 0) > 0:
+        # Only use the FLSC path when there is real, non-platform usage.
+        # platform_base is a flat monthly charge that is always included,
+        # so total_cents > 0 is true even for tenants with zero measured
+        # usage.  Check the non-platform subtotal instead so the fallback
+        # path (which queries File sizes, APIUsage counts, etc.) runs
+        # when FLSC has no real usage data.
+        flsc_breakdown = (flsc_result or {}).get("breakdown", {})
+        flsc_non_platform = sum(
+            cents for key, cents in flsc_breakdown.items() if key != "platform_base"
+        )
+        if flsc_result and flsc_non_platform > 0:
             total_cents = flsc_result["total_cents"]
             breakdown = []
             dimension_labels = {

@@ -9,8 +9,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_ROOT"
 
-# Services required for Phase 10 tests (dependencies started automatically)
-SERVICES=(traefik frontend api-gateway api-service)
+# Services required for Phase 10 tests (dependencies started automatically).
+# api-gateway was removed; api-service handles routing directly.
+SERVICES=(traefik frontend api-service)
 
 echo "[INFO] Checking Docker Compose..."
 docker compose version
@@ -18,8 +19,8 @@ docker compose version
 echo "[INFO] Ensuring required services are up: ${SERVICES[*]} (and their dependencies)"
 docker compose up -d "${SERVICES[@]}"
 
-echo "[INFO] Waiting for Traefik, frontend, api-gateway, api-service to be healthy..."
-for svc in api-service api-gateway frontend traefik; do
+echo "[INFO] Waiting for Traefik, frontend, and api-service to be healthy..."
+for svc in api-service frontend traefik; do
   timeout 300 bash -c "until docker compose ps --format json $svc 2>/dev/null | grep -q '\"Health\":\"healthy\"'; do echo \"  waiting for $svc...\"; sleep 5; done" || {
     echo "[WARN] $svc may not be healthy yet; continuing."
   }

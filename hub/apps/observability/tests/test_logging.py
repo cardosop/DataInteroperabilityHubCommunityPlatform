@@ -43,11 +43,14 @@ class LoggingTest(TestCase):
         self.assertEqual(result["user_id"], "123")  # Not PII
 
     def test_structlog_configuration(self):
-        """Test structlog is configured correctly"""
+        """Test structlog is configured and produces log output"""
         logger = structlog.get_logger(__name__)
 
         # Should not raise exception
         logger.info("test message", key="value")
 
-        # Verify logger is bound logger
+        # Verify logger is a bound logger with expected methods
         self.assertTrue(hasattr(logger, "info"))
+        self.assertTrue(hasattr(logger, "debug"))
+        self.assertTrue(hasattr(logger, "bind"))
+        self.assertTrue(callable(logger.info))

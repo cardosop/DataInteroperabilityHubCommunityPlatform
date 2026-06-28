@@ -734,6 +734,9 @@ services:
     command: ["gunicorn", "hub.asgi:application", "--config", "gunicorn.conf.py"]
     volumes:
       - .:/app
+      - /var/run/docker.sock:/var/run/docker.sock
+    group_add:
+      - "984"  # host docker group GID — grants appuser access to /var/run/docker.sock
     ports:
       - "${API_TEST_PORT:-8001}:8000"
     env_file:
@@ -805,6 +808,7 @@ services:
       ODH_TRAINING_OPERATOR_URL: http://odh-training-operator-test:8080
       JAEGER_AGENT_HOST: jaeger-test
       JAEGER_AGENT_PORT: 6831
+      OPENTELEMETRY_ENABLED: false
       # Monitoring URLs for integration tests (batch 7, 8) - reachable from api-service-test
       PROMETHEUS_URL: http://prometheus-test:9090
       GRAFANA_URL: http://grafana-test:3000
@@ -995,6 +999,7 @@ services:
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-test-internal-api-key-for-test-env}
       JAEGER_AGENT_HOST: jaeger-test
       JAEGER_AGENT_PORT: 6831
+      OPENTELEMETRY_ENABLED: false
       ENVIRONMENT: test
       APP_VERSION: ${APP_VERSION:-1.0.0-test}
       DEBUG: "True"
@@ -1296,14 +1301,12 @@ services:
       - prometheus-test-data:/prometheus
     networks:
       - hub-test-net
+    # Prometheus scrapes targets independently — it does not need scrape
+    # targets to be running at startup (it logs "target down" and retries).
+    # Removing the service depends_on avoids a circular chain
+    # (alertmanager → prometheus → api-service) that prevents Alertmanager
+    # from starting when only a subset of services is requested.
     depends_on:
-      - api-service-test
-      - worker-service-test
-      - semantic-service-test
-      - dq-service-test
-      - compliance-service-test
-      - datacontract-service-test
-      - prefect-integration-service-test
       - redis-exporter-cache-test
       - redis-exporter-queue-test
       - redis-exporter-events-test
@@ -1346,12 +1349,12 @@ services:
     image: prom/alertmanager:v0.27.0
     container_name: hub-test-alertmanager
     command:
-      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--config.file=/etc/alertmanager/alertmanager-test.yml'
       - '--storage.path=/alertmanager'
     ports:
       - "${ALERTMANAGER_TEST_PORT:-9093}:9093"
     volumes:
-      - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./monitoring/alertmanager/alertmanager-test.yml:/etc/alertmanager/alertmanager-test.yml:ro
       - alertmanager-test-data:/alertmanager
     networks:
       - hub-test-net

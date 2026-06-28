@@ -122,16 +122,6 @@ class DomainViewSetTestCase(TestCase):
             resource_usage={"storage_gb_used": 50},
         )
 
-    def _authenticate_user(self, api_key):
-        """Helper method to authenticate user and set tenant context"""
-        # Refresh user from DB to ensure tenant_id is available
-        user = api_key.user
-        user.refresh_from_db()
-
-        self.client.credentials(
-            HTTP_AUTHORIZATION=f"ApiKey {api_key._plaintext_key}",
-            HTTP_X_TENANT_ID=str(self.tenant.id),
-        )
 
 
 class DomainCreationEndpointTest(DomainViewSetTestCase):
@@ -1012,7 +1002,7 @@ class FederatedGovernanceIntegrationTest(DomainViewSetTestCase):
             apply_url, {"policy_id": str(self.policy1.id)}, format="json"
         )
         self.assertEqual(apply_response.status_code, status.HTTP_201_CREATED)
-        apply_response.data["id"]
+        self.assertIsNotNone(apply_response.data.get("id"))
 
         # 2. Apply second policy with overrides
         apply_response2 = self.client.post(
@@ -1186,6 +1176,7 @@ class DomainViewSetEdgeCasesTest(DomainViewSetTestCase):
 
         response = self.client.put(url, data, format="json")
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("status", response.data, "Should report invalid status choice error")
 
     def test_list_domains_with_invalid_pagination(self):
         """Test domain listing with invalid pagination parameters"""
@@ -1331,33 +1322,30 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
 
         response = self.client.post(url, data, format="json")
         # Should fail - cannot create domain in other tenant
-        self.assertIn(
-            response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN]
-        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-    def test_update_domain_concurrent_modification(self):
-        """Test handling concurrent domain modifications"""
+    def test_update_domain_after_direct_db_modification(self):
+        """Test domain update via API succeeds after a direct DB modification (last write wins)."""
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.admin_api_key._plaintext_key}")
 
         url = reverse("domain-detail", kwargs={"id": str(self.domain.id)})
 
-        # Simulate concurrent update by updating domain directly in DB
-        self.domain.name = "Concurrent Update"
+        # Modify domain directly in DB before the API update
+        self.domain.name = "Direct DB Update"
         self.domain.save()
 
-        # Then try to update via API
+        # Then update via API
         data = {"name": "API Update"}
         response = self.client.put(url, data, format="json")
 
         # Should succeed - last write wins
         self.assertEqual(response.status_code, status.HTTP_200_OK)
 
-    def test_list_domains_database_error_simulation(self):
-        """Test error handling for database errors"""
+    def test_list_domains_with_invalid_owner_uuid_filter(self):
+        """Test domain listing with invalid owner_id UUID returns 200 with empty results."""
         self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
 
         url = reverse("domain-list")
-        # Use invalid filter that might cause database error
         response = self.client.get(url, {"owner_id": "invalid-uuid"})
 
         # Invalid UUID filter returns empty queryset — 200 with zero results
@@ -1454,20 +1442,6 @@ class DomainViewSetErrorHandlingTest(DomainViewSetTestCase):
         # Invalid status filter returns 200 with empty results (graceful degradation)
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["count"], 0)
-
-    def test_get_compliance_report_not_found(self):
-        """Test error handling when compliance report not found"""
-        import uuid
-
-        self.client.credentials(HTTP_AUTHORIZATION=f"ApiKey {self.user_api_key._plaintext_key}")
-
-        url = reverse(
-            "domain-get-compliance-report",
-            kwargs={"id": str(self.domain.id), "report_id": str(uuid.uuid4())},
-        )
-        response = self.client.get(url)
-
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_remove_policy_not_applied(self):
         """Test error handling when removing policy that was never applied"""

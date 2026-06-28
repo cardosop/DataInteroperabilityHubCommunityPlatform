@@ -435,8 +435,8 @@ class VersionComparisonServiceTest(DatasetsTestBase):
 
         comparison = VersionComparisonService.compare_versions(v1, v2)
 
-        # Should return comparison
-        self.assertIsNotNone(comparison)
+        self.assertIsNotNone(comparison.schema_diff,
+                             "compare_versions must populate schema_diff")
 
     # ========== FAILURE SCENARIOS ==========
 
@@ -449,9 +449,8 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         # Non-existent (unsaved) versions — compare_versions returns a
         # VersionComparison without raising (graceful degradation).
         comparison = VersionComparisonService.compare_versions(fake_v1, fake_v2)
-        self.assertIsNotNone(
-            comparison, "compare_versions must return a result even for non-persisted datasets"
-        )
+        self.assertIsNotNone(comparison.schema_diff,
+                             "schema_diff must be populated even for non-persisted datasets")
 
     def test_version_comparison_failure_same_version(self):
         """Test version comparison with same version (failure scenario)"""
@@ -465,11 +464,11 @@ class VersionComparisonServiceTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Compare same version to itself
+        # Compare same version to itself — no changes expected.
         comparison = VersionComparisonService.compare_versions(v1, v1)
 
-        # Should handle same version gracefully
-        self.assertIsNotNone(comparison)
+        self.assertEqual(len(comparison.schema_diff.changes), 0,
+                         "Same-version comparison must produce zero changes")
 
     # ========== EDGE CASES ==========
 
@@ -508,7 +507,6 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         comparison = VersionComparisonService.compare_versions(v1, v2)
 
         # Should return comparison with no changes
-        self.assertIsNotNone(comparison)
         self.assertEqual(len(comparison.schema_diff.changes), 0)
 
     def test_version_comparison_edge_case_empty_schemas(self):
@@ -546,7 +544,7 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         comparison = VersionComparisonService.compare_versions(v1, v2)
 
         # Should handle empty schemas gracefully
-        self.assertIsNotNone(comparison)
+        self.assertEqual(len(comparison.schema_diff.changes), 0)
 
     # ========== ERROR HANDLING ==========
 
@@ -583,7 +581,5 @@ class VersionComparisonServiceTest(DatasetsTestBase):
         )
 
         comparison = VersionComparisonService.compare_versions(v1, v2)
-        self.assertIsNotNone(
-            comparison, "compare_versions must return a comparison for valid persisted datasets"
-        )
-        self.assertIsNotNone(comparison.schema_diff, "comparison must have a schema_diff attribute")
+        self.assertIsNotNone(comparison.schema_diff,
+                             "compare_versions must populate schema_diff for valid datasets")

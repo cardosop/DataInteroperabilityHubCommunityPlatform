@@ -5,6 +5,9 @@ Tests SendGrid, SES, SMTP backends and factory function.
 Uses real services where possible (no mocks).
 """
 
+import os
+from unittest.mock import patch
+
 import pytest
 from django.test import TestCase, override_settings
 
@@ -52,21 +55,19 @@ class SendGridEmailServiceTest(EmailServiceBaseTest):
 
     @override_settings(EMAIL_BACKEND="sendgrid", SENDGRID_API_KEY=None)
     def test_sendgrid_missing_api_key(self):
-        """Test error when SENDGRID_API_KEY is missing"""
-        try:
-            with self.assertRaises(EmailServiceError) as cm:
-                SendGridEmailService()
-            # Error message should mention SENDGRID_API_KEY if package is available
-            # or mention package installation if package is not available
-            error_msg = str(cm.exception)
-            self.assertTrue(
-                "SENDGRID_API_KEY" in error_msg or "sendgrid package not installed" in error_msg,
-                f"Expected error about SENDGRID_API_KEY or package installation, got: {error_msg}",
-            )
-        except AssertionError:
-            # If sendgrid is not available, the test should still pass
-            # as it correctly raises an error (just a different one)
-            pass
+        """Missing SENDGRID_API_KEY raises EmailServiceError.
+
+        The service raises the same exception type whether the sendgrid
+        package is absent or the API key is missing — assertRaises
+        catches both.
+        """
+        with self.assertRaises(EmailServiceError) as cm:
+            SendGridEmailService()
+        error_msg = str(cm.exception)
+        self.assertTrue(
+            "SENDGRID_API_KEY" in error_msg or "sendgrid package not installed" in error_msg,
+            f"Expected error about SENDGRID_API_KEY or package install, got: {error_msg}",
+        )
 
     @override_settings(
         EMAIL_BACKEND="sendgrid",
@@ -101,23 +102,29 @@ class SendGridEmailServiceTest(EmailServiceBaseTest):
         SENDGRID_FROM_EMAIL="noreply@example.com",
     )
     def test_sendgrid_custom_from_email(self):
-        """Test custom from_email parameter"""
-        try:
-            service = SendGridEmailService()
+        """Custom from_email parameter is accepted by the validation gate.
+
+        The parameter-validation path runs before the external API call
+        (services.py:127-129).  Providing *from_email* clears the gate;
+        the subsequent API call may fail with a test key, but the error
+        must NOT be "from_email not configured" — it must be a downstream
+        SendGrid API error instead.
+        """
+        service = SendGridEmailService()
+        with self.assertRaises(EmailServiceError) as cm:
             service.send_email(
                 to_email=self.to_email,
                 subject=self.subject,
                 html_content=self.html_content,
                 from_email="custom@example.com",
             )
-            # If SendGrid is available, should succeed or fail gracefully
-            # This test verifies the structure is correct
-        except EmailServiceError:
-            # SendGrid may not be available - skip test
-            self.skipTest("SendGrid not available")
-        except Exception:
-            # Other errors are acceptable (e.g., API key invalid)
-            pass
+        # The error must be from the SendGrid API call, NOT from missing
+        # from_email validation.
+        self.assertNotIn(
+            "from_email not configured",
+            str(cm.exception),
+            "from_email override should bypass the missing-from_email gate",
+        )
 
 
 class SESEmailServiceTest(EmailServiceBaseTest):
@@ -170,21 +177,26 @@ class SESEmailServiceTest(EmailServiceBaseTest):
         EMAIL_BACKEND="ses", AWS_SES_REGION="us-east-1", AWS_SES_FROM_EMAIL="noreply@example.com"
     )
     def test_ses_custom_from_email(self):
-        """Test custom from_email parameter"""
-        try:
-            service = SESEmailService()
+        """Custom from_email parameter is accepted by the validation gate.
+
+        The parameter-validation path runs before the external API call.
+        Providing *from_email* clears the gate; the subsequent API call
+        may fail with a test key, but the error must NOT be about missing
+        from_email — it must be a downstream AWS SES error instead.
+        """
+        service = SESEmailService()
+        with self.assertRaises(EmailServiceError) as cm:
             service.send_email(
                 to_email=self.to_email,
                 subject=self.subject,
                 html_content=self.html_content,
                 from_email="custom@example.com",
             )
-            # If SES is available, should succeed or fail gracefully
-        except EmailServiceError:
-            self.skipTest("AWS SES not available")
-        except Exception:
-            # Other errors are acceptable (e.g., credentials invalid)
-            pass
+        self.assertNotIn(
+            "from_email not configured",
+            str(cm.exception),
+            "from_email override should bypass the missing-from_email gate",
+        )
 
 
 class SMTPEmailServiceTest(EmailServiceBaseTest):
@@ -272,25 +284,17 @@ class SMTPEmailServiceTest(EmailServiceBaseTest):
         SMTP_PORT=587,
         SMTP_FROM_EMAIL="noreply@example.com",
     )
+    @patch.dict(os.environ, {"E2E_ENABLE_SMTP": ""}, clear=False)
     def test_smtp_send_email_structure(self):
-        """Test SMTP email sending structure (may fail if SMTP server unavailable)"""
+        """SMTP send completes via locmem backend (E2E_ENABLE_SMTP cleared)."""
         service = SMTPEmailService()
-        try:
-            result = service.send_email(
-                to_email=self.to_email,
-                subject=self.subject,
-                html_content=self.html_content,
-                text_content=self.text_content,
-            )
-            # If SMTP is available, should succeed
-            self.assertIn("success", result)
-        except EmailServiceError:
-            # SMTP server may not be available - that's OK
-            # This test verifies the structure is correct
-            pass
-        except Exception:
-            # Other errors are acceptable (e.g., connection refused)
-            pass
+        result = service.send_email(
+            to_email=self.to_email,
+            subject=self.subject,
+            html_content=self.html_content,
+            text_content=self.text_content,
+        )
+        self.assertIn("success", result)
 
 
 class EmailServiceFactoryTest(TestCase):
@@ -376,20 +380,17 @@ class EmailServiceCommonTest(EmailServiceBaseTest):
         SMTP_PORT=587,
         SMTP_FROM_EMAIL="noreply@example.com",
     )
+    @patch.dict(os.environ, {"E2E_ENABLE_SMTP": ""}, clear=False)
     def test_email_service_send_with_text_content(self):
-        """Test email sending with both HTML and text content"""
+        """Email send with both HTML and text content via locmem backend."""
         service = SMTPEmailService()
-        try:
-            result = service.send_email(
-                to_email=self.to_email,
-                subject=self.subject,
-                html_content=self.html_content,
-                text_content=self.text_content,
-            )
-            self.assertIn("success", result)
-        except Exception:
-            # SMTP may not be available
-            pass
+        result = service.send_email(
+            to_email=self.to_email,
+            subject=self.subject,
+            html_content=self.html_content,
+            text_content=self.text_content,
+        )
+        self.assertIn("success", result)
 
     @override_settings(
         EMAIL_BACKEND="smtp",
@@ -397,17 +398,14 @@ class EmailServiceCommonTest(EmailServiceBaseTest):
         SMTP_PORT=587,
         SMTP_FROM_EMAIL="noreply@example.com",
     )
+    @patch.dict(os.environ, {"E2E_ENABLE_SMTP": ""}, clear=False)
     def test_email_service_send_html_only(self):
-        """Test email sending with HTML content only"""
+        """Email send with HTML-only content via locmem backend."""
         service = SMTPEmailService()
-        try:
-            result = service.send_email(
-                to_email=self.to_email, subject=self.subject, html_content=self.html_content
-            )
-            self.assertIn("success", result)
-        except Exception:
-            # SMTP may not be available
-            pass
+        result = service.send_email(
+            to_email=self.to_email, subject=self.subject, html_content=self.html_content
+        )
+        self.assertIn("success", result)
 
     @override_settings(
         EMAIL_BACKEND="smtp",
@@ -415,20 +413,17 @@ class EmailServiceCommonTest(EmailServiceBaseTest):
         SMTP_PORT=587,
         SMTP_FROM_EMAIL="noreply@example.com",
     )
+    @patch.dict(os.environ, {"E2E_ENABLE_SMTP": ""}, clear=False)
     def test_email_service_reply_to(self):
-        """Test email sending with reply-to address"""
+        """Email send with reply-to address via locmem backend."""
         service = SMTPEmailService()
-        try:
-            result = service.send_email(
-                to_email=self.to_email,
-                subject=self.subject,
-                html_content=self.html_content,
-                reply_to="reply@example.com",
-            )
-            self.assertIn("success", result)
-        except Exception:
-            # SMTP may not be available
-            pass
+        result = service.send_email(
+            to_email=self.to_email,
+            subject=self.subject,
+            html_content=self.html_content,
+            reply_to="reply@example.com",
+        )
+        self.assertIn("success", result)
 
     @override_settings(
         EMAIL_BACKEND="smtp",
@@ -436,20 +431,17 @@ class EmailServiceCommonTest(EmailServiceBaseTest):
         SMTP_PORT=587,
         SMTP_FROM_EMAIL="noreply@example.com",
     )
+    @patch.dict(os.environ, {"E2E_ENABLE_SMTP": ""}, clear=False)
     def test_email_service_attachments(self):
-        """Test email sending with attachments"""
+        """Email send with attachments via locmem backend."""
         service = SMTPEmailService()
         attachments = [
             {"filename": "test.pdf", "content": b"PDF content", "content_type": "application/pdf"}
         ]
-        try:
-            result = service.send_email(
-                to_email=self.to_email,
-                subject=self.subject,
-                html_content=self.html_content,
-                attachments=attachments,
-            )
-            self.assertIn("success", result)
-        except Exception:
-            # SMTP may not be available
-            pass
+        result = service.send_email(
+            to_email=self.to_email,
+            subject=self.subject,
+            html_content=self.html_content,
+            attachments=attachments,
+        )
+        self.assertIn("success", result)

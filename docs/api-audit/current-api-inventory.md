@@ -1,7 +1,7 @@
 # Current API Inventory from Codebase
 
 **Document Version**: 2.0.0
-**Last Updated**: 2026-06-07
+**Last Updated**: 2026-06-22
 **Source**: Static analysis of Django URL patterns and ViewSets
 **Task**: 9.6.3.3.2 - Update API inventory files
 
@@ -15,7 +15,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 3. Extracting function-based views
 4. Verifying endpoint patterns match standardized conventions
 
-**Total Endpoints Found**: 874
+**Total Endpoints Found**: 884
 
 ---
 
@@ -288,7 +288,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/breach/templates/catalog/` | `breach_template_catalog` | breach_template_catalog | Function-based |
 | POST | `/api/v1/breach/templates/catalog/` | `breach_template_catalog` | breach_template_catalog | Function-based |
 
-### Compliance (9 endpoints)
+### Compliance (12 endpoints)
 
 **Base Route**: `/api/v1/compliance/`
 
@@ -302,7 +302,10 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/compliance/runs/{id}/` | `ComplianceRunViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/compliance/runs/{id}/` | `ComplianceRunViewSet.update` | update | Standard |
 | POST | `/api/v1/compliance/runs/{id}/cancel/` | `ComplianceRunViewSet.cancel` | cancel | Custom |
+| GET | `/api/v1/compliance/runs/{id}/export.csv/` | `ComplianceRunViewSet.export_csv` | export_csv | Custom |
+| GET | `/api/v1/compliance/runs/{id}/export.json/` | `ComplianceRunViewSet.export_json` | export_json | Custom |
 | GET | `/api/v1/compliance/runs/{id}/results/` | `ComplianceRunViewSet.results` | results | Custom |
+| POST | `/api/v1/compliance/runs/{id}/scan-warehouse/` | `ComplianceRunViewSet.scan_warehouse` | scan_warehouse | Custom |
 
 ### Consent (15 endpoints)
 
@@ -598,7 +601,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PUT | `/api/v1/jobs/dlq/{id}/` | `FailedJobDLQViewSet.update` | update | Standard |
 | POST | `/api/v1/jobs/dlq/{id}/retry/` | `FailedJobDLQViewSet.retry` | retry | Custom |
 
-### Marketplace (36 endpoints)
+### Marketplace (42 endpoints)
 
 **Base Route**: `/api/v1/marketplace/`
 
@@ -638,6 +641,12 @@ This document inventories all API endpoints extracted from the Django codebase b
 | GET | `/api/v1/marketplace/payment-gateways/{id}/` | `PaymentGatewayViewSet.retrieve` | retrieve | Standard |
 | PATCH | `/api/v1/marketplace/payment-gateways/{id}/` | `PaymentGatewayViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/marketplace/payment-gateways/{id}/` | `PaymentGatewayViewSet.update` | update | Standard |
+| GET | `/api/v1/marketplace/saved-searches/` | `SavedSearchViewSet.list` | list | Standard |
+| POST | `/api/v1/marketplace/saved-searches/` | `SavedSearchViewSet.create` | create | Standard |
+| DELETE | `/api/v1/marketplace/saved-searches/{id}/` | `SavedSearchViewSet.destroy` | destroy | Standard |
+| GET | `/api/v1/marketplace/saved-searches/{id}/` | `SavedSearchViewSet.retrieve` | retrieve | Standard |
+| PATCH | `/api/v1/marketplace/saved-searches/{id}/` | `SavedSearchViewSet.partial_update` | partial_update | Standard |
+| PUT | `/api/v1/marketplace/saved-searches/{id}/` | `SavedSearchViewSet.update` | update | Standard |
 | GET | `/api/v1/marketplace/webhooks/stripe/` | `stripe_marketplace_webhook` | stripe_marketplace_webhook | Function-based |
 | POST | `/api/v1/marketplace/webhooks/stripe/` | `stripe_marketplace_webhook` | stripe_marketplace_webhook | Function-based |
 
@@ -693,7 +702,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PATCH | `/api/v1/mesh/topology/{id}/` | `TopologyViewSet.partial_update` | partial_update | Standard |
 | PUT | `/api/v1/mesh/topology/{id}/` | `TopologyViewSet.update` | update | Standard |
 
-### Ml (31 endpoints)
+### Ml (32 endpoints)
 
 **Base Route**: `/api/v1/ml/`
 
@@ -729,6 +738,7 @@ This document inventories all API endpoints extracted from the Django codebase b
 | PUT | `/api/v1/ml/models/{id}/` | `MLModelViewSet.update` | update | Standard |
 | GET | `/api/v1/ml/models/{id}/datasets/` | `MLModelViewSet.get_datasets` | get_datasets | Custom |
 | POST | `/api/v1/ml/models/{id}/link-dataset/` | `MLModelViewSet.link_dataset` | link_dataset | Custom |
+| POST | `/api/v1/ml/models/{id}/predict/` | `MLModelViewSet.predict` | predict | Custom |
 | POST | `/api/v1/ml/models/{id}/sync-from-odh/` | `MLModelViewSet.sync_from_odh` | sync_from_odh | Custom |
 
 ### Notifications (13 endpoints)
@@ -1184,18 +1194,18 @@ This document inventories all API endpoints extracted from the Django codebase b
 
 ## Summary Statistics
 
-- **Total Endpoints**: 874
-- **Standard CRUD Actions**: 582
-- **Custom Actions**: 182
+- **Total Endpoints**: 884
+- **Standard CRUD Actions**: 588
+- **Custom Actions**: 186
 - **Function-based Views**: 110
 
 ### Methods Breakdown
 
-- **DELETE**: 99 endpoints
-- **GET**: 345 endpoints
-- **PATCH**: 105 endpoints
-- **POST**: 227 endpoints
-- **PUT**: 98 endpoints
+- **DELETE**: 100 endpoints
+- **GET**: 349 endpoints
+- **PATCH**: 106 endpoints
+- **POST**: 230 endpoints
+- **PUT**: 99 endpoints
 
 ## Notes
 
@@ -1215,4 +1225,4 @@ All endpoints follow standardized patterns:
 ---
 
 **Document Status**: ✅ Complete
-**Total Endpoints Extracted**: 874
+**Total Endpoints Extracted**: 884

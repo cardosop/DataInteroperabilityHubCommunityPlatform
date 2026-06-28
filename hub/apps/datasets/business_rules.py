@@ -713,7 +713,7 @@ class DatasetsBusinessRules(BusinessRules):
             details["changes_summary"] = schema_diff.summary
             details["breaking_changes_count"] = len([c for c in schema_diff.changes if c.breaking])
 
-        except Exception as e:
+        except (TypeError, KeyError, AttributeError, ValueError) as e:
             logger.warning(f"Failed to calculate schema compatibility: {e}", exc_info=True)
             warnings.append(f"Schema compatibility check failed: {e!s}")
 
@@ -792,7 +792,7 @@ class DatasetsBusinessRules(BusinessRules):
                 for c in schema_diff.changes
             ]
 
-        except Exception as e:
+        except (TypeError, KeyError, AttributeError, ValueError) as e:
             logger.warning(f"Failed to validate schema evolution: {e}", exc_info=True)
             warnings.append(f"Schema evolution validation failed: {e!s}")
 
@@ -1071,11 +1071,13 @@ class DatasetsBusinessRules(BusinessRules):
             )
             return result
         except Exception as e:
-            logger.warning(
+            # Database errors (connection failures, timeouts) and
+            # unexpected ABAC evaluation errors: deny access (fail-secure)
+            # but let truly unexpected programmer errors propagate.
+            logger.error(
                 f"ABAC access evaluation failed for dataset {dataset.id}, user {user.id}: {e}",
                 exc_info=True,
             )
-            # On error, deny access (fail-secure)
             from hub.apps.governance.abac import PolicyEvaluationResult
 
             return PolicyEvaluationResult(allowed=False)

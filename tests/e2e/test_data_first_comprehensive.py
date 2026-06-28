@@ -143,20 +143,17 @@ class DataFirstFlowSuccessTests(E2ETestBase):
         dataset = Dataset.objects.get(id=dataset_id)
         self.assertIsNotNone(dataset.schema_json)
 
-@pytest.mark.skip(reason="pandas not available for Parquet file creation")
-@pytest.mark.skip(reason="pyarrow not available for Parquet file creation")
-@pytest.mark.skip(reason="f'Parquet creation failed: {e}'")
     def test_data_first_with_parquet_file(self):
         """Test data-first flow with Parquet file format"""
         try:
             import io
-
+            import pandas as pd
         except ImportError:
             pytest.skip("pandas not available for Parquet file creation")
 
-        # Check if pyarrow is available (required for to_parquet)
         try:
-            import pyarrow
+            import pyarrow  # noqa: F401 — validate availability for to_parquet
+        except ImportError:
             pytest.skip("pyarrow not available for Parquet file creation")
 
         asset_id = self.create_asset(key="parquet-data", name="Parquet Data")
@@ -170,6 +167,7 @@ class DataFirstFlowSuccessTests(E2ETestBase):
             df.to_parquet(parquet_buffer, index=False)
             parquet_content = parquet_buffer.getvalue()
         except Exception as e:
+            pytest.skip(f"Parquet creation failed: {e}")
 
         file_id = self.init_file_upload(
             name="data.parquet", content_type="application/parquet", size=len(parquet_content)
@@ -547,10 +545,18 @@ class DataFirstFlowErrorHandlingTests(E2ETestBase):
             return
         else:
             self.assertEqual(response.status_code, status.HTTP_200_OK)
-            # Real service may return VALID, INVALID, or ERROR
-            # validation_status may not be present if validation failed
+            # Real service may return any known validation status.
+            # validation_status may not be present if validation failed.
             if "validation_status" in response.data:
-                self.assertIn(response.data.get("validation_status"), ["VALID", "INVALID", "ERROR"])
+                from hub.apps.contracts.models import ValidationStatus
+
+                _valid_statuses = {s.value for s in ValidationStatus}
+                self.assertIn(
+                    response.data.get("validation_status"),
+                    _valid_statuses,
+                    f"validation_status must be a known ValidationStatus value, "
+                    f"got {response.data.get('validation_status')!r}",
+                )
 
     def test_retry_after_service_failure(self):
         """Test retry mechanism after service failure"""

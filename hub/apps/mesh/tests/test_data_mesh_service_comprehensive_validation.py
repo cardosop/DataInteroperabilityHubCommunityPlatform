@@ -387,6 +387,7 @@ class TestDomainManagement(TestCase):
             tenant_id=str(self.tenant.id),
             name="active-domain",
             status=DomainStatus.ACTIVE,
+            owner_id=str(self.user.id),
         )
 
         inactive_domain = self.service.create_domain(
@@ -413,7 +414,8 @@ class TestDomainManagement(TestCase):
             tenant_id=str(self.tenant.id),
             owner_id=str(self.user.id),
         )
-        self.assertGreaterEqual(len(owner_domains), 0)
+        self.assertGreaterEqual(len(owner_domains), 1,
+                               "Owner filter should return at least one matching domain")
 
     def test_domain_boundary_definition(self):
         """Test domain boundary definition validation"""
@@ -998,10 +1000,12 @@ class TestMeshTopology(TestCase):
             include_health_metrics=True,
         )
 
-        # Should have edges representing relationships
-        self.assertGreaterEqual(
-            len(topology["edges"]), 0
-        )  # May or may not have edges depending on implementation
+        # Should have edges representing shared policy relationships
+        self.assertGreaterEqual(len(topology["edges"]), 1,
+                                "Should have at least one edge for shared policy")
+        edge_types = [e["type"] for e in topology["edges"]]
+        self.assertIn("SHARED_POLICY", edge_types,
+                      "Should include SHARED_POLICY edge type")
 
     def test_topology_health_monitoring(self):
         """Test topology health monitoring"""
@@ -1094,7 +1098,8 @@ class TestMeshTopology(TestCase):
         domain_node = next((n for n in topology["nodes"] if n["id"] == str(domain.id)), None)
         self.assertIsNotNone(domain_node)
         # Should not have health_metrics when include_health_metrics=False
-        # (Implementation may vary, but typically health_metrics should be absent)
+        self.assertNotIn("health_metrics", domain_node,
+                         "Node should not have health_metrics when include_health_metrics=False")
 
     def test_topology_summary_statistics(self):
         """Test topology summary statistics"""
@@ -1584,7 +1589,8 @@ class TestDataMeshODPSIntegration(TestCase):
             original_spec_type=OriginalSpecType.ODPS,
         )
 
-        self.assertGreaterEqual(len(contracts_in_domain), 0)
+        self.assertGreaterEqual(len(contracts_in_domain), 1,
+                               "Should find at least one ODPS contract matching the filter")
 
     def test_odps_governance_policies(self):
         """Test ODPS governance policies"""

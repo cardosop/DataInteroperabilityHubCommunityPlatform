@@ -18,24 +18,33 @@ import pytest
 import requests
 
 
+pytestmark = pytest.mark.django_db(transaction=True)
+
+
 @pytest.mark.integration
 @pytest.mark.stripe_connect
 class TestStripeConnectIntegration:
     @pytest.fixture(autouse=True)
     def auth_headers(self) -> dict | None:
-        """Resolve auth token from env or from a local e2e login."""
+        """Resolve auth token from env, live login, or programmatic creation.
+
+        Priority: 1) env var, 2) live login with env credentials,
+        3) create a test user + generate JWT via Django auth (zero
+        external config needed when running inside the api container).
+        """
         token = os.environ.get("HUB_E2E_AUTH_TOKEN") or os.environ.get("HUB_API_TOKEN")
         if not token:
-            # Try the e2e login endpoint (dev/test only).
+            # Try live login with configured e2e credentials.
             try:
                 login_resp = requests.post(
                     f"{self._api_base()}/auth/login/",
                     json={
                         "email": os.environ.get(
-                            "HUB_E2E_EMAIL",
-                            "e2e-provider@meshant.com",
+                            "HUB_E2E_EMAIL", "e2e-provider@meshant.com"
                         ),
-                        "password": os.environ.get("HUB_E2E_PASSWORD", "e2e-test-password"),
+                        "password": os.environ.get(
+                            "HUB_E2E_PASSWORD", "e2e-test-password"
+                        ),
                     },
                     timeout=10,
                 )
@@ -44,7 +53,35 @@ class TestStripeConnectIntegration:
             except Exception:
                 pass
         if not token:
-            pytest.skip("No HUB_E2E_AUTH_TOKEN / HUB_API_TOKEN set and login failed")
+            # Programmatic fallback: create a user and generate a JWT
+            # directly via Django (no external config needed).
+            from django.contrib.auth import get_user_model
+
+            User = get_user_model()
+            from hub.apps.tenants.models import Tenant, TenantStatus
+            from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
+            from hub.apps.users.models import UserStatus
+
+            tenant, _ = Tenant.objects.get_or_create(
+                slug="stripe-test-tenant",
+                defaults={"name": "Stripe Test", "status": TenantStatus.ACTIVE},
+            )
+            ensure_tenant_has_active_subscription(tenant)
+            user, created = User.objects.get_or_create(
+                email="stripe-test@meshant.com",
+                defaults={
+                    "tenant": tenant,
+                    "password": "stripe-test-password",
+                    "status": UserStatus.ACTIVE,
+                },
+            )
+            if created:
+                user.set_password("stripe-test-password")
+                user.save()
+            from hub.apps.auth.jwt_utils import JWTTokenGenerator
+
+            generator = JWTTokenGenerator()
+            token = generator.generate_access_token(user)
         return {"Authorization": f"Bearer {token}"}
 
     def _api_base(self) -> str:

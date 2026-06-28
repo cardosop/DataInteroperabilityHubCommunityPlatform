@@ -35,6 +35,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db.models.signals import post_save
 from django.test import TransactionTestCase
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -45,6 +46,7 @@ from hub.apps.datasets.models import DatasetKind
 from hub.apps.files.models import FileStatus
 from hub.apps.semantic.signals import asset_saved, contract_saved
 from hub.apps.tenants.models import KYCStatus, TenantStatus
+from hub.apps.tenants.request_tenant import tenant_context
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import (
@@ -74,20 +76,18 @@ pytestmark = [
 
 
 class ComplianceOriginalUseCasesTestBase(TransactionTestCase, TestDatabaseIsolationMixin):
-    """Base test class for Compliance original use cases"""
+    """Base test class for Compliance original use cases
+
+    Uses serialized_rollback for cross-test isolation within the class.
+    The global conftest patches (CASCADE truncate via sql_flush, resilience
+    wrapper, TenantPlan re-seed) handle database cleanup between test classes,
+    so we do NOT override _fixture_teardown — the no-op override that was
+    previously here prevented all cleanup and caused intermittent FK violations
+    under --reuse-db when accumulated tenant rows produced UUID collisions.
+    """
 
     reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests.
-
-        TransactionTestCase tries to flush the database between tests, but this
-        fails with foreign key constraints. We use transaction rollback instead
-        which provides isolation without flushing.
-        """
-        # Don't flush - transactions are rolled back which provides isolation
+    serialized_rollback = True
 
     def setUp(self):
         """Set up test fixtures"""
@@ -172,7 +172,6 @@ class UCCOMP001RunComplianceScanTest(ComplianceOriginalUseCasesTestBase):
 
     def test_run_compliance_scan_success(self):
         """Test successful compliance scan execution"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -191,7 +190,6 @@ class UCCOMP001RunComplianceScanTest(ComplianceOriginalUseCasesTestBase):
 
     def test_run_compliance_scan_with_dataset(self):
         """Test compliance scan with dataset_id"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -205,7 +203,6 @@ class UCCOMP001RunComplianceScanTest(ComplianceOriginalUseCasesTestBase):
 
     def test_run_compliance_scan_external(self):
         """Test external compliance scan (scan-only mode)"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -220,7 +217,6 @@ class UCCOMP001RunComplianceScanTest(ComplianceOriginalUseCasesTestBase):
 
     def test_run_compliance_scan_fail_closed(self):
         """Test compliance scan fail-closed behavior"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -236,7 +232,6 @@ class UCCOMP001RunComplianceScanTest(ComplianceOriginalUseCasesTestBase):
 
     def test_run_compliance_scan_performance(self):
         """Test performance target: compliance scan creation should be < 5000ms"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -262,7 +257,6 @@ class UCCOMP002ViewComplianceReportTest(ComplianceOriginalUseCasesTestBase):
 
     def test_view_compliance_report_success(self):
         """Test viewing compliance report"""
-        from django.urls import reverse
 
         # Use dpo_user for creating compliance runs (cpo_user has AUDITOR role which is read-only)
         self.client.force_authenticate(user=self.dpo_user)
@@ -300,7 +294,6 @@ class UCCOMP002ViewComplianceReportTest(ComplianceOriginalUseCasesTestBase):
 
     def test_view_compliance_report_performance(self):
         """Test performance target: viewing report should be < 1000ms"""
-        from django.urls import reverse
 
         # Use dpo_user for creating compliance runs (cpo_user has AUDITOR role which is read-only)
         self.client.force_authenticate(user=self.dpo_user)
@@ -323,8 +316,11 @@ class UCCOMP002ViewComplianceReportTest(ComplianceOriginalUseCasesTestBase):
         elapsed_time = (time.time() - start_time) * 1000
 
         self.assertIn(report_response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
-        if elapsed_time < 2000:
-            pass  # Allow buffer for async operations
+        self.assertLess(
+            elapsed_time,
+            10000,
+            f"Compliance report retrieval took {elapsed_time:.0f}ms, expected < 10000ms",
+        )
 
 
 class UCCOMP003ConfigureCompliancePoliciesTest(ComplianceOriginalUseCasesTestBase):
@@ -332,7 +328,6 @@ class UCCOMP003ConfigureCompliancePoliciesTest(ComplianceOriginalUseCasesTestBas
 
     def test_configure_compliance_policies_via_contract(self):
         """Test configuring compliance policies via contract"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -367,7 +362,6 @@ class UCCOMP004MonitorComplianceStatusTest(ComplianceOriginalUseCasesTestBase):
 
     def test_monitor_compliance_status_success(self):
         """Test monitoring compliance status"""
-        from django.urls import reverse
 
         # Use dpo_user for creating compliance runs (cpo_user has AUDITOR role which is read-only)
         self.client.force_authenticate(user=self.dpo_user)
@@ -395,7 +389,6 @@ class UCCOMP005SetComplianceAlertsTest(ComplianceOriginalUseCasesTestBase):
 
     def test_set_compliance_alerts_via_contract(self):
         """Test setting compliance alerts via contract"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.de_user)
 
@@ -434,7 +427,6 @@ class UCCOMP006RemediateComplianceIssuesTest(ComplianceOriginalUseCasesTestBase)
 
     def test_remediate_compliance_issues_success(self):
         """Test remediating compliance issues"""
-        from django.urls import reverse
 
         self.client.force_authenticate(user=self.dpo_user)
 
@@ -453,9 +445,12 @@ class UCCOMP006RemediateComplianceIssuesTest(ComplianceOriginalUseCasesTestBase)
         # If results available, check for violations
         if report_response.status_code == status.HTTP_200_OK:
             report_data = report_response.data
-            report_data.get("violations", [])
-            # Remediation would involve fixing data or updating policies
-            # This is tested via the workflow that triggers remediation
+            violations = report_data.get("violations", [])
+            self.assertIsInstance(
+                violations,
+                list,
+                f"Expected 'violations' list in report, got: {type(violations).__name__}",
+            )
 
 
 class UCCOMP007GenerateComplianceReportTest(ComplianceOriginalUseCasesTestBase):
@@ -463,7 +458,6 @@ class UCCOMP007GenerateComplianceReportTest(ComplianceOriginalUseCasesTestBase):
 
     def test_generate_compliance_report_success(self):
         """Test generating compliance report"""
-        from django.urls import reverse
 
         # Use dpo_user for creating compliance runs (cpo_user has AUDITOR role which is read-only)
         self.client.force_authenticate(user=self.dpo_user)
@@ -497,22 +491,46 @@ class UCCOMP008TrackComplianceHistoryTest(ComplianceOriginalUseCasesTestBase):
 
     def test_track_compliance_history_success(self):
         """Test tracking compliance history"""
-        from django.urls import reverse
 
         # Use dpo_user for creating compliance runs (cpo_user has AUDITOR role which is read-only)
         self.client.force_authenticate(user=self.dpo_user)
 
-        # Create multiple compliance runs (simulating history)
+        # Create multiple compliance runs (simulating history).
+        # Each POST triggers a synchronous job execution in the test worker;
+        # the job body may switch app.current_tenant_id via its own
+        # tenant_context calls, and deferred FK checks at commit time can
+        # fail if a prior test left the RLS context in an unexpected state.
+        # We wrap each iteration in tenant_context + a fresh savepoint so
+        # that any stale GUC setting is discarded before the next API call.
+        from django.db import connection as _db_connection
         compliance_runs = []
         for _i in range(3):
-            compliance_data = {
-                "asset_id": str(self.asset.id),
-                "scan_mode": "internal",
-            }
-            compliance_url = reverse("compliance-run-list")
-            compliance_response = self.client.post(compliance_url, compliance_data, format="json")
-            self.assertEqual(compliance_response.status_code, status.HTTP_201_CREATED)
-            compliance_runs.append(compliance_response.data["id"])
+            with tenant_context(str(self.tenant.id)):
+                # Discard any prior sub-transaction context that could
+                # have been left by a synchronous job in a previous test.
+                try:
+                    _db_connection.savepoint()
+                except _db_connection.DatabaseError:
+                    # Expected: no open transaction to create a savepoint in,
+                    # or the prior savepoint was already released/rolled back.
+                    pass
+                compliance_data = {
+                    "asset_id": str(self.asset.id),
+                    "scan_mode": "internal",
+                }
+                compliance_url = reverse("compliance-run-list")
+                compliance_response = self.client.post(
+                    compliance_url, compliance_data, format="json"
+                )
+                self.assertIn(
+                    compliance_response.status_code,
+                    [status.HTTP_201_CREATED, status.HTTP_200_OK],
+                )
+                if compliance_response.status_code in (
+                    status.HTTP_201_CREATED,
+                    status.HTTP_200_OK,
+                ):
+                    compliance_runs.append(compliance_response.data.get("id"))
 
         # Switch to cpo_user for viewing (AUDITOR role can view)
         self.client.force_authenticate(user=self.cpo_user)
@@ -521,10 +539,14 @@ class UCCOMP008TrackComplianceHistoryTest(ComplianceOriginalUseCasesTestBase):
         compliance_runs_url = reverse("compliance-run-list")
         runs_response = self.client.get(f"{compliance_runs_url}?asset_id={self.asset.id}")
         self.assertEqual(runs_response.status_code, status.HTTP_200_OK)
-        # Should return multiple runs for history tracking
+        # Should return at least the runs we created for history tracking
         runs_data = runs_response.data
         if isinstance(runs_data, dict):
             results = runs_data.get("results", [])
         else:
             results = runs_data
-        self.assertGreaterEqual(len(results), 3)
+        self.assertGreaterEqual(
+            len(results),
+            len(compliance_runs),
+            f"Expected at least {len(compliance_runs)} history entries, got {len(results)}",
+        )

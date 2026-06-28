@@ -25,8 +25,9 @@ from rest_framework.test import APIClient
 
 from hub.apps.assets.models import Asset
 from hub.apps.contracts.models import Contract, OriginalSpecType
-from hub.apps.files.models import File, FileStatus
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.files.models import File, FileScanStatus, FileStatus
+from hub.apps.files.storage import S3StorageClient, StorageError
+from botocore.exceptions import ClientError, EndpointConnectionError
 from hub.apps.files.validators import validate_file_size, validate_file_type
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
@@ -37,9 +38,9 @@ User = get_user_model()
 
 @override_settings(
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minio",
+    AWS_ACCESS_KEY_ID="minioadmin",
     AWS_SECRET_ACCESS_KEY="minio123",
-    AWS_S3_ENDPOINT_URL="http://minio:9000",
+    AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
     MAX_FILE_SIZE=10 * 1024 * 1024 * 1024,  # 10GB
@@ -82,7 +83,7 @@ class FileUploadTest(TransactionTestCase):
         self.storage_client = S3StorageClient()
         try:
             self.storage_client._ensure_bucket_exists()
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             # Storage may not be available in test environment
             pass
 
@@ -548,9 +549,9 @@ class FileUploadTest(TransactionTestCase):
 
 @override_settings(
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minio",
+    AWS_ACCESS_KEY_ID="minioadmin",
     AWS_SECRET_ACCESS_KEY="minio123",
-    AWS_S3_ENDPOINT_URL="http://minio:9000",
+    AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
     MAX_FILE_SIZE=10 * 1024 * 1024 * 1024,  # 10GB
@@ -600,19 +601,21 @@ class FileDownloadTest(TransactionTestCase):
             content_sha256=self.content_sha256,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/test_download.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
         # Upload file to storage (real upload)
         self.storage_client = S3StorageClient()
+        file_content_io = BytesIO(self.test_file_content)
         try:
             self.storage_client._ensure_bucket_exists()
             self.storage_client.save_file(
                 tenant_id=str(self.tenant.id),
                 file_id=str(self.test_file.id),
-                file_content=BytesIO(self.test_file_content),
+                file_content=file_content_io,
             )
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             # Storage may not be available, tests will handle gracefully
             pass
 
@@ -685,6 +688,7 @@ class FileDownloadTest(TransactionTestCase):
             content_sha256=hashlib.sha256(large_content).hexdigest(),
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/large_file.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
@@ -747,9 +751,9 @@ class FileDownloadTest(TransactionTestCase):
 
 @override_settings(
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minio",
+    AWS_ACCESS_KEY_ID="minioadmin",
     AWS_SECRET_ACCESS_KEY="minio123",
-    AWS_S3_ENDPOINT_URL="http://minio:9000",
+    AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
     MAX_FILE_SIZE=10 * 1024 * 1024 * 1024,  # 10GB
@@ -899,9 +903,9 @@ class FileStorageTest(TransactionTestCase):
 
 @override_settings(
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minio",
+    AWS_ACCESS_KEY_ID="minioadmin",
     AWS_SECRET_ACCESS_KEY="minio123",
-    AWS_S3_ENDPOINT_URL="http://minio:9000",
+    AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
     MAX_FILE_SIZE=10 * 1024 * 1024 * 1024,  # 10GB
@@ -959,7 +963,7 @@ class FileValidationTest(TransactionTestCase):
 
     def test_file_validation_no_extension(self):
         """Test file validation - no extension"""
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception) as context:
             validate_file_type("datafile", "text/plain")
         self.assertIn("extension", str(context.exception).lower())
 
@@ -1006,9 +1010,9 @@ class FileValidationTest(TransactionTestCase):
 
 @override_settings(
     AWS_STORAGE_BUCKET_NAME="hub-files",
-    AWS_ACCESS_KEY_ID="minio",
+    AWS_ACCESS_KEY_ID="minioadmin",
     AWS_SECRET_ACCESS_KEY="minio123",
-    AWS_S3_ENDPOINT_URL="http://minio:9000",
+    AWS_S3_ENDPOINT_URL="http://minio-test:9000",
     MAX_BROWSER_UPLOAD_SIZE=100 * 1024 * 1024,  # 100MB
     MAX_SDK_UPLOAD_SIZE=5 * 1024 * 1024 * 1024,  # 5GB
     MAX_FILE_SIZE=10 * 1024 * 1024 * 1024,  # 10GB
@@ -1219,6 +1223,7 @@ class FilesODPSIntegrationTest(TransactionTestCase):
             content_sha256=content_sha256,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/product.odps.json",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
@@ -1346,10 +1351,10 @@ class FilesODPSIntegrationTest(TransactionTestCase):
         # Retrieve file content from storage
         try:
             file_content = self.storage_client.get_file_content(file_obj.storage_path)
-            odps_raw = file_content.decode("utf-8")
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             # If storage not available, use original content
-            odps_raw = odps_content.decode("utf-8")
+            file_content = None
+        odps_raw = file_content.decode("utf-8") if file_content else odps_content.decode("utf-8")
 
         # Create ODPS contract using Product-First flow.
         # asset_id is optional; omit to avoid asset-linking validation edge cases.

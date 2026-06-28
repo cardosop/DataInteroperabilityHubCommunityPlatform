@@ -1,3 +1,4 @@
+pls in a comprehensive and engineering grade manner review, validate, investigate the root cause and fix all remaining fails, errors and skips. always with coding good practices in mind
 #!/bin/bash
 # Comprehensive Test Environment Setup Script
 # This script sets up the complete test environment with all required services
@@ -37,7 +38,7 @@ check_docker_compose() {
         print_error "Docker Compose is not installed or not available"
         exit 1
     fi
-    
+
     if docker compose version &> /dev/null; then
         COMPOSE_CMD="docker compose"
     else
@@ -65,20 +66,20 @@ wait_for_service() {
     local service=$1
     local max_attempts=30
     local attempt=1
-    
+
     print_info "Waiting for $service to be healthy..."
-    
+
     while [ $attempt -le $max_attempts ]; do
         if $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps "$service" | grep -q "healthy"; then
             print_info "$service is healthy"
             return 0
         fi
-        
+
         if [ $attempt -eq $max_attempts ]; then
             print_error "$service did not become healthy within timeout"
             return 1
         fi
-        
+
         sleep 2
         attempt=$((attempt + 1))
     done
@@ -87,12 +88,12 @@ wait_for_service() {
 # Function to start test environment
 start_environment() {
     print_info "Starting test environment..."
-    
+
     check_docker_compose
     check_env_file
-    
+
     # Network will be created by docker-compose, no need to create manually
-    
+
     # Start infrastructure services first
     print_info "Starting infrastructure services (PostgreSQL, Redis, MinIO, Fuseki)..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d \
@@ -100,13 +101,13 @@ start_environment() {
         redis-test \
         minio-test \
         fuseki-test
-    
+
     # Wait for infrastructure services
     wait_for_service "postgres-test"
     wait_for_service "redis-test"
     wait_for_service "minio-test"
     wait_for_service "fuseki-test"
-    
+
     # Start microservices
     print_info "Starting microservices (DataContract, DQ, Compliance, Semantic)..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d \
@@ -114,33 +115,33 @@ start_environment() {
         dq-service-test \
         compliance-service-test \
         semantic-service-test
-    
+
     # Wait for microservices
     wait_for_service "datacontract-service-test"
     wait_for_service "dq-service-test"
     wait_for_service "compliance-service-test"
     wait_for_service "semantic-service-test"
-    
+
     # Start Prefect services
     print_info "Starting Prefect services..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d \
         prefect-db-test \
         prefect-server-test \
         prefect-worker-test
-    
+
     wait_for_service "prefect-db-test"
     wait_for_service "prefect-server-test"
-    
+
     # Start API and Worker services
     print_info "Starting API and Worker services..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d \
         api-service-test \
         worker-service-test
-    
+
     # Wait for API service
     wait_for_service "api-service-test"
     wait_for_service "worker-service-test"
-    
+
     print_info "Test environment started successfully!"
     print_info "Run 'docker compose -f $COMPOSE_FILE --env-file $ENV_FILE ps' to check status"
 }
@@ -148,12 +149,12 @@ start_environment() {
 # Function to stop test environment
 stop_environment() {
     print_info "Stopping test environment..."
-    
+
     check_docker_compose
     check_env_file
-    
+
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down
-    
+
     print_info "Test environment stopped"
 }
 
@@ -169,10 +170,10 @@ restart_environment() {
 show_status() {
     check_docker_compose
     check_env_file
-    
+
     print_info "Test environment status:"
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps
-    
+
     echo ""
     print_info "Service health checks:"
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps --format json | \
@@ -183,10 +184,10 @@ show_status() {
 # Function to show logs
 show_logs() {
     local service=${1:-""}
-    
+
     check_docker_compose
     check_env_file
-    
+
     if [ -z "$service" ]; then
         print_info "Showing logs for all services (Ctrl+C to exit)..."
         $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" logs -f
@@ -200,51 +201,51 @@ show_logs() {
 clean_environment() {
     print_warn "This will remove all test containers, volumes, and networks"
     read -p "Are you sure? (yes/no): " confirm
-    
+
     if [ "$confirm" != "yes" ]; then
         print_info "Cleanup cancelled"
         return
     fi
-    
+
     check_docker_compose
     check_env_file
-    
+
     print_info "Stopping and removing containers..."
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" down -v
-    
+
     print_info "Removing test network..."
     docker network rm hub-test-net 2>/dev/null || true
-    
+
     print_info "Test environment cleaned"
 }
 
 # Function to run database migrations
 run_migrations() {
     print_info "Running database migrations..."
-    
+
     check_docker_compose
     check_env_file
-    
+
     # Wait for postgres to be ready
     wait_for_service "postgres-test"
-    
+
     # Run migrations in API service container
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T api-service-test \
         python hub/manage.py migrate --noinput
-    
+
     print_info "Migrations completed"
 }
 
 # Function to create test database
 create_test_database() {
     print_info "Creating test database..."
-    
+
     check_docker_compose
     check_env_file
-    
+
     # Wait for postgres to be ready
     wait_for_service "postgres-test"
-    
+
     # Create database if it doesn't exist
     $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" exec -T postgres-test \
         psql -U "${POSTGRES_USER:-hub_test}" -c "CREATE DATABASE ${POSTGRES_DB:-hub_test};" 2>/dev/null || \
@@ -254,12 +255,12 @@ create_test_database() {
 # Function to verify environment
 verify_environment() {
     print_info "Verifying test environment..."
-    
+
     check_docker_compose
     check_env_file
-    
+
     local all_healthy=true
-    
+
     # Check each service
     services=(
         "postgres-test"
@@ -274,7 +275,7 @@ verify_environment() {
         "worker-service-test"
         "prefect-server-test"
     )
-    
+
     for service in "${services[@]}"; do
         if $COMPOSE_CMD -f "$COMPOSE_FILE" --env-file "$ENV_FILE" ps "$service" | grep -q "healthy"; then
             print_info "✓ $service is healthy"
@@ -283,7 +284,7 @@ verify_environment() {
             all_healthy=false
         fi
     done
-    
+
     if [ "$all_healthy" = true ]; then
         print_info "All services are healthy!"
         return 0

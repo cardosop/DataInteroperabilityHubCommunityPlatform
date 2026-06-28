@@ -97,8 +97,8 @@ class DatasetVersionSignalTest(TestCase):
         ds.save()
         self.assertEqual(PipelineExecution.objects.count(), 0)
 
-    def test_pipeline_with_matching_source_asset(self):
-        """ACTIVE pipeline with matching source_asset_id is found."""
+    def test_pipeline_status_unchanged_after_signal(self):
+        """ACTIVE pipeline with matching source_asset_id retains status after signal."""
         pipeline = TransformationPipeline.objects.create(
             tenant=self.tenant,
             created_by=self.user,

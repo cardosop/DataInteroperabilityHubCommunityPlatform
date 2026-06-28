@@ -43,20 +43,9 @@ pytestmark = [
 
 
 class ScheduledExportAPIsComprehensiveTest(TestCase):
-    """Comprehensive scheduled export API integration tests using TransactionTestCase to avoid TRUNCATE locks"""
+    """Comprehensive scheduled export API integration tests."""
 
     reset_sequences = False
-    serialized_rollback = False
-
-    @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests.
-
-        TransactionTestCase tries to flush the database between tests, but this
-        fails with foreign key constraints and can cause locks. We use transaction
-        rollback instead which provides isolation without flushing.
-        """
-        # Don't flush - transactions are rolled back which provides isolation
 
     def setUp(self):
         """Set up test fixtures"""

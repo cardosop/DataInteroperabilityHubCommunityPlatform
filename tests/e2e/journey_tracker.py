@@ -135,7 +135,13 @@ class JourneyMetrics:
 
         total_steps = len(self.steps)
         completed_steps = sum(1 for s in self.steps if s.status == StepStatus.COMPLETED)
-        successful_steps = sum(1 for s in self.steps if s.status == StepStatus.COMPLETED)
+        # successful_steps counts non-failure terminal states (COMPLETED + SKIPPED).
+        # SKIPPED is an intentional omission, not a failure — a journey can succeed
+        # even when some optional steps are skipped.
+        successful_steps = sum(
+            1 for s in self.steps
+            if s.status in (StepStatus.COMPLETED, StepStatus.SKIPPED)
+        )
 
         self.completion_rate = (completed_steps / total_steps) * 100.0
         self.success_rate = (successful_steps / total_steps) * 100.0
@@ -261,6 +267,10 @@ class JourneyTracker:
         step = self._get_step(step_name)
         step.fail(error, metadata=metadata)
         self.current_step = None
+        # Any failed step must cascade to journey failure so a journey
+        # with failed steps can never be reported as COMPLETED.
+        if self.current_journey is not None:
+            self.current_journey.status = JourneyStatus.FAILED
 
     def skip_step(self, step_name: str | None = None, reason: str | None = None):
         """
@@ -285,6 +295,16 @@ class JourneyTracker:
             metadata: Optional metadata
         """
         journey = self._get_journey(journey_id)
+        # Guard: reject completion when any step is still IN_PROGRESS.
+        in_progress = [
+            s for s in journey.steps if s.status == StepStatus.IN_PROGRESS
+        ]
+        if in_progress:
+            raise RuntimeError(
+                f"Cannot complete journey '{journey.journey_id}': "
+                f"steps still in progress — "
+                f"{[(s.step_name, s.status.value) for s in in_progress]}"
+            )
         journey.complete(metadata=metadata)
         self.current_journey = None
 

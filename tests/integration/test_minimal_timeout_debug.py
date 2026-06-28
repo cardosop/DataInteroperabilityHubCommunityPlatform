@@ -1,11 +1,10 @@
 """
-
-import uuid
-Minimal test to debug timeout issues
+Minimal test to debug timeout issues during asset and contract creation.
 """
 
 import json
 import time
+import uuid
 
 from django.db.models.signals import post_save
 from django.test import TestCase
@@ -22,34 +21,32 @@ from hub.apps.testing.role_support import ensure_user_has_data_provider_role
 from hub.apps.users.models import Role, UserRole
 from tests.fixtures.test_data_factories import TenantFactory, UserFactory
 
-# Disconnect signals
-post_save.disconnect(contract_saved, sender=Contract)
-post_save.disconnect(asset_saved, sender=Asset)
-post_save.disconnect(create_default_roles, sender=Tenant)
-
 
 class MinimalTimeoutTest(TestCase):
-    """Minimal test to debug timeout"""
+    """Minimal integration test for asset + contract creation workflow."""
 
     reset_sequences = False
     serialized_rollback = False
 
     @classmethod
-    def _fixture_teardown(cls):
-        """Override to skip database flush for integration tests."""
-        # Don't flush - transactions are rolled back which provides isolation
+    def setUpClass(cls):
+        super().setUpClass()
+        # Disconnect signals that trigger external service calls during test setup
+        post_save.disconnect(contract_saved, sender=Contract)
+        post_save.disconnect(asset_saved, sender=Asset)
+        post_save.disconnect(create_default_roles, sender=Tenant)
+
+    @classmethod
+    def tearDownClass(cls):
+        # Reconnect signals after all tests in this class complete
+        post_save.connect(contract_saved, sender=Contract)
+        post_save.connect(asset_saved, sender=Asset)
+        post_save.connect(create_default_roles, sender=Tenant)
+        super().tearDownClass()
 
     def setUp(self):
-        """Set up test fixtures"""
         super().setUp()
         self.client = APIClient()
-
-        print(f"[{time.time()}] Starting setUp...")
-
-        print(f"[{time.time()}] Creating tenant...")
-        start = time.time()
-        # Use unique name/slug to avoid conflicts
-        import uuid
 
         unique_id = str(uuid.uuid4())[:8]
         self.tenant = TenantFactory.create_tenant(
@@ -59,39 +56,25 @@ class MinimalTimeoutTest(TestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         ensure_tenant_has_active_subscription(self.tenant)
-        print(f"[{time.time()}] Tenant created in {time.time() - start:.3f}s")
 
-        print(f"[{time.time()}] Creating role...")
-        start = time.time()
         self.role, _ = Role.objects.get_or_create(
             tenant=self.tenant,
             name="DATA_PROVIDER",
             defaults={"description": "Data Provider"},
         )
-        print(f"[{time.time()}] Role created in {time.time() - start:.3f}s")
 
-        print(f"[{time.time()}] Creating user...")
-        start = time.time()
         self.user = UserFactory.create_user(
             tenant=self.tenant, email=f"minimal-{unique_id}@test.com"
         )
         UserRole.objects.get_or_create(user=self.user, role=self.role)
-        print(f"[{time.time()}] User created in {time.time() - start:.3f}s")
-
-        print(f"[{time.time()}] Authenticating client...")
-        start = time.time()
         self.client.force_authenticate(user=self.user)
         ensure_user_has_data_provider_role(self.user)
-        print(f"[{time.time()}] Client authenticated in {time.time() - start:.3f}s")
-
-        print(f"[{time.time()}] setUp complete")
 
     def test_minimal_asset_creation(self):
-        """Test minimal asset creation"""
-        print(f"[{time.time()}] Starting test...")
-
-        print(f"[{time.time()}] Creating asset...")
+        """Test minimal asset creation and contract attachment."""
         start = time.time()
+
+        # Create asset
         asset_data = {
             "key": "minimal-asset",
             "name": "Minimal Asset",
@@ -100,19 +83,15 @@ class MinimalTimeoutTest(TestCase):
         }
         asset_response = self.client.post(reverse("asset-list"), asset_data, format="json")
         elapsed = time.time() - start
-        print(
-            f"[{time.time()}] Asset creation took {elapsed:.3f}s, status: {asset_response.status_code}"
-        )
+        print(f"Asset creation took {elapsed:.3f}s, status: {asset_response.status_code}")
 
-        if asset_response.status_code != 201:
-            print(f"Error: {asset_response.data}")
-            return
-
+        self.assertEqual(asset_response.status_code, 201,
+            f"Asset creation failed: {asset_response.data}")
         asset_id = asset_response.data["id"]
-        print(f"[{time.time()}] Asset created: {asset_id}")
+        self.assertIsNotNone(asset_id, "Asset ID should be present in response")
+        print(f"Asset created: {asset_id}")
 
-        print(f"[{time.time()}] Creating contract...")
-        start = time.time()
+        # Create contract linked to the asset
         sample_contract = {
             "id": "orders",
             "info": {
@@ -132,17 +111,16 @@ class MinimalTimeoutTest(TestCase):
             "original_format": OriginalFormat.JSON.value,
             "asset_id": asset_id,
         }
+        contract_start = time.time()
         contract_response = self.client.post(reverse("contract-list"), contract_data, format="json")
-        elapsed = time.time() - start
-        print(
-            f"[{time.time()}] Contract creation took {elapsed:.3f}s, status: {contract_response.status_code}"
-        )
+        contract_elapsed = time.time() - contract_start
+        print(f"Contract creation took {contract_elapsed:.3f}s, status: {contract_response.status_code}")
 
-        if contract_response.status_code != 201:
-            print(f"Error: {contract_response.data}")
-            return
-
+        self.assertEqual(contract_response.status_code, 201,
+            f"Contract creation failed: {contract_response.data}")
         contract_id = contract_response.data["id"]
-        print(f"[{time.time()}] Contract created: {contract_id}")
+        self.assertIsNotNone(contract_id, "Contract ID should be present in response")
+        print(f"Contract created: {contract_id}")
 
-        print(f"[{time.time()}] Test complete")
+        total_elapsed = time.time() - start
+        print(f"Test complete in {total_elapsed:.3f}s")

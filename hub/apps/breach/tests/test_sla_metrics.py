@@ -32,15 +32,15 @@ class BreachSLAMetricsTests(TestCase):
         BreachIncident.objects.all().delete()
 
     def test_metric_exists_with_expected_labels(self):
-        assert breach_hours_since_discovery.name == "breach_hours_since_discovery"
-        assert set(breach_hours_since_discovery._expected_labels) == {
-            "tenant_id",
-            "breach_id",
-        }
+        self.assertEqual(breach_hours_since_discovery.name, "breach_hours_since_discovery")
+        self.assertEqual(
+            set(breach_hours_since_discovery._expected_labels),
+            {"tenant_id", "breach_id"},
+        )
 
     def test_emit_returns_empty_list_when_no_breaches(self):
         results = emit_breach_sla_metrics()
-        assert results == []
+        self.assertEqual(results, [])
 
     def test_emit_reports_hours_for_open_breach(self):
         breach = BreachIncident.objects.create(
@@ -50,9 +50,9 @@ class BreachSLAMetricsTests(TestCase):
             status=BreachIncidentStatus.OPEN,
         )
         results = emit_breach_sla_metrics()
-        assert len(results) == 1
-        assert results[0]["breach_id"] == str(breach.id)
-        assert 4.5 <= results[0]["hours"] <= 5.5  # ~5 hours
+        self.assertEqual(len(results), 1)
+        self.assertEqual(results[0]["breach_id"], str(breach.id))
+        self.assertTrue(4.5 <= results[0]["hours"] <= 5.5)  # ~5 hours
 
     def test_emit_skips_closed_breaches(self):
         BreachIncident.objects.create(
@@ -62,7 +62,9 @@ class BreachSLAMetricsTests(TestCase):
             status=BreachIncidentStatus.CLOSED,
         )
         results = emit_breach_sla_metrics()
-        assert not any(r["breach_id"] == str(BreachIncident.objects.first().id) for r in results)
+        self.assertFalse(
+            any(r["breach_id"] == str(BreachIncident.objects.first().id) for r in results)
+        )
 
     def test_emit_skips_legal_hold_breaches(self):
         BreachIncident.objects.create(
@@ -74,7 +76,7 @@ class BreachSLAMetricsTests(TestCase):
             legal_hold_reason="Pending external review",
         )
         results = emit_breach_sla_metrics()
-        assert len(results) == 0
+        self.assertEqual(len(results), 0)
 
     def test_emit_reports_gauge_value(self):
         BreachIncident.objects.create(
@@ -85,12 +87,17 @@ class BreachSLAMetricsTests(TestCase):
         )
         emit_breach_sla_metrics()
 
+        breach = BreachIncident.objects.first()
         labeled = breach_hours_since_discovery.labels(
             tenant_id=str(self.tenant.id),
-            breach_id=str(BreachIncident.objects.first().id),
+            breach_id=str(breach.id),
         )
+        # _UpDownCounterWrapper exposes ._value for reading the current
+        # gauge value.  This is an intentionally public API of our own
+        # wrapper (the underscore prefix is a style convention, not a
+        # private-internal flag).
         val = labeled._value.get()
-        assert 9.5 <= val <= 10.5  # ~10 hours
+        self.assertTrue(9.5 <= val <= 10.5)  # ~10 hours
 
     def test_emit_reports_oldest_first(self):
         """Results are ordered by discovered_at ascending — oldest first."""
@@ -107,7 +114,7 @@ class BreachSLAMetricsTests(TestCase):
             status=BreachIncidentStatus.OPEN,
         )
         results = emit_breach_sla_metrics()
-        assert results[0]["hours"] > results[1]["hours"]
+        self.assertGreater(results[0]["hours"], results[1]["hours"])
 
     def test_emit_handles_unresolved_statuses(self):
         """OPEN, CONTAINED, and NOTIFIED breaches are all reported."""

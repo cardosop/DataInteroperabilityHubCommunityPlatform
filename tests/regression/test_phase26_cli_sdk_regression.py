@@ -156,7 +156,7 @@ class Phase26CLISDKRegressionTest(TestCase):
         endpoints_to_test = [
             ("POST", "/api/v1/users/me/export-data/", "export-data"),
             ("GET", "/api/v1/users/me/export-jobs/", "export-jobs"),
-            ("POST", "/api/v1/users/me/request-erasure/", "request-erasure"),
+            ("POST", "/api/v1/users/me/erasure-requests/request-erasure/", "request-erasure"),
             ("GET", "/api/v1/users/me/erasure-requests/", "erasure-requests"),
         ]
 

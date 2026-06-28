@@ -7,6 +7,8 @@ Creates spans for queries exceeding a configurable threshold (default: 100ms).
 
 import contextlib
 import logging
+import os
+import sys
 import time
 
 from django.conf import settings

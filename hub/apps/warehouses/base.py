@@ -11,9 +11,12 @@ Defines the contract every warehouse connector must implement:
 
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -114,7 +117,12 @@ class WarehouseConnector(ABC):
                 unit=unit_label,
             ).inc(cost_units)
         except Exception:
-            pass
+            logger.warning(
+                "Failed to record warehouse cost metric "
+                "(warehouse=%s, tenant=%s, cost=%s, label=%s)",
+                self.warehouse_type, tenant_id, cost_units, unit_label,
+                exc_info=True,
+            )
 
 
 # ── Connector factory ──────────────────────────────────────────────────

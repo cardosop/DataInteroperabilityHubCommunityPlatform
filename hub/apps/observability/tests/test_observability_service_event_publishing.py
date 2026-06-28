@@ -191,35 +191,28 @@ class ObservabilityServiceEventPublishingIntegrationTest(TestCase):
             self.assertEqual(drift_event.data["alert_severity"], "warning")
             self.assertIn("Schema drift detected", drift_event.data["alert_message"])
 
-    def test_get_freshness_dashboard_publishes_trace_event(self):
-        """Test that get_freshness_dashboard publishes trace event when trace context is available."""
-        # Get dashboard (without trace context, no trace event should be published)
+    def test_get_freshness_dashboard_returns_expected_structure(self):
+        """Test that get_freshness_dashboard returns expected dict structure."""
         result = self.service.get_freshness_dashboard(tenant_id=str(self.tenant.id), limit=10)
 
-        # Verify dashboard was returned
         self.assertIsInstance(result, dict)
         self.assertIn("results", result)
         self.assertIn("summary", result)
+        self.assertIsInstance(result["results"], list)
 
-        # Note: Trace events are only published when OpenTelemetry trace context is available
-        # In tests without trace context, no trace events will be published
-        # This is expected behavior
-
-    def test_get_volume_dashboard_publishes_trace_event(self):
-        """Test that get_volume_dashboard publishes trace event when trace context is available."""
-        # Get dashboard
+    def test_get_volume_dashboard_returns_expected_structure(self):
+        """Test that get_volume_dashboard returns expected dict structure."""
         result = self.service.get_volume_dashboard(
             tenant_id=str(self.tenant.id), limit=10, period_type="DAILY"
         )
 
-        # Verify dashboard was returned
         self.assertIsInstance(result, dict)
         self.assertIn("results", result)
         self.assertIn("summary", result)
+        self.assertIsInstance(result["results"], list)
 
-    def test_get_schema_drift_dashboard_publishes_trace_event(self):
-        """Test that get_schema_drift_dashboard publishes trace event when trace context is available."""
-        # Get dashboard
+    def test_get_schema_drift_dashboard_returns_expected_structure(self):
+        """Test that get_schema_drift_dashboard returns expected dict structure."""
         result = self.service.get_schema_drift_dashboard(tenant_id=str(self.tenant.id), limit=10)
 
         # Verify dashboard was returned

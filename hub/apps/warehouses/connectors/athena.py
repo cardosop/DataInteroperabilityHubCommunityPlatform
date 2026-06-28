@@ -172,6 +172,9 @@ class AthenaConnector(WarehouseConnector):
             )
         )
         response = self._glue_client.get_table(DatabaseName=db, Name=tbl)
+        # Glue get_table is a free metadata operation — record for
+        # observability but with zero cost (no bytes scanned).
+        self._record_cost(self._tenant_id, 0.0, "bytes_scanned")
         columns = response["Table"].get("StorageDescriptor", {}).get("Columns", [])
         partitions = response["Table"].get("PartitionKeys", [])
         return [
@@ -185,3 +188,5 @@ class AthenaConnector(WarehouseConnector):
 
     def close(self) -> None:
         self._connected = False
+        self._athena_client = None
+        self._glue_client = None

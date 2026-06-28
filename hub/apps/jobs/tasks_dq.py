@@ -58,6 +58,9 @@ def _execute_dq_run_job(job_obj: Job) -> dict:
         dq_client = DQServiceClient()
         is_healthy, _ = dq_client.health_check()
         if not is_healthy:
+            # Mark DQRun as FAILED before raising so it doesn't stay PENDING forever
+            dq_run.status = DQRunStatus.FAILED
+            dq_run.save(update_fields=["status"])
             raise ConnectionError("DQ service is unavailable")
 
         # Execute DQ run (this handles its own errors and updates DQRun status)

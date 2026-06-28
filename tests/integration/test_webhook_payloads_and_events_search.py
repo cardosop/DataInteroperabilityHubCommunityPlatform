@@ -136,6 +136,8 @@ class TestWebhookPayloadsAndEventsSearch:
             "quality",
             "compliance",
             "version",
+            "invoice",
+            "webhook",
         )
 
         invalid_event_types = []
@@ -193,6 +195,8 @@ class TestWebhookPayloadsAndEventsSearch:
             "quality",
             "compliance",
             "version",
+            "invoice",
+            "webhook",
         )
 
         invalid_configs = []
@@ -272,6 +276,6 @@ class TestWebhookPayloadsAndEventsSearch:
             or "WebhookDeliveryService" in ref.get("context", "")
         ]
         # Should find some service references
-        assert len(service_references) > 0 or report["summary"]["total_endpoint_references"] > 0, (
+        assert len(service_references) > 0, (
             "No webhook service references found"
         )

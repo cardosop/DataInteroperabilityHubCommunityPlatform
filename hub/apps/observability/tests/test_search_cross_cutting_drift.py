@@ -63,7 +63,14 @@ class TestViewHasAuditEmission(TestCase):
     handler references create_audit_event (direct call or decorator)."""
 
     def test_unified_search_view_has_audit_emission(self):
-        with open("hub/apps/search/views.py") as fh:
+        import importlib
+        import os
+
+        # Resolve the module path relative to the project root rather than cwd
+        search_views = importlib.import_module("hub.apps.search.views")
+        source_path = search_views.__file__
+
+        with open(source_path) as fh:
             tree = ast.parse(fh.read())
 
         # Walk the UnifiedSearchView.get method for create_audit_event.

@@ -9,7 +9,7 @@ import uuid
 
 import pytest
 from django.http import HttpResponse
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, RequestFactory, TestCase, override_settings
 
 from hub.apps.api.middleware import RequestIDMiddleware
 from hub.apps.auth.middleware import TenantScopingMiddleware
@@ -155,13 +155,9 @@ class MiddlewareIntegrationTest(TestCase):
         self.assertEqual(str(request2.tenant_id), str(tenant2.id))
         self.assertNotEqual(request1.tenant_id, request2.tenant_id)
 
+    @override_settings(RATE_LIMIT_ENABLED=True)
     def test_middleware_rate_limiting_integration(self):
         """Test rate limiting middleware with other middleware (real check_rate_limit, no mocks)."""
-        from django.conf import settings
-
-        # Skip if rate limiting is disabled in test mode
-        if not getattr(settings, "RATE_LIMIT_ENABLED", True):
-            self.skipTest("Rate limiting is disabled in test mode")
 
         rate_limit = RateLimitMiddleware(_real_get_response)
         request_id = RequestIDMiddleware(rate_limit)

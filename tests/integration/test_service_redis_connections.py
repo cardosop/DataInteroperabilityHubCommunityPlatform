@@ -71,8 +71,6 @@ class TestServiceRedisConnections:
             # Rate limiting should use cache Redis
             assert settings.REDIS_CACHE_URL == "redis://cache-host:6379/0"
 
-    @pytest.mark.requires_db
-@pytest.mark.skip(reason="f'Health check test failed: {e} (Docker Compose services may not be running)'")
     def test_health_check_all_instances(self):
         """Test that health check endpoint checks all Redis instances."""
         try:
@@ -93,11 +91,10 @@ class TestServiceRedisConnections:
             assert "events" in data["redis"]
             assert "channels" in data["redis"]
         except Exception as e:
+            pytest.skip(
                 f"Health check test failed: {e} (Docker Compose services may not be running)"
             )
 
-    @pytest.mark.requires_db
-@pytest.mark.skip(reason="f'Worker health check test failed: {e} (Docker Compose services may not be running)'")
     def test_worker_service_health_check(self):
         """Test that worker service health check uses redis-queue."""
         try:
@@ -111,11 +108,9 @@ class TestServiceRedisConnections:
             # Worker should check redis_queue
             assert "redis_queue" in response_data["checks"] or "redis" in response_data["checks"]
         except Exception as e:
-                f"Worker health check test failed: {e} (Docker Compose services may not be running)"
-            )
+            pytest.skip(f"Worker health check test failed: {e}")
 
     @pytest.mark.requires_db
-@pytest.mark.skip(reason="f'Workflow engine health check test failed: {e} (Docker Compose services may not be running)'")
     def test_workflow_engine_service_health_check(self):
         """Test that workflow engine service health check uses redis-events."""
         try:
@@ -129,5 +124,4 @@ class TestServiceRedisConnections:
             # Workflow engine should check redis_events
             assert "redis_events" in response_data["checks"] or "redis" in response_data["checks"]
         except Exception as e:
-                f"Workflow engine health check test failed: {e} (Docker Compose services may not be running)"
-            )
+            pytest.skip(f"Workflow engine health check test failed: {e}")

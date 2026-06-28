@@ -15,7 +15,15 @@ router.register(r"connections", WarehouseConnectionViewSet, basename="warehouse-
 router.register(r"acls", WarehouseConnectionACLViewSet, basename="warehouse-acl")
 
 urlpatterns = router.urls + [
-    path("query/", LiveQueryViewSet.as_view({"get": "list"})),
-    path("share/<uuid:asset_id>/", DeltaShareView.as_view({"get": "list_tables"})),
-    path("share/<uuid:asset_id>/query/", DeltaShareView.as_view({"get": "query_table"})),
+    path("query/", LiveQueryViewSet.as_view({"get": "list"}), name="livequery-list"),
+    path(
+        "share/<uuid:asset_id>/",
+        DeltaShareView.as_view({"get": "list_tables"}),
+        name="deltashare-list-tables",
+    ),
+    path(
+        "share/<uuid:asset_id>/query/",
+        DeltaShareView.as_view({"get": "query_table"}),
+        name="deltashare-query-table",
+    ),
 ]

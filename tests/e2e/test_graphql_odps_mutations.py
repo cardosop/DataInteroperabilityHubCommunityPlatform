@@ -339,17 +339,13 @@ class GraphQLODPSMutationsE2ETest(E2ETestBase):
         self.assertIsNotNone(result["content"])
         self.assertEqual(result["format"], "yaml")
 
-        # Verify exported content is valid YAML
-        try:
-            import yaml
-
-            exported_data = yaml.safe_load(result["content"])
-            self.assertIn("schema", exported_data)
-            self.assertIn("version", exported_data)
-            self.assertIn("product", exported_data)
-        except ImportError:
-            # YAML not available, skip validation
-            pass
+        # Verify exported content is valid YAML.
+        # If PyYAML is not installed, skip the YAML-specific assertions.
+        yaml = pytest.importorskip("yaml", reason="PyYAML not installed")
+        exported_data = yaml.safe_load(result["content"])
+        self.assertIn("schema", exported_data)
+        self.assertIn("version", exported_data)
+        self.assertIn("product", exported_data)
 
     def test_complete_odps_workflow(self):
         """Test complete workflow: Create, Link, Export ODPS via GraphQL"""

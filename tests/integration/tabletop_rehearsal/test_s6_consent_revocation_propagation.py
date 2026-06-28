@@ -126,7 +126,7 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
                 "payload": {"channel": "email", "frequency": "weekly"},
             }
             grant_resp = self.client.post(
-                "/api/v1/governance/consent-records/",
+                "/api/v1/consent/consent-records/",
                 grant_payload,
                 format="json",
                 HTTP_X_TENANT_ID=str(self.tenant.id),
@@ -157,7 +157,7 @@ class S6ConsentRevocationPropagationRehearsal(TestCase):
             self.assertEqual(grant_audit_count, 1, "expected exactly one CONSENT_GRANTED")
 
             # --- 2. Revoke: subject withdraws consent. --------------
-            revoke_url = f"/api/v1/governance/consent-records/{record_id}/revoke/"
+            revoke_url = f"/api/v1/consent/consent-records/{record_id}/revoke/"
             revoke_resp = self.client.post(
                 revoke_url,
                 {},

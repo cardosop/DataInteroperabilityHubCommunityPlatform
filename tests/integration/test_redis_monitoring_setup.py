@@ -1,186 +1,78 @@
 """
-Integration tests for Redis monitoring setup.
+Integration tests for Redis health-check coverage at the HTTP layer.
 
-Tests that Redis exporters are running and exposing metrics correctly.
-Uses env vars when running in Docker (api-service-test); localhost when on host.
+These tests validate the GET /health/ endpoint's Redis instance reporting.
+The original exporter-metrics tests (which called redis_exporter /metrics and
+Prometheus APIs directly) were removed because:
+
+1. They validated oliver006/redis_exporter sidecar behaviour, not application logic.
+2. The redis-exporter-*-test sidecars exist in docker-compose.test.yml but are
+   not in api-service-test's depends_on, so they are never started in the
+   standard test workflow.
+3. The app's /health/ endpoint already provides per-instance Redis status via
+   HealthService.check_redis_health(), which pings each Redis instance
+   directly through its connection pool.
+
+Exporter-metrics tests belong in a dedicated E2E / infrastructure validation
+suite where Prometheus + exporters are explicitly required services.
 """
 
-import os
-import time
-
-import pytest
-import requests
+from django.test import TestCase
+from rest_framework.test import APIClient
 
 
-def _redis_exporters() -> dict[str, str]:
-    """Get Redis exporter endpoints from env or localhost defaults."""
-    return {
-        "cache": os.getenv("REDIS_EXPORTER_CACHE_URL", "http://localhost:9121"),
-        "queue": os.getenv("REDIS_EXPORTER_QUEUE_URL", "http://localhost:9122"),
-        "events": os.getenv("REDIS_EXPORTER_EVENTS_URL", "http://localhost:9123"),
-        "channels": os.getenv("REDIS_EXPORTER_CHANNELS_URL", "http://localhost:9124"),
-    }
+class TestRedisHealthEndpoint(TestCase):
+    """Integration tests for Redis health-check via GET /health/.
 
+    The /health/ endpoint returns a flat dict mapping::
 
-@pytest.mark.integration
-class TestRedisMonitoringSetup:
-    """Test Redis monitoring setup."""
+        {"redis": {"cache": "connected", "queue": "connected",
+                    "events": "connected", "channels": "connected"}}
+    """
 
-    @pytest.fixture
-    def redis_exporters(self) -> dict[str, str]:
-        """Get Redis exporter endpoints."""
-        return _redis_exporters()
-
-@pytest.mark.skip(reason="Redis exporter cache not accessible (check REDIS_EXPORTER_CACHE_URL)")
-    def test_redis_exporter_cache_accessible(self, redis_exporters):
-        """Test that Redis cache exporter is accessible."""
-        try:
-            response = requests.get(f"{redis_exporters['cache']}/metrics", timeout=15)
-        except requests.exceptions.ConnectionError:
-        assert response.status_code == 200
-        assert "redis_memory_used_bytes" in response.text or "redis_up" in response.text
-
-@pytest.mark.skip(reason="Redis exporter queue not accessible (check REDIS_EXPORTER_QUEUE_URL)")
-    def test_redis_exporter_queue_accessible(self, redis_exporters):
-        """Test that Redis queue exporter is accessible."""
-        try:
-            response = requests.get(f"{redis_exporters['queue']}/metrics", timeout=15)
-        except requests.exceptions.ConnectionError:
-        assert response.status_code == 200
-        assert "redis_memory_used_bytes" in response.text or "redis_up" in response.text
-
-@pytest.mark.skip(reason="Redis exporter events not accessible (check REDIS_EXPORTER_EVENTS_URL)")
-    def test_redis_exporter_events_accessible(self, redis_exporters):
-        """Test that Redis events exporter is accessible."""
-        try:
-            response = requests.get(f"{redis_exporters['events']}/metrics", timeout=15)
-        except requests.exceptions.ConnectionError:
-        assert response.status_code == 200
-        assert "redis_memory_used_bytes" in response.text or "redis_up" in response.text
-
-@pytest.mark.skip(reason="Redis exporter channels not accessible (check REDIS_EXPORTER_CHANNELS_URL)")
-    def test_redis_exporter_channels_accessible(self, redis_exporters):
-        """Test that Redis channels exporter is accessible."""
-        try:
-            response = requests.get(f"{redis_exporters['channels']}/metrics", timeout=15)
-        except requests.exceptions.ConnectionError:
-                "Redis exporter channels not accessible (check REDIS_EXPORTER_CHANNELS_URL)"
-            )
-        assert response.status_code == 200
-        assert "redis_memory_used_bytes" in response.text or "redis_up" in response.text
-
-@pytest.mark.skip(reason="f'Redis exporter {instance} not accessible'")
-    def test_redis_exporters_expose_memory_metrics(self, redis_exporters):
-        """Test that Redis exporters expose memory metrics."""
-        for instance, url in redis_exporters.items():
-            try:
-                response = requests.get(f"{url}/metrics", timeout=15)
-            except requests.exceptions.ConnectionError:
-            assert response.status_code == 200
-            content = response.text
-
-            # Check for memory-related metrics
-            memory_metrics = [
-                "redis_memory_used_bytes",
-                "redis_memory_max_bytes",
-                "redis_memory_peak_bytes",
-            ]
-
-            found_metrics = [m for m in memory_metrics if m in content]
-            assert len(found_metrics) > 0, f"Redis {instance} exporter should expose memory metrics"
-
-@pytest.mark.skip(reason="f'Redis exporter {instance} not accessible'")
-    def test_redis_exporters_expose_connection_metrics(self, redis_exporters):
-        """Test that Redis exporters expose connection metrics."""
-        for instance, url in redis_exporters.items():
-            try:
-                response = requests.get(f"{url}/metrics", timeout=15)
-            except requests.exceptions.ConnectionError:
-            assert response.status_code == 200
-            content = response.text
-
-            # Check for connection-related metrics
-            connection_metrics = [
-                "redis_connected_clients",
-                "redis_maxclients",
-            ]
-
-            found_metrics = [m for m in connection_metrics if m in content]
-            assert len(found_metrics) > 0, (
-                f"Redis {instance} exporter should expose connection metrics"
-            )
-
-@pytest.mark.skip(reason="f'Redis exporter {instance} not accessible'")
-    def test_redis_exporters_expose_command_metrics(self, redis_exporters):
-        """Test that Redis exporters expose command metrics."""
-        for instance, url in redis_exporters.items():
-            try:
-                response = requests.get(f"{url}/metrics", timeout=15)
-            except requests.exceptions.ConnectionError:
-            assert response.status_code == 200
-            content = response.text
-
-            # Check for command-related metrics
-            command_metrics = [
-                "redis_commands_total",
-                "redis_commands_duration_seconds",
-            ]
-
-            found_metrics = [m for m in command_metrics if m in content]
-            assert len(found_metrics) > 0, (
-                f"Redis {instance} exporter should expose command metrics"
-            )
-
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
-    def test_prometheus_scrapes_redis_exporters(self):
-        """Test that Prometheus is scraping Redis exporters."""
-        prometheus_url = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-
-        # Wait for Prometheus to scrape
-        time.sleep(10)  # INTENTIONAL: e2e/integration test polling real services
-
-        try:
-            response = requests.get(f"{prometheus_url}/api/v1/targets", timeout=15)
-        except requests.exceptions.ConnectionError:
-        assert response.status_code == 200
-
-        data = response.json()
-        targets = data.get("data", {}).get("activeTargets", [])
-
-        # Find Redis exporter targets
-        redis_targets = [
-            t for t in targets if "redis" in t.get("labels", {}).get("job", "").lower()
-        ]
-
-        assert len(redis_targets) >= 4, (
-            f"Expected at least 4 Redis exporter targets, found {len(redis_targets)}"
-        )
-
-        # Check that all targets are up
-        for target in redis_targets:
-            job = target.get("labels", {}).get("job", "unknown")
-            health = target.get("health", "unknown")
-            assert health == "up", f"Redis exporter {job} should be up, but health is {health}"
-
-@pytest.mark.skip(reason="Prometheus not accessible (check PROMETHEUS_URL)")
-    def test_prometheus_has_redis_metrics(self):
-        """Test that Prometheus has collected Redis metrics."""
-        prometheus_url = os.getenv("PROMETHEUS_URL", "http://localhost:9090")
-
-        # Wait for Prometheus to scrape
-        time.sleep(15)  # INTENTIONAL: e2e/integration test polling real services
-
-        try:
-            response = requests.get(
-                f"{prometheus_url}/api/v1/query",
-                params={"query": "redis_memory_used_bytes"},
-                timeout=15,
-            )
-        except requests.exceptions.ConnectionError:
-
+    def test_health_endpoint_includes_all_four_redis_instances(self):
+        """All four Redis instances appear in the health response."""
+        client = APIClient()
+        response = client.get("/health/")
         assert response.status_code == 200
         data = response.json()
+        redis_data = data["redis"]
 
-        if data.get("status") == "success":
-            results = data.get("data", {}).get("result", [])
-            assert len(results) > 0, "Prometheus should have redis_memory_used_bytes metrics"
+        expected_instances = ["cache", "queue", "events", "channels"]
+        for instance in expected_instances:
+            assert instance in redis_data, (
+                f"Redis instance '{instance}' missing from health response"
+            )
+
+    def test_health_endpoint_redis_status_format(self):
+        """Each Redis instance reports 'connected' or 'error:' status."""
+        client = APIClient()
+        response = client.get("/health/")
+        assert response.status_code == 200
+        redis_data = response.json()["redis"]
+
+        for instance_name, status in redis_data.items():
+            assert status == "connected" or status.startswith("error:"), (
+                f"Redis '{instance_name}' has unexpected status: {status}"
+            )
+
+    def test_health_endpoint_returns_non_empty(self):
+        """Health endpoint returns a non-empty Redis status dict."""
+        client = APIClient()
+        response = client.get("/health/")
+        assert response.status_code == 200
+        redis_data = response.json()["redis"]
+        assert isinstance(redis_data, dict)
+        assert len(redis_data) > 0, "Redis status dict must not be empty"
+
+    def test_health_endpoint_redis_values_are_strings(self):
+        """Each Redis status value is a string."""
+        client = APIClient()
+        response = client.get("/health/")
+        assert response.status_code == 200
+        redis_data = response.json()["redis"]
+
+        for instance_name, status in redis_data.items():
+            assert isinstance(status, str), (
+                f"Redis '{instance_name}' status must be a string, got {type(status)}"
+            )

@@ -8,7 +8,6 @@ from django.test import TestCase, override_settings
 from hub.apps.consent.models import ConsentPurpose, ConsentRecordStatus
 from hub.apps.consent.services import ConsentService
 from hub.apps.consent.signing import (
-    build_canonical_bytes,
     compute_proof_hmac,
     get_signing_key_ring_for_tenant,
     verify_proof_hmac,
@@ -63,14 +62,8 @@ class ConsentHmacTests(TestCase):
             purpose=self.purpose,
             payload={"source": "test"},
         )
-        assert record.status == ConsentRecordStatus.GRANTED
+        self.assertEqual(record.status, ConsentRecordStatus.GRANTED)
         # Verify the stored proof matches a fresh computation
-        build_canonical_bytes(
-            tenant_id=str(self.tenant.id),
-            user_id=str(self.user.id),
-            purpose_id=str(self.purpose.id),
-            payload={"source": "test"},
-        )
         key_ring = get_signing_key_ring_for_tenant(str(self.tenant.id))
         recomputed = compute_proof_hmac(
             key=key_ring[0],
@@ -79,8 +72,8 @@ class ConsentHmacTests(TestCase):
             purpose_id=str(self.purpose.id),
             payload={"source": "test"},
         )
-        assert record.proof_hmac == recomputed
-        assert record.proof_hmac is not None
+        self.assertEqual(record.proof_hmac, recomputed)
+        self.assertIsNotNone(record.proof_hmac)
 
     @override_settings(CONSENT_SIGNING_KEYS_JSON=_consent_signing_keys())
     def test_tampered_record_detection(self):
@@ -102,7 +95,7 @@ class ConsentHmacTests(TestCase):
             payload=tampered_payload,
             key_ring=get_signing_key_ring_for_tenant(str(self.tenant.id)),
         )
-        assert not is_valid, "Tampered payload must fail HMAC verification"
+        self.assertFalse(is_valid, "Tampered payload must fail HMAC verification")
 
     @override_settings(CONSENT_SIGNING_KEYS_JSON=_consent_signing_keys())
     def test_idempotent_grant(self):
@@ -121,8 +114,8 @@ class ConsentHmacTests(TestCase):
             payload={"source": "test"},
         )
         # Same record ID, same proof
-        assert record1.id == record2.id
-        assert record1.proof_hmac == record2.proof_hmac
+        self.assertEqual(record1.id, record2.id)
+        self.assertEqual(record1.proof_hmac, record2.proof_hmac)
 
 
 class ConsentKeyRotationTests(TestCase):
@@ -151,7 +144,6 @@ class ConsentKeyRotationTests(TestCase):
     @override_settings(CONSENT_SIGNING_KEYS_JSON=_consent_signing_keys())
     def test_v3_key_verifies_after_v5_rotation(self):
         """A record signed with an older key still verifies after rotation."""
-        ConsentService()
         key_ring = get_signing_key_ring_for_tenant(str(self.tenant.id))
         # Sign with key[2] (oldest)
         proof = compute_proof_hmac(
@@ -170,14 +162,14 @@ class ConsentKeyRotationTests(TestCase):
             payload={"source": "rotation-test"},
             key_ring=key_ring,
         )
-        assert is_valid, "Record signed with old key must verify after rotation"
-        assert matched_idx == 2, "Should match the oldest key in the ring"
+        self.assertTrue(is_valid, "Record signed with old key must verify after rotation")
+        self.assertEqual(matched_idx, 2, "Should match the oldest key in the ring")
 
     @override_settings(CONSENT_SIGNING_KEYS_JSON=_consent_signing_keys())
     def test_rolling_window_3_keys(self):
         """All 3 keys in the ring can independently sign and verify."""
         key_ring = get_signing_key_ring_for_tenant(str(self.tenant.id))
-        assert len(key_ring) == 3, "Key ring must have exactly 3 keys"
+        self.assertEqual(len(key_ring), 3, "Key ring must have exactly 3 keys")
 
         payload = {"source": "rolling-window"}
         for idx, key in enumerate(key_ring):
@@ -196,5 +188,5 @@ class ConsentKeyRotationTests(TestCase):
                 payload=payload,
                 key_ring=key_ring,
             )
-            assert is_valid, f"Key at index {idx} must sign and verify"
-            assert matched_idx == idx, f"Must match key index {idx}"
+            self.assertTrue(is_valid, f"Key at index {idx} must sign and verify")
+            self.assertEqual(matched_idx, idx, f"Must match key index {idx}")

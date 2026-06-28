@@ -69,20 +69,25 @@ class JobRetryConfigurationTest(TestCase):
     def test_calculate_retry_delay_with_job_type(self):
         """Test that calculate_retry_delay uses job-specific configuration"""
         # Test with DQ_RUN (default: initial_delay=60, backoff_factor=2.0)
-        delay_0 = calculate_retry_delay(0, type=JobType.DQ_RUN)
-        delay_1 = calculate_retry_delay(1, type=JobType.DQ_RUN)
-        delay_2 = calculate_retry_delay(2, type=JobType.DQ_RUN)
+        delay_0 = calculate_retry_delay(0, job_type=JobType.DQ_RUN)
+        delay_1 = calculate_retry_delay(1, job_type=JobType.DQ_RUN)
+        delay_2 = calculate_retry_delay(2, job_type=JobType.DQ_RUN)
 
         self.assertEqual(delay_0, 60)  # 60 * (2^0) = 60
         self.assertEqual(delay_1, 120)  # 60 * (2^1) = 120
         self.assertEqual(delay_2, 240)  # 60 * (2^2) = 240
 
     def test_calculate_retry_delay_respects_max_delay(self):
-        """Test that calculate_retry_delay caps at max_delay"""
-        # DQ_RUN has max_delay=3600, so delay_5 should be capped
-        delay_5 = calculate_retry_delay(5, type=JobType.DQ_RUN)
-        # 60 * (2^5) = 1920, but should be capped at 3600
-        self.assertLessEqual(delay_5, 3600)
+        """Test that calculate_retry_delay caps at max_delay.
+
+        With default initial_delay=60, backoff=2.0, max_delay=3600,
+        retry 6 gives 60 * 2^6 = 3840 which exceeds the cap."""
+        # Below cap: 60 * 2^5 = 1920 < 3600
+        delay_5 = calculate_retry_delay(5, job_type=JobType.DQ_RUN)
+        self.assertEqual(delay_5, 1920)
+        # At cap: 60 * 2^6 = 3840 ≥ 3600 → capped
+        delay_6 = calculate_retry_delay(6, job_type=JobType.DQ_RUN)
+        self.assertEqual(delay_6, 3600, "Must cap at max_delay=3600")
 
     def test_calculate_retry_delay_backward_compatibility(self):
         """Test that calculate_retry_delay works without job_type (backward compatibility)"""
@@ -95,14 +100,19 @@ class JobRetryConfigurationTest(TestCase):
         JOB_RETRY_MAX_DELAY={"DQ_RUN": 600},
     )
     def test_calculate_retry_delay_custom_configuration(self):
-        """Test that calculate_retry_delay uses custom configuration from settings"""
-        delay_0 = calculate_retry_delay(0, type=JobType.DQ_RUN)
-        delay_1 = calculate_retry_delay(1, type=JobType.DQ_RUN)
-        delay_2 = calculate_retry_delay(2, type=JobType.DQ_RUN)
+        """Test that calculate_retry_delay uses custom config and caps at max_delay.
 
-        self.assertEqual(delay_0, 30)  # 30 * (3^0) = 30
-        self.assertEqual(delay_1, 90)  # 30 * (3^1) = 90
-        self.assertEqual(delay_2, 270)  # 30 * (3^2) = 270, capped at 600
+        With initial_delay=30, backoff=3.0, max_delay=600,
+        retry 4 gives 30 * 3^4 = 2430 which exceeds the cap."""
+        delay_0 = calculate_retry_delay(0, job_type=JobType.DQ_RUN)
+        delay_1 = calculate_retry_delay(1, job_type=JobType.DQ_RUN)
+        delay_2 = calculate_retry_delay(2, job_type=JobType.DQ_RUN)
+        delay_4 = calculate_retry_delay(4, job_type=JobType.DQ_RUN)
+
+        self.assertEqual(delay_0, 30)   # 30 * 3^0 = 30
+        self.assertEqual(delay_1, 90)   # 30 * 3^1 = 90
+        self.assertEqual(delay_2, 270)  # 30 * 3^2 = 270
+        self.assertEqual(delay_4, 600, "Must cap at max_delay=600")  # 30*3^4=2430→600
 
     def test_calculate_retry_delay_all_odps_job_types(self):
         """Test that calculate_retry_delay works for all ODPS job types"""
@@ -115,7 +125,7 @@ class JobRetryConfigurationTest(TestCase):
         ]
 
         for job_type in odps_job_types:
-            delay = calculate_retry_delay(1, type=job_type)
+            delay = calculate_retry_delay(1, job_type=job_type)
             self.assertIsInstance(delay, int)
             self.assertGreater(delay, 0)
             self.assertLessEqual(delay, get_job_retry_max_delay(job_type))

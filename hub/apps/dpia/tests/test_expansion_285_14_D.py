@@ -46,7 +46,6 @@ class DpiaServiceTests(TestCase):
 
     def test_dpia_model_exists(self):
         """Verify Dpia model is importable and field contract is intact."""
-        assert self.tenant.id is not None
         fields = {f.name for f in Dpia._meta.get_fields()}
         for required in ("tenant", "title", "status", "created_by"):
             assert required in fields, f"Dpia must have '{required}' field"
@@ -170,7 +169,7 @@ class DpiaFeatureFlagTests(TestCase):
         self.client.force_authenticate(user=self.user)
 
     def test_flag_disabled_gated(self):
-        """When compliance_dpia_enabled=False, DPIA create is blocked."""
+        """When compliance_dpia_enabled=False, DPIA create is blocked with 403."""
         resp = self.client.post(
             "/api/v1/dpia/records/",
             {
@@ -178,15 +177,17 @@ class DpiaFeatureFlagTests(TestCase):
             },
             format="json",
         )
-        # Should be denied (403) when DPIA is disabled
-        assert resp.status_code != 201
+        assert resp.status_code == 403, (
+            f"Expected 403 when DPIA disabled, got {resp.status_code}"
+        )
 
     def test_flag_enabled_accessible(self):
-        """When compliance_dpia_enabled=True, DPIA endpoints return 200."""
+        """When compliance_dpia_enabled=True, DPIA endpoints return 200 with results."""
         self.tenant.compliance_dpia_enabled = True
         self.tenant.save(update_fields=["compliance_dpia_enabled"])
         resp = self.client.get("/api/v1/dpia/records/")
         assert resp.status_code == 200
+        assert "results" in resp.data or isinstance(resp.data, list)
 
 
 class DpiaAuditTests(TestCase):
@@ -226,7 +227,7 @@ class DpiaAuditTests(TestCase):
         before = AuditEvent.objects.filter(resource_type="DPIA").count()
         submit_dpia(dpia=dpia, actor=self.user)
         after = AuditEvent.objects.filter(resource_type="DPIA").count()
-        assert after >= before + 1
+        assert after == before + 1, f"Expected exactly 1 new audit event, got {after - before}"
 
     def test_review_audit(self):
         """Reviewing a DPIA emits DPIA_REVIEWED audit event."""
@@ -245,4 +246,4 @@ class DpiaAuditTests(TestCase):
         before = AuditEvent.objects.filter(resource_type="DPIA").count()
         review_dpia(dpia=dpia, actor=self.user, outcome=DpiaStatus.APPROVED, dpo_summary="Approved")
         after = AuditEvent.objects.filter(resource_type="DPIA").count()
-        assert after >= before + 1
+        assert after == before + 1, f"Expected exactly 1 new audit event, got {after - before}"

@@ -227,13 +227,12 @@ class DataSLABusinessRulesTest(TestCase):
         # Initially not violated
         self.assertFalse(sla.is_violated)
 
-        # Mark as violated
+        # Mark as violated (is_violated is a real BooleanField on DataSLA)
         sla.is_violated = True
-        sla.violated_at = timezone.now()
         sla.save()
+        sla.refresh_from_db()
 
         self.assertTrue(sla.is_violated)
-        self.assertIsNotNone(sla.violated_at)
 
 
 class IncidentManagementBusinessRulesTest(TestCase):

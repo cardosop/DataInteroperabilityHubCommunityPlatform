@@ -101,9 +101,8 @@ class AssetCreationWorkflowUnitTests(TestCase):
         test_content = b"id,name\n1,Test\n2,Data\n"
         try:
             s3_client.put_object(Bucket=bucket_name, Key=storage_path, Body=test_content)
-        except Exception:
-            # If upload fails, test will fail later - that's OK
-            pass
+        except Exception as e:
+            self.skipTest(f"S3/MinIO upload prerequisite failed: {e}")
 
         # Create dataset (will be attached to asset created by workflow)
         dataset = Dataset.objects.create(
@@ -133,6 +132,7 @@ class AssetCreationWorkflowUnitTests(TestCase):
             name="Test Asset Workflow",
             dataset_id=str(dataset.id),
             contract_id=str(contract.id),
+            file_id=str(file_obj.id),
             auto_activate=True,
             created_by_id=str(self.user.id),
         )
@@ -183,8 +183,12 @@ class AssetCreationWorkflowUnitTests(TestCase):
         asset = Asset.objects.get(id=asset_id)
         self.assertEqual(asset.status, AssetStatus.ACTIVE)
 
-    def test_workflow_execution_with_dq_failure(self):
-        """Test workflow execution when DQ check fails"""
+    def test_workflow_execution_without_auto_activate(self):
+        """Test that workflow with auto_activate=False leaves asset in DRAFT state.
+
+        When auto_activate is False, the activation step is skipped regardless of
+        DQ/compliance results, so the asset MUST remain DRAFT.
+        """
         # Check if DQ service is available - skip test if not
         from hub.apps.dq.service_client import DQServiceClient
 
@@ -211,75 +215,30 @@ class AssetCreationWorkflowUnitTests(TestCase):
             created_by=self.user,
         )
 
-        # Execute workflow with auto_activate=False (should not activate if DQ fails)
-        # Note: DQ check happens during workflow execution, so we can't pre-set DQ status
-        # This test verifies that workflow handles DQ failure gracefully
+        # Execute workflow with auto_activate=False — activation step is skipped
         result = AssetCreationWorkflow.execute(
             tenant_id=str(self.tenant.id),
-            key="dq-fail-asset",
-            name="DQ Fail Asset",
+            key="no-auto-activate-asset",
+            name="No Auto-Activate Asset",
             dataset_id=str(dataset.id),
             auto_activate=False,
             created_by_id=str(self.user.id),
         )
 
-        # Workflow should complete (may succeed or fail depending on DQ results)
-        # Get the created asset
+        # Workflow should complete successfully
+        self.assertTrue(result.get("success", False))
+
+        # Asset MUST be DRAFT when auto_activate=False (activation skipped)
         asset_id = result.get("output_data", {}).get("asset_id")
-        if asset_id:
-            asset = Asset.objects.get(id=asset_id)
-            # Asset should remain in DRAFT if DQ failed and auto_activate=False
-            # This is a basic test - actual DQ failure handling depends on workflow implementation
-            self.assertIn(asset.status, [AssetStatus.DRAFT, AssetStatus.ACTIVE])
+        self.assertIsNotNone(asset_id, "Workflow should create an asset")
+        asset = Asset.objects.get(id=asset_id)
+        self.assertEqual(asset.status, AssetStatus.DRAFT,
+            "Asset should stay DRAFT when auto_activate=False")
 
-    def test_workflow_execution_with_compliance_failure(self):
-        """Test workflow execution when compliance check fails"""
-        # Check if compliance service is available - skip test if not
-        from hub.apps.compliance.service_client import ComplianceServiceClient
-
-        compliance_client = ComplianceServiceClient()
-        is_available, _ = compliance_client.health_check()
-        if not is_available:
-            self.skipTest(
-                "Compliance service is not available - skipping test that requires compliance service"
-            )
-
-        # Create file and dataset
-        file_obj = File.objects.create(
-            tenant=self.tenant,
-            name="test.csv",
-            content_type="text/csv",
-            size=100,
-            status=FileStatus.ACTIVE,
-            created_by=self.user,
-        )
-
-        dataset = Dataset.objects.create(
-            tenant=self.tenant,
-            file=file_obj,
-            schema_json={"fields": [{"name": "id", "type": "string"}]},
-            row_count=10,
-            created_by=self.user,
-        )
-
-        # Execute workflow with auto_activate=False
-        # Note: Compliance check happens during workflow execution
-        result = AssetCreationWorkflow.execute(
-            tenant_id=str(self.tenant.id),
-            key="compliance-fail-asset",
-            name="Compliance Fail Asset",
-            dataset_id=str(dataset.id),
-            auto_activate=False,
-            created_by_id=str(self.user.id),
-        )
-
-        # Workflow should complete
-        # Get the created asset
-        asset_id = result.get("output_data", {}).get("asset_id")
-        if asset_id:
-            asset = Asset.objects.get(id=asset_id)
-            # Asset should remain in DRAFT if compliance failed and auto_activate=False
-            self.assertIn(asset.status, [AssetStatus.DRAFT, AssetStatus.ACTIVE])
+    # test_workflow_execution_with_compliance_failure removed — it was a duplicate
+    # of test_workflow_execution_without_auto_activate. Both tested auto_activate=False
+    # with the same always-passing assertion. See test_workflow_execution_without_auto_activate
+    # above for the corrected version.
 
 
 class MarketplacePublicationWorkflowUnitTests(TestCase):
@@ -358,7 +317,7 @@ class MarketplacePublicationWorkflowUnitTests(TestCase):
 
         # Execute workflow - should fail eligibility check
         # Workflow raises ValueError on eligibility failure
-        with self.assertRaises(ValueError):
+        with self.assertRaises(ValueError) as context:
             MarketplacePublicationWorkflow.execute(
                 tenant_id=str(self.tenant.id),
                 asset_id=str(self.asset.id),
@@ -369,7 +328,10 @@ class MarketplacePublicationWorkflowUnitTests(TestCase):
 
         # Verify error message contains eligibility-related text
         error_msg = str(context.exception).lower()
-        self.assertIn("eligibility", error_msg or "kyc", error_msg)
+        self.assertTrue(
+            "eligibility" in error_msg or "kyc" in error_msg,
+            f"Expected 'eligibility' or 'kyc' in error: {error_msg}",
+        )
 
     def test_workflow_execution_with_inactive_asset(self):
         """Test workflow execution with inactive asset"""
@@ -392,7 +354,11 @@ class MarketplacePublicationWorkflowUnitTests(TestCase):
                 self.assertFalse(result.get("success", False))
         except ValueError as e:
             # Workflow may raise ValueError on failure - this is expected
-            self.assertIn("active", str(e).lower() or "eligibility", str(e).lower())
+            error_msg = str(e).lower()
+            self.assertTrue(
+                "active" in error_msg or "eligibility" in error_msg,
+                f"Expected 'active' or 'eligibility' in error, got: {error_msg}",
+            )
 
 
 class ContractUpdateWorkflowUnitTests(TestCase):
@@ -427,17 +393,19 @@ class ContractUpdateWorkflowUnitTests(TestCase):
             created_by=self.user,
         )
 
-    def test_contract_update_resets_validation_status(self):
-        """Test that updating contract resets validation status"""
-        # Update contract
+    def test_contract_update_preserves_hub_contract_json(self):
+        """Test that updating contract hub_contract_json is persisted correctly."""
+        # Update contract JSON
         self.contract.hub_contract_json = {"id": "test-contract", "name": "Updated Name"}
         self.contract.save()
-
-        # Validation status should be reset (implementation dependent)
-        # This tests the contract update behavior
         self.contract.refresh_from_db()
-        # Contract was updated successfully
+
         self.assertIsNotNone(self.contract.hub_contract_json)
+        self.assertEqual(
+            self.contract.hub_contract_json.get("name"),
+            "Updated Name",
+            "hub_contract_json should reflect the updated name",
+        )
 
 
 class AssetRetirementWorkflowUnitTests(TestCase):
@@ -485,14 +453,18 @@ class AssetRetirementWorkflowUnitTests(TestCase):
             metadata_json={"title": "Test Listing"},
         )
 
-        # Retire asset via API (DELETE endpoint sets status to RETIRED)
-        from rest_framework.test import APIClient
+        # Retire asset via AssetService (tests business logic, not HTTP layer)
+        from hub.apps.assets.services import AssetService
 
-        client = APIClient()
-        client.force_authenticate(user=self.user)
-
-        response = client.delete(f"/api/v1/assets/{self.asset.id}/")
-        self.assertEqual(response.status_code, 204)
+        asset_service = AssetService(
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
+        asset_service.delete_asset(
+            asset_id=str(self.asset.id),
+            tenant_id=str(self.tenant.id),
+            user_id=str(self.user.id),
+        )
 
         # Verify asset is retired
         self.asset.refresh_from_db()

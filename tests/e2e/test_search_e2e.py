@@ -177,7 +177,7 @@ class SearchE2ETest(E2ETestBase):
         job = create_job(
             tenant=self.tenant,
             user=self.user,
-            type=JobType.SEARCH_INDEX_UPDATE,
+            job_type=JobType.SEARCH_INDEX_UPDATE,
             resource_type="ASSET",
             resource_id=str(self.asset.id),
         )

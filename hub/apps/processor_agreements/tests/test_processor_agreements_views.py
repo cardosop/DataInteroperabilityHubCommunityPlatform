@@ -47,17 +47,21 @@ class ProcessorAgreementViewSetTests(TestCase):
     def test_list_processors(self):
         resp = self.client.get("/api/v1/processor-agreements/processors/")
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("results", resp.data, "Paginated response must include 'results' key")
 
     @pytest.mark.integration
     def test_list_agreements(self):
         resp = self.client.get("/api/v1/processor-agreements/processor-agreements/")
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("results", resp.data, "Paginated response must include 'results' key")
 
     @pytest.mark.integration
     def test_create_processor(self):
         payload = {"name": "Test Processor", "jurisdiction": "EU"}
         resp = self.client.post("/api/v1/processor-agreements/processors/", payload, format="json")
         self.assertEqual(resp.status_code, 201)
+        self.assertEqual(resp.data["name"], "Test Processor")
+        self.assertIn("id", resp.data)
 
     @pytest.mark.integration
     def test_unauthenticated_rejected(self):

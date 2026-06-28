@@ -138,7 +138,9 @@ class TransformationPipelineViewSetTest(TestCase):
         response = self.client.post("/api/v1/transformation/pipelines/", data, format="json")
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("pipeline_definition", str(response.data))
+        # Verify the error references pipeline_definition structure, not just arbitrary string match
+        self.assertIn("pipeline_definition", response.data)
+        self.assertIn("steps", str(response.data["pipeline_definition"]).lower())
 
     def test_list_pipelines_success(self):
         """Test successful pipeline listing"""

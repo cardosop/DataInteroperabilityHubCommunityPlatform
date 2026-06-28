@@ -30,6 +30,8 @@ def _tenant(request):
 
 
 class ProcessorViewSet(viewsets.ModelViewSet):
+    """Manage data processors for the current tenant."""
+
     permission_classes = [
         permissions.IsAuthenticated,
         IsTenantScoped,
@@ -86,6 +88,8 @@ class ProcessorViewSet(viewsets.ModelViewSet):
 
 
 class ProcessorAgreementViewSet(viewsets.ModelViewSet):
+    """Manage processor agreements for the current tenant."""
+
     permission_classes = [
         permissions.IsAuthenticated,
         IsTenantScoped,
@@ -154,6 +158,8 @@ class ProcessorAgreementViewSet(viewsets.ModelViewSet):
 
 
 class AssetProcessorLinkViewSet(viewsets.ModelViewSet):
+    """Manage asset-to-processor links for the current tenant."""
+
     permission_classes = [
         permissions.IsAuthenticated,
         IsTenantScoped,

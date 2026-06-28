@@ -191,8 +191,8 @@ class DatasetCachingTest(DatasetsTestBase):
         cached = get_cached_dataset_detail(dataset_id)
         self.assertIsNotNone(cached)
 
-    def test_invalidate_dataset_list_cache(self):
-        """Test invalidating dataset list cache"""
+    def test_invalidate_dataset_list_cache_no_error(self):
+        """Test invalidating dataset list cache — completes without raising."""
         tenant_id = str(self.tenant.id)
         filters_hash1 = hash_filters({"page": 1})
         filters_hash2 = hash_filters({"page": 2})
@@ -206,19 +206,35 @@ class DatasetCachingTest(DatasetsTestBase):
         self.assertIsNotNone(get_cached_dataset_list(tenant_id, filters_hash1))
         self.assertIsNotNone(get_cached_dataset_list(tenant_id, filters_hash2))
 
-        # Invalidate tenant's list cache
+        # Invalidate tenant's list cache.  With LocMemCache pattern-based
+        # invalidation is best-effort; the contract is that the call
+        # completes without raising.
         invalidate_dataset_list_cache(tenant_id)
 
-        # Verify invalidation was attempted. With LocMemCache (test default)
-        # pattern-based invalidation may leave entries; with Redis it clears them.
-        # Either outcome is acceptable — the key contract is that
-        # invalidate_dataset_list_cache() completes without raising.
-        cached_after = get_cached_dataset_list(tenant_id, filters_hash1)
-        self.assertTrue(
-            cached_after is None or cached_after == (results, 1),
-            "After invalidation, cache entries must be None (cleared) or "
-            "unchanged (LocMemCache limitation); got a different value",
-        )
+    @override_settings(CACHES={
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "test-invalidation-isolated",
+        },
+    })
+    def test_invalidate_dataset_list_cache_isolated_backend_no_raise(self):
+        """invalidate_dataset_list_cache() completes without raising on LocMemCache.
+
+        Pattern-based invalidation requires Redis (``invalidate_dataset_list_cache``
+        is a best-effort no-op for non-Redis backends — it logs a debug message and
+        returns).  This test verifies the function does not raise on a clean
+        isolated backend.
+        """
+        from django.core.cache import caches
+
+        isolated_cache = caches["default"]
+        tenant_id = str(self.tenant.id)
+        filters_hash = hash_filters({"page": 1})
+        key = get_dataset_list_cache_key(tenant_id, filters_hash)
+        isolated_cache.set(key, ([{"id": str(self.dataset.id)}], 1))
+
+        # Must not raise.
+        invalidate_dataset_list_cache(tenant_id)
 
     def test_invalidate_dataset_detail_cache(self):
         """Test invalidating dataset detail cache"""
@@ -330,12 +346,19 @@ class DatasetCachingTest(DatasetsTestBase):
         tenant_id = str(self.tenant.id)
         filters_hash = hash_filters({"page": 1})
         results = [{"id": str(self.dataset.id)}]
+        detail_data = {"id": str(self.dataset.id)}
 
         cache_dataset_list(tenant_id, filters_hash, results, 1)
-        cache_dataset_detail(str(self.dataset.id), {"id": str(self.dataset.id)})
+        cache_dataset_detail(str(self.dataset.id), detail_data)
+
         # Verify the list cache can be retrieved
-        cached = get_cached_dataset_list(tenant_id, filters_hash)
-        self.assertIsNotNone(cached, "Cached list should be retrievable")
+        cached_list = get_cached_dataset_list(tenant_id, filters_hash)
+        self.assertIsNotNone(cached_list, "Cached list should be retrievable")
+
+        # Verify the detail cache can be retrieved
+        cached_detail = get_cached_dataset_detail(str(self.dataset.id))
+        self.assertIsNotNone(cached_detail, "Cached detail should be retrievable")
+        self.assertEqual(cached_detail, detail_data)
 
     # ========== EDGE CASES ==========
 
@@ -410,10 +433,8 @@ class DatasetCachingTest(DatasetsTestBase):
 
         cache_dataset_list(str(self.tenant.id), filters_hash, [], total_count=0)
         cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
-        self.assertTrue(
-            cached is None or (isinstance(cached, tuple) and len(cached) == 2),
-            f"Expected None or (list, int), got {type(cached).__name__}",
-        )
+        self.assertIsNotNone(cached, "Empty results should be cached, not evicted")
+        self.assertEqual(cached, ([], 0))
 
     def test_cache_and_retrieve_uses_default_ttl(self):
         """Cache set + get with default TTL round-trips correctly."""
@@ -423,3 +444,4 @@ class DatasetCachingTest(DatasetsTestBase):
         cache_dataset_list(str(self.tenant.id), filters_hash, results, total_count=len(results))
         cached = get_cached_dataset_list(str(self.tenant.id), filters_hash)
         self.assertIsNotNone(cached, "Cached data should be retrievable with default TTL")
+        self.assertEqual(cached, (results, len(results)))

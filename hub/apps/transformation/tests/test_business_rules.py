@@ -1644,8 +1644,8 @@ class TransformationBusinessRulesTest(TestCase):
         if quota_checks.get("governance_validation_passed"):
             self.assertIn("query_quota", requested_quota)
 
-    def test_validate_resource_quota_storage_exceeded(self):
-        """Test resource quota validation when storage quota is exceeded"""
+    def test_validate_resource_quota_storage_quota_metadata_present(self):
+        """Test resource quota validation includes storage quota metadata"""
 
         # Create a pipeline
         pipeline = TransformationPipeline.objects.create(
@@ -1701,8 +1701,8 @@ class TransformationBusinessRulesTest(TestCase):
         if not result.is_valid:
             self.assertGreater(len(result.errors), 0)
 
-    def test_validate_resource_quota_compute_exceeded(self):
-        """Test resource quota validation when compute quota is exceeded"""
+    def test_validate_resource_quota_compute_quota_metadata_present(self):
+        """Test resource quota validation includes compute quota metadata"""
         # Create a complex pipeline that requires significant compute
         complex_pipeline_def = {
             "version": "1.0.0",

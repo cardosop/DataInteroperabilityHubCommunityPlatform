@@ -281,7 +281,10 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
             created_by=self.user,
         )
 
-        # Non-existent parent raises an exception
+        # Non-existent parent (unsaved Dataset with only id set) raises an
+        # exception.  The exact exception type depends on whether the FK
+        # constraint fires first (IntegrityError) or a downstream attribute
+        # access on the incomplete parent fires first (AttributeError).
         with self.assertRaises(Exception):
             SchemaEvolutionTracker.track_schema_version(
                 child, parent_dataset=fake_parent
@@ -332,8 +335,8 @@ class SchemaEvolutionIntegrationTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_schema_evolution_integration_error_handling(self):
-        """Test error handling in schema evolution integration"""
+    def test_schema_evolution_integration_track_with_parent(self):
+        """track_schema_version with a valid parent returns a SchemaVersion."""
         parent = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,

@@ -5,7 +5,6 @@ Shared fixtures for data_movement tests.
 from __future__ import annotations
 
 import uuid
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -61,46 +60,3 @@ def scheduled_export(tenant):
     )
 
 
-@pytest.fixture
-def mock_dlt_pipeline():
-    """Mock dlt.pipeline() to avoid requiring the dlt package at test time."""
-    mock_load = MagicMock()
-    mock_load.load_id = "load-1"
-    mock_load.status = "completed"
-    mock_load.started_at = None
-    mock_load.finished_at = None
-
-    mock_info = MagicMock()
-    mock_info.loads = [mock_load]
-
-    mock_pipeline = MagicMock()
-    mock_pipeline.run.return_value = mock_info
-    mock_pipeline.dataset_name = "test_dataset"
-    mock_pipeline.destination = MagicMock()
-    mock_pipeline.destination.__name__ = "filesystem"
-    mock_pipeline.last_trace = MagicMock()
-    mock_pipeline.last_trace.last_trace = None
-    mock_pipeline.state = {}
-
-    with (
-        patch("dlt.pipeline", return_value=mock_pipeline),
-        patch("dlt.destinations.filesystem", MagicMock()),
-        patch("dlt.destinations.__dict__", {"filesystem": MagicMock(), "snowflake": MagicMock()}),
-    ):
-        yield mock_pipeline
-
-
-@pytest.fixture
-def mock_boto3_sm():
-    """Mock boto3 secretsmanager client."""
-    mock_client = MagicMock()
-    mock_client.create_secret.return_value = {
-        "ARN": "arn:aws:secretsmanager:us-east-1:123456:secret:test-secret"
-    }
-    mock_client.get_secret_value.return_value = {
-        "SecretString": '{"access_key_id":"AKIATEST","secret_access_key":"test123"}'
-    }
-    mock_client.delete_secret.return_value = {}
-
-    with patch("boto3.client", return_value=mock_client):
-        yield mock_client

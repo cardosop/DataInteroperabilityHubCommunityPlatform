@@ -37,7 +37,6 @@ from hub.apps.mesh.models import (
 from hub.apps.tenants.models import KYCStatus, Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
-UserModel = get_user_model()
 
 
 class PolicyBusinessRulesFrameworkFeaturesTest(TestCase):

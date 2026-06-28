@@ -8,7 +8,7 @@ import uuid
 
 import pytest
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -25,8 +25,17 @@ pytestmark = pytest.mark.django_db(transaction=True)
 class APIIntegrationTest(TestCase):
     """Integration tests for REST API"""
 
+    @override_settings(ENVIRONMENT="test")
     def setUp(self):
-        """Set up test fixtures"""
+        """Set up test fixtures.
+
+        ``ENVIRONMENT=test`` is pinned explicitly as defence-in-depth
+        against test-module contamination: ``test_mailhog_proxy.py``
+        runs ``@override_settings(ENVIRONMENT="production")`` tests
+        and, with ``pytest.mark.django_db`` on a non-TestCase class,
+        the cleanup order can leave a stale URL-resolver state that
+        causes ``/api-docs/*`` to return 404 instead of 200.
+        """
         uid = uuid.uuid4().hex[:8]
         # Create tenant
         self.tenant = Tenant.objects.create(
@@ -109,8 +118,7 @@ class APIIntegrationTest(TestCase):
         response = self.client.get("/api/v1/")
 
         if not getattr(settings, "RATE_LIMIT_ENABLED", True):
-            # Rate limiting explicitly disabled — headers not expected
-            return
+            self.skipTest("Rate limiting is explicitly disabled via settings.RATE_LIMIT_ENABLED")
 
         # When rate limiting is enabled, headers must be present
         self.assertIn(

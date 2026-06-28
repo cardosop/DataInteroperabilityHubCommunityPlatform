@@ -20,9 +20,13 @@ from tests.integration.kubernetes_manifest_utils import (
     validate_manifests_with_kubectl_dry_run,
 )
 
-# Application services that must have liveness and readiness probes (serve traffic).
+# Services that must have liveness and readiness probes.
+# Covers Deployments, StatefulSets, and DaemonSets — probe tests below
+# iterate over all three resource kinds so infra StatefulSets (postgres,
+# redis*, minio) and DaemonSets (logging-promtail) are included.
 SERVICES_REQUIRING_PROBES = frozenset(
     {
+        # Application services
         "api-service",
         "worker-service",
         "prefect-server",
@@ -31,10 +35,27 @@ SERVICES_REQUIRING_PROBES = frozenset(
         "search-service",
         "observability-service",
         "webhook-service",
-        "dq-service",
         "compliance-service",
         "datacontract-service",
         "semantic-service",
+        # Infra Deployments with probes
+        "grafana",
+        "jaeger",
+        "fuseki",
+        "api-gateway-traefik",
+        "logging-loki",
+        # Infra DaemonSets with probes
+        "logging-promtail",
+        # Infra StatefulSets with probes (exec/httpGet)
+        "postgres",
+        "redis",
+        "redis-cache",
+        "redis-channels",
+        "redis-events",
+        "redis-queue",
+        "minio",
+        "prometheus",
+        "alertmanager",
     }
 )
 
@@ -142,16 +163,43 @@ class TestKubernetesDeploymentManifests:
             pytest.skip(f"{service_name} not in set of services requiring probes")  # noqa: skip-in-body — runtime service dependency
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
-        for d in by_kind.get("Deployment", []):
+        for resource in (
+            by_kind.get("Deployment", [])
+            + by_kind.get("StatefulSet", [])
+            + by_kind.get("DaemonSet", [])
+        ):
             for c in (
-                (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+                (resource.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
             ):
                 assert c.get("livenessProbe"), (
-                    f"{service_name} Deployment container {c.get('name')} missing livenessProbe"
+                    f"{service_name} container {c.get('name')} missing livenessProbe"
                 )
                 assert c.get("readinessProbe"), (
-                    f"{service_name} Deployment container {c.get('name')} missing readinessProbe"
+                    f"{service_name} container {c.get('name')} missing readinessProbe"
                 )
+
+    def test_all_workload_services_are_in_probes_set(self, kustomize_available_check):
+        """Every k8s base that has Deployments/StatefulSets/DaemonSets must be in
+        SERVICES_REQUIRING_PROBES so no new service silently skips probe validation.
+        """
+        missing = []
+        for service_name, base_path in _K8S_BASES:
+            if service_name in SERVICES_REQUIRING_PROBES:
+                continue
+            manifests = load_manifests_from_kustomize(base_path)
+            by_kind = get_resources_by_kind(manifests)
+            has_workload = (
+                by_kind.get("Deployment")
+                or by_kind.get("StatefulSet")
+                or by_kind.get("DaemonSet")
+            )
+            if has_workload:
+                missing.append(service_name)
+        if missing:
+            self.fail(
+                f"k8s services with workloads missing from SERVICES_REQUIRING_PROBES: "
+                f"{', '.join(missing)}. Add them to the set in test_kubernetes_deployment.py."
+            )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
     def test_deployment_containers_no_placeholder_images(
@@ -188,10 +236,15 @@ class TestKubernetesDeploymentManifests:
         """When kubectl is available, apply --dry-run=client succeeds for each base (client-side validation)."""
         if not kubectl_available():
             pytest.skip("kubectl not available; skip client dry-run validation")  # noqa: skip-in-body — runtime service dependency
+        failures = []
         for service_name, base_path in _K8S_BASES:
             raw = build_kustomize_raw(base_path)
-            assert validate_manifests_with_kubectl_dry_run(raw), (
-                f"{service_name}: kubectl apply --dry-run=client failed"
+            if not validate_manifests_with_kubectl_dry_run(raw):
+                failures.append(service_name)
+        if failures:
+            self.fail(
+                f"kubectl dry-run validation FAILED for: {', '.join(failures)}. "
+                "These manifests have structural issues that need fixing."
             )
 
     @pytest.mark.parametrize("service_name,base_path", _K8S_BASES, ids=_K8S_BASE_IDS)
@@ -203,9 +256,13 @@ class TestKubernetesDeploymentManifests:
             pytest.skip(f"{service_name} not in set of services requiring probes")  # noqa: skip-in-body — runtime service dependency
         manifests = load_manifests_from_kustomize(base_path)
         by_kind = get_resources_by_kind(manifests)
-        for d in by_kind.get("Deployment", []):
+        for resource in (
+            by_kind.get("Deployment", [])
+            + by_kind.get("StatefulSet", [])
+            + by_kind.get("DaemonSet", [])
+        ):
             for c in (
-                (d.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
+                (resource.get("spec") or {}).get("template", {}).get("spec", {}).get("containers", [])
             ):
                 for probe_name in ("livenessProbe", "readinessProbe"):
                     probe = c.get(probe_name)

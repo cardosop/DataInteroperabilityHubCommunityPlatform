@@ -5,8 +5,10 @@ Tests config file parsing, command-line overrides, and configuration persistence
 Uses real Config class (no mocks).
 """
 
+import os
 import sys
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 import yaml
@@ -71,12 +73,13 @@ class TestConfig:
         assert config.get("nonexistent_key", "default_value") == "default_value"
         assert config.get("nonexistent_key") is None
 
+    @patch.dict(os.environ, {"DATAHUB_BASE_URL": "", "MESHANT_API_URL": "", "API_BASE_URL": ""}, clear=False)
     def test_config_api_base_url(self, temp_config_dir):
         """Test API base URL getter/setter"""
         config = Config()
-        config.set_api_base_url("http://test.example.com/api/v1")
-        assert config.get_api_base_url() == "http://test.example.com/api/v1"
-        # Test default
+        config.set_api_base_url("http://test.example.com")
+        assert config.get_api_base_url() == "http://test.example.com"
+        # Test default (env vars cleared so config default is used)
         config._config = {}
         assert config.get_api_base_url() == "http://localhost:8000/api/v1"
 
@@ -220,19 +223,20 @@ class TestConfig:
         assert config_dir.exists()
         assert config_file.exists()
 
+    @patch.dict(os.environ, {"DATAHUB_BASE_URL": "", "MESHANT_API_URL": "", "API_BASE_URL": ""}, clear=False)
     def test_config_all_getters_setters(self, temp_config_dir):
         """Test all getter/setter methods"""
         config = Config()
 
         # Test all setters
-        config.set_api_base_url("http://api.example.com/v1")
+        config.set_api_base_url("http://api.example.com")
         config.set_api_key("api-key-123")
         config.set_default_tenant("tenant-456")
         config.set_access_token("access-token-789")
         config.set_refresh_token("refresh-token-012")
 
         # Test all getters
-        assert config.get_api_base_url() == "http://api.example.com/v1"
+        assert config.get_api_base_url() == "http://api.example.com"
         assert config.get_api_key() == "api-key-123"
         assert config.get_default_tenant() == "tenant-456"
         assert config.get_access_token() == "access-token-789"

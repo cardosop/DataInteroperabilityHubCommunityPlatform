@@ -184,8 +184,6 @@ class TestRunbookEndpointReferences:
             "Deployment runbook should include endpoint verification steps"
         )
 
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
     def test_runbook_endpoints_accessible(self):
         """Test that endpoints referenced in runbooks are accessible (if services running)"""  # noqa: skip-in-body — runtime service dependency
         if not self.services_available:
@@ -196,6 +194,7 @@ class TestRunbookEndpointReferences:
             response = requests.get(f"{self.api_base_url}/api/v1/compliance/runs/", timeout=5)
             # Should return 401 (unauthorized) or 200 (if public), not 404
             assert response.status_code != 404, "Compliance runs endpoint should exist"
+        except requests.exceptions.RequestException as e:
             pytest.skip(f"Could not connect to API: {e}")
 
         # Test DQ endpoint
@@ -204,9 +203,8 @@ class TestRunbookEndpointReferences:
             # Should return 401 (unauthorized) or 200 (if public), not 404
             assert response.status_code != 404, "DQ runs endpoint should exist"
         except requests.exceptions.RequestException as e:
+            pytest.skip(f"Could not connect to API: {e}")
 
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
-@pytest.mark.skip(reason="f'Could not connect to API: {e}'")
     def test_old_patterns_not_accessible(self):
         """Test that old endpoint patterns are not accessible (if services running)"""  # noqa: skip-in-body — runtime service dependency
         if not self.services_available:
@@ -225,6 +223,7 @@ class TestRunbookEndpointReferences:
             assert response.status_code in [404, 301, 302, 401], (
                 f"Old compliance-runs pattern should return 404/redirect/401, got {response.status_code}"
             )
+        except requests.exceptions.RequestException as e:
             pytest.skip(f"Could not connect to API: {e}")
 
         # Test old DQ pattern - should return 404 or be redirected
@@ -238,6 +237,7 @@ class TestRunbookEndpointReferences:
                 f"Old dq-runs pattern should return 404/redirect/401, got {response.status_code}"
             )
         except requests.exceptions.RequestException as e:
+            pytest.skip(f"Could not connect to API: {e}")
 
 
 if __name__ == "__main__":

@@ -187,14 +187,11 @@ class MarketplaceListingsE2ETest(E2ETestBase):
                 {"status": ListingStatus.PUBLISHED},
                 format="json",
             )
-            if response.status_code != status.HTTP_200_OK:
-                # Manually set status
-                listing = Listing.objects.get(id=listing_id)
-                listing.status = ListingStatus.PUBLISHED
-                listing.save(update_fields=["status"])
-                listing.refresh_from_db()
-                self.assertEqual(listing.status, ListingStatus.PUBLISHED)
-                return
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_200_OK,
+                f"PATCH publish failed: {get_response_data(response)}",
+            )
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["status"], ListingStatus.PUBLISHED)
@@ -246,11 +243,11 @@ class MarketplaceListingsE2ETest(E2ETestBase):
                 {"status": ListingStatus.UNLISTED},
                 format="json",
             )
-            if response.status_code != status.HTTP_200_OK:
-                # Manually set status
-                listing = Listing.objects.get(id=listing_id)
-                listing.status = ListingStatus.UNLISTED
-                listing.save(update_fields=["status"])
+            self.assertEqual(
+                response.status_code,
+                status.HTTP_200_OK,
+                f"PATCH unlist failed: {get_response_data(response)}",
+            )
 
         self.assertNotEqual(
             response.status_code, status.HTTP_404_NOT_FOUND, "Unlist endpoint should exist"
@@ -336,9 +333,30 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             results = response.data["results"]
         else:
             results = response.data if isinstance(response.data, list) else []
-        # Search indexing may be async — if search returns 0 results,
-        # verify the listing exists in the full listing endpoint instead.
+        # Search indexing may be async — retry a few times before
+        # falling back to the unfiltered listing endpoint.
         if len(results) == 0:
+            import time
+            for _attempt in range(5):
+                time.sleep(1)  # Allow search index to catch up
+                retry_response = self.client.get(
+                    "/api/v1/marketplace/listings/", {"search": "Searchable"}
+                )
+                if isinstance(retry_response.data, dict) and "results" in retry_response.data:
+                    results = retry_response.data["results"]
+                else:
+                    results = (
+                        retry_response.data
+                        if isinstance(retry_response.data, list)
+                        else []
+                    )
+                if len(results) > 0:
+                    break
+
+        if len(results) == 0:
+            # Search index still empty after retries — verify the listing
+            # at least exists via the unfiltered endpoint so we know the
+            # issue is search indexing, not listing publication.
             list_response = self.client.get("/api/v1/marketplace/listings/")
             self.assertEqual(list_response.status_code, status.HTTP_200_OK)
             all_data = get_response_data(list_response) or {}
@@ -349,11 +367,13 @@ class MarketplaceListingsE2ETest(E2ETestBase):
             self.assertIn(
                 str(listing_id),
                 listing_ids,
-                f"Published listing {listing_id} should exist in listing endpoint even if search index is lagging",
+                f"Published listing {listing_id} should exist in listing endpoint "
+                f"even if search index is lagging",
             )
         else:
             self.assertGreaterEqual(
-                len(results), 1, f"Search should find at least the published listing {listing_id}"
+                len(results), 1,
+                f"Search should find at least the published listing {listing_id}"
             )
 
     def test_listing_with_pricing(self):

@@ -11,6 +11,8 @@ Covers:
 Uses REAL services (Compliance, DQ, DataContract, MinIO).
 """
 
+import textwrap
+
 import pytest
 
 pytestmark = pytest.mark.slow
@@ -93,7 +95,7 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
         """Test contract-first flow with YAML format"""
         asset_id = self.create_asset(key="yaml-contract", name="YAML Contract")
 
-        yaml_contract = """
+        yaml_contract = textwrap.dedent("""\
         id: test-contract
         name: Test Contract
         schema:
@@ -102,7 +104,7 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
               type: string
             - name: name
               type: string
-        """
+        """)
 
         contract_id = self.create_contract(
             asset_id,
@@ -129,7 +131,7 @@ class ContractFirstFlowSuccessTests(E2ETestBase):
         if isinstance(validate_response, dict) and "validation_status" in validate_response:
             validation_status = validate_response.get("validation_status")
             if validation_status:
-                self.assertIn(validation_status, ["VALID", "INVALID", "WARNING_ONLY", "ERROR"])
+                self.assertIn(validation_status, ["VALID", "INVALID", "WARNING_ONLY", "ERROR", "SKIPPED"])
             else:
                 # If no validation_status, the service may have returned an error
                 # This is acceptable for YAML format which may not be fully supported

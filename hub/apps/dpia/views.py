@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+
 from django.shortcuts import get_object_or_404
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
@@ -31,6 +33,8 @@ from hub.apps.dpia.workflow import (
 )
 from hub.apps.tenants.models import Tenant
 from hub.apps.tenants.request_tenant import get_request_tenant_id
+
+logger = logging.getLogger(__name__)
 
 
 class DpiaViewSet(viewsets.ModelViewSet):
@@ -131,8 +135,13 @@ class DpiaViewSet(viewsets.ModelViewSet):
             for r in regimes:
                 if r not in jurisdictions:
                     jurisdictions.append(r)
+        except ImportError:
+            pass  # compliance module not installed — expected in some deployments
         except Exception:
-            pass
+            logger.warning(
+                "Failed to resolve tenant compliance regimes for DPIA %s",
+                dpia.id, exc_info=True,
+            )
 
         # Extract risk_level from latest compliance run
         try:
@@ -147,8 +156,13 @@ class DpiaViewSet(viewsets.ModelViewSet):
             )
             if latest and latest.risk_level:
                 risk_level = latest.risk_level
+        except ImportError:
+            pass  # compliance module not installed
         except Exception:
-            pass
+            logger.warning(
+                "Failed to query ComplianceRun for DPIA %s",
+                dpia.id, exc_info=True,
+            )
 
         payload.update(
             {

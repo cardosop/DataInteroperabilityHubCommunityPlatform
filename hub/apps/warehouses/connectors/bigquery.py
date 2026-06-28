@@ -94,6 +94,7 @@ class BigQueryConnector(WarehouseConnector):
         query_job = self._client.query(sql, job_config=job_config)
         bytes_billed = query_job.total_bytes_processed or 0
         cost = float(bytes_billed) / 1e12 * 5.0  # ~$5/TB
+        self._record_cost(self._tenant_id, cost, "bigquery-bytes-billed")
         logger.info(
             "bigquery_dry_run_cost",
             extra=redact_extra(
@@ -149,8 +150,10 @@ class BigQueryConnector(WarehouseConnector):
         dataset = parts[0] if len(parts) > 1 else self._config.get("dataset", "")
         table = parts[1] if len(parts) > 1 else table_name
         table_ref = self._client.dataset(dataset).table(table)
-        self._client.get_table(table_ref)
+        # BigQuery Table.get is a free metadata operation — record for
+        # observability but with zero cost (no bytes billed).
         schema = self._client.get_table(table_ref).schema
+        self._record_cost(self._tenant_id, 0.0, "bigquery-bytes-billed")
         return [
             SchemaColumn(
                 name=field.name,

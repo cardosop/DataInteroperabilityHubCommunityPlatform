@@ -14,11 +14,19 @@ from django.test import RequestFactory, TestCase
 from hub.apps.security.views import csp_report_view
 
 
-class CSPReportAcceptsValidPayloadTest(TestCase):
+class _CSPTestBase(TestCase):
+    """Shared base for CSP report tests — provides a RequestFactory."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.factory = RequestFactory()
+
+
+class CSPReportAcceptsValidPayloadTest(_CSPTestBase):
     """POST valid CSP2 violation JSON → 204."""
 
     def test_csp_report_accepts_valid_payload(self):
-        factory = RequestFactory()
         payload = {
             "csp-report": {
                 "document-uri": "https://app.example.com/dashboard",
@@ -30,7 +38,7 @@ class CSPReportAcceptsValidPayloadTest(TestCase):
                 "status-code": 200,
             }
         }
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=json.dumps(payload),
             content_type="application/csp-report",
@@ -39,13 +47,12 @@ class CSPReportAcceptsValidPayloadTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
 
-class CSPReportNoAuthRequiredTest(TestCase):
+class CSPReportNoAuthRequiredTest(_CSPTestBase):
     """POST without Authorization header → 204 (RFC 7034)."""
 
     def test_csp_report_no_auth_required(self):
-        factory = RequestFactory()
         payload = {"csp-report": {"violated-directive": "img-src"}}
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=json.dumps(payload),
             content_type="application/csp-report",
@@ -55,14 +62,13 @@ class CSPReportNoAuthRequiredTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
 
-class CSPReportEmptyBodyTest(TestCase):
+class CSPReportEmptyBodyTest(_CSPTestBase):
     """POST with empty body → 204 (graceful, not 400)."""
 
     def test_csp_report_empty_body_returns_204(self):
         """The endpoint returns 204 even for empty bodies to avoid
         leaking information and to prevent browsers from stopping reports."""
-        factory = RequestFactory()
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=b"",
             content_type="application/csp-report",
@@ -73,12 +79,11 @@ class CSPReportEmptyBodyTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
 
-class CSPReportInvalidJSONTest(TestCase):
+class CSPReportInvalidJSONTest(_CSPTestBase):
     """POST with non-JSON content → 204 (graceful)."""
 
     def test_csp_report_invalid_json_returns_204(self):
-        factory = RequestFactory()
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=b"not json at all {{{",
             content_type="application/csp-report",
@@ -87,7 +92,7 @@ class CSPReportInvalidJSONTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
 
-class CSPReportMetricIncrementTest(TestCase):
+class CSPReportMetricIncrementTest(_CSPTestBase):
     """POST valid payload → OTel counter incremented."""
 
     @patch("hub.apps.security.views._CSP_VIOLATIONS")
@@ -95,14 +100,13 @@ class CSPReportMetricIncrementTest(TestCase):
         mock_labels = MagicMock()
         mock_counter.labels.return_value = mock_labels
 
-        factory = RequestFactory()
         payload = {
             "csp-report": {
                 "violated-directive": "script-src 'self'",
                 "document-uri": "https://app.example.com/login",
             }
         }
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=json.dumps(payload),
             content_type="application/csp-report",
@@ -117,11 +121,10 @@ class CSPReportMetricIncrementTest(TestCase):
         mock_labels.inc.assert_called_once()
 
 
-class CSPReportLegacyFormatTest(TestCase):
+class CSPReportLegacyFormatTest(_CSPTestBase):
     """POST with CSP2 csp-report wrapper → 204."""
 
     def test_csp_report_legacy_format(self):
-        factory = RequestFactory()
         payload = {
             "csp-report": {
                 "violated-directive": "style-src 'self'",
@@ -129,7 +132,7 @@ class CSPReportLegacyFormatTest(TestCase):
                 "blocked-uri": "inline",
             }
         }
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=json.dumps(payload),
             content_type="application/csp-report",
@@ -138,11 +141,10 @@ class CSPReportLegacyFormatTest(TestCase):
         self.assertEqual(response.status_code, 204)
 
 
-class CSPReportModernFormatTest(TestCase):
+class CSPReportModernFormatTest(_CSPTestBase):
     """POST with Reporting API v1 body array → 204."""
 
     def test_csp_report_modern_format(self):
-        factory = RequestFactory()
         # Reporting API v1: array of report objects with "body" sub-object
         payload = [
             {
@@ -155,7 +157,7 @@ class CSPReportModernFormatTest(TestCase):
                 },
             }
         ]
-        request = factory.post(
+        request = self.factory.post(
             "/api/csp-report/",
             data=json.dumps(payload),
             content_type="application/reports+json",

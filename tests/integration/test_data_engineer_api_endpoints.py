@@ -179,7 +179,6 @@ class TestScheduledIngestionAPIEndpoints(TestCase):
             created_by=self.user,
             key="test-asset",
             name="Test Asset",
-            visibility="INTERNAL",
         )
 
     def test_create_scheduled_ingestion(self):
@@ -217,7 +216,8 @@ class TestScheduledIngestionAPIEndpoints(TestCase):
             response.status_code,
             [
                 status.HTTP_201_CREATED,
-                status.HTTP_400_BAD_REQUEST,  # Validation error
+                status.HTTP_207_MULTI_STATUS,    # Prefect sync partial failure (e.g. timeout)
+                status.HTTP_400_BAD_REQUEST,     # Validation error
                 status.HTTP_405_METHOD_NOT_ALLOWED,  # Endpoint configuration issue
                 status.HTTP_500_INTERNAL_SERVER_ERROR,  # Connection test exception
             ],
@@ -479,7 +479,6 @@ class TestSchemaEvolutionAPIEndpoints(TestCase):
             created_by=self.user,
             key="schema-asset",
             name="Schema Asset",
-            visibility="INTERNAL",
         )
 
         from hub.apps.files.models import File, FileStatus

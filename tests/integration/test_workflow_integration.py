@@ -45,12 +45,17 @@ class WorkflowIntegrationTest(TestCase):
             },
             format="json",
         )
-        self.assertLess(
+        # Contract creation may return 201 (success), 200, or 400 (structural-floor
+        # rejection for empty payloads like "{}" with ODCS spec type).
+        self.assertIn(
             response.status_code,
-            500,
+            [200, 201, 400],
+            f"Contract creation request completed, got {response.status_code}"
         )
 
     def test_asset_list_workflow(self):
         """GET /api/v1/assets/ returns assets from real DB."""
         response = self.client.get("/api/v1/assets/")
-        self.assertIn(response.status_code, [200, 404])
+        self.assertEqual(response.status_code, 200,
+            f"Asset list should return 200, got {response.status_code}")
+        self.assertIn("results", response.data, "Response should contain results key")

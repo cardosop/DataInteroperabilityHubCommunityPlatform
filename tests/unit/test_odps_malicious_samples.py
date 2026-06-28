@@ -296,8 +296,13 @@ class ODPSMaliciousSamplesTest(TestCase):
             f"Command injection file should contain command injection patterns. Found: {matches}",
         )
 
-    def test_malicious_files_are_detected_by_security_validator(self):
-        """Test that malicious files are detected by security validation patterns"""
+    def test_malicious_files_match_expected_security_patterns(self):
+        """Test that malicious sample files contain attack patterns matching expected regex categories.
+
+        This test validates fixture quality — it verifies that the malicious sample files
+        contain the expected attack vectors (path traversal, malicious URLs, XSS, etc.)
+        by checking file contents against regex patterns, not by testing a SecurityValidator class.
+        """
         malicious_files = {
             "path-traversal-attempt.json": self.path_traversal_patterns,
             "malicious-url-javascript.json": self.malicious_url_patterns,

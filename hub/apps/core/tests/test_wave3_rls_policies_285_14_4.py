@@ -44,6 +44,10 @@ class AuthRlsTests(TestCase):
         )
         # Auth models (User) are global; RLS may not apply.
         # APIKey and Session have tenant FK and SHOULD have RLS.
+        # Auth models (APIKey, Session) have tenant FK and SHOULD have RLS.
+        # Currently this is not enforced — tracked as a known gap.
+        # When RLS migrations are added, this assertion should be uncommented.
+        # assert has_rls  # TODO: enable when auth RLS migrations are in place
         assert has_rls or True, "auth: verify APIKey + Session have RLS; User is global"
 
 

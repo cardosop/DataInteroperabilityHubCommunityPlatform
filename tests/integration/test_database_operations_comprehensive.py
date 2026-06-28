@@ -321,17 +321,18 @@ class DatabaseIndexesTest(TestCase):
     def test_unique_constraints(self):
         """Test unique constraints work"""
         # Create tenant with unique slug
+        slug = f"unique-test-slug-{uuid.uuid4().hex}"
         Tenant.objects.create(
-            name=f"Unique Test Tenant {uuid.uuid4().hex[:8]}",
-            slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}",
+            name=f"Unique Test Tenant {uuid.uuid4().hex}",
+            slug=slug,
         )
 
         # Try to create another with same slug (should fail)
         with self.assertRaises(Exception):  # IntegrityError or ValidationError
             Tenant.objects.create(
-                name=f"Duplicate Tenant {uuid.uuid4().hex[:8]}",
-                slug=f"unique-test-tenant-{uuid.uuid4().hex[:8]}",
-            )  # Same slug
+                name=f"Duplicate Tenant {uuid.uuid4().hex}",
+                slug=slug,  # Same slug — should trigger unique constraint violation
+            )
 
 
 class DatabaseConnectionPoolingTest(TestCase):

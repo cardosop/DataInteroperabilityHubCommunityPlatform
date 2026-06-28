@@ -841,7 +841,7 @@ class HierarchicalLineageTest(TestCase):
             tenant_id=str(self.tenant.id),
             use_cache=True,
         )
-        time.time() - start_time
+        first_query_elapsed = time.time() - start_time
 
         # Second query (with cache)
         start_time = time.time()
@@ -850,7 +850,13 @@ class HierarchicalLineageTest(TestCase):
             tenant_id=str(self.tenant.id),
             use_cache=True,
         )
-        time.time() - start_time
+        second_query_elapsed = time.time() - start_time
+
+        # Verify performance: both queries should complete within a reasonable time
+        self.assertLess(first_query_elapsed, 5.0,
+                        f"First lineage query took {first_query_elapsed:.2f}s, expected < 5s")
+        self.assertLess(second_query_elapsed, 5.0,
+                        f"Second lineage query took {second_query_elapsed:.2f}s, expected < 5s")
 
         # Cached query should be faster (or at least not slower)
         # Note: In test environment, cache might not be significantly faster
@@ -866,24 +872,19 @@ class HierarchicalLineageTest(TestCase):
                 contract_id=str(uuid.uuid4()), tenant_id=str(self.tenant.id)
             )
 
-        # Test with invalid depth parameters
-        # Negative depths should be handled gracefully
-        try:
-            invalid_lineage = self.lineage_service.get_full_lineage(
-                contract_id=str(self.target_contract.id),
-                tenant_id=str(self.tenant.id),
-                max_contract_depth=-1,
-                max_model_depth=-1,
-                max_field_depth=-1,
-            )
-            # Should either raise error or handle gracefully
-            # If it returns, verify structure
-            if invalid_lineage:
-                self.assertIn("upstream", invalid_lineage)
-                self.assertIn("downstream", invalid_lineage)
-        except (ValidationError, ValueError):
-            # Expected behavior - invalid parameters should raise error
-            pass
+        # Test with invalid depth parameters — service returns empty results
+        # for negative depths rather than raising (graceful handling).
+        result = self.lineage_service.get_full_lineage(
+            contract_id=str(self.target_contract.id),
+            tenant_id=str(self.tenant.id),
+            max_contract_depth=-1,
+            max_model_depth=-1,
+            max_field_depth=-1,
+        )
+        self.assertEqual(len(result.get("contracts", [])), 0,
+                         "Negative max depths should return empty contracts")
+        self.assertEqual(len(result.get("entries", [])), 0,
+                         "Negative max depths should return empty entries")
 
     def tearDown(self):
         """Clean up test data and close database connections"""
@@ -1155,20 +1156,17 @@ class LineageImpactAnalysisTest(TestCase):
         # Should return error in result
         self.assertIn("error", result)
 
-        # Test with invalid parameters via service
-        # Service should handle gracefully
-        try:
-            invalid_impact = self.lineage_service.analyze_impact(
-                contract_id=str(self.source_contract.id),
-                tenant_id=str(self.tenant.id),
-                max_contract_depth=-1,  # Invalid depth
-            )
-            # If it doesn't raise, verify structure
-            if invalid_impact and "error" not in invalid_impact:
-                self.assertIn("source", invalid_impact)
-        except (ValidationError, ValueError):
-            # Expected behavior - invalid parameters should raise error
-            pass
+        # Test with invalid parameters via service — service handles negative
+        # depths gracefully by returning a valid (but empty) impact analysis.
+        result = self.lineage_service.analyze_impact(
+            contract_id=str(self.source_contract.id),
+            tenant_id=str(self.tenant.id),
+            max_contract_depth=-1,  # Invalid depth
+        )
+        self.assertNotIn("error", result,
+                         "Negative depth should not crash — service should return gracefully")
+        self.assertEqual(result.get("total_affected", -1), 1,
+                         "Should still include the source contract in impact analysis")
 
     def tearDown(self):
         """Clean up test data and close database connections"""

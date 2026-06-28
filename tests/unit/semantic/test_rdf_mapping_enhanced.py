@@ -48,12 +48,13 @@ def check_semantic_service_available():
         return False
 
 
-@pytest.mark.skipif(not check_semantic_service_available(), reason="Semantic service not available")
 class EnhancedRDFMappingTest(TestCase):
     """Enhanced RDF mapping tests with real semantic service"""
 
     def setUp(self):
         """Set up test fixtures"""
+        if not check_semantic_service_available():
+            self.skipTest("Semantic service not available")
         # Disconnect signals to prevent automatic mapping during test setup
         post_save.disconnect(contract_saved, sender=Contract)
         post_save.disconnect(asset_saved, sender=Asset)
@@ -610,7 +611,8 @@ class EnhancedRDFMappingTest(TestCase):
         # First mapping
         semantic_resource1 = map_contract_to_semantic(contract, tenant=self.tenant)
         self.assertIsNotNone(semantic_resource1)
-        semantic_resource1.metadata_json.get("triples_count", 0)
+        initial_triples = semantic_resource1.metadata_json.get("triples_count", 0)
+        self.assertGreater(initial_triples, 0, "Initial mapping should produce triples")
 
         # Update contract
         hub_contract["info"]["name"] = "Updated Contract"

@@ -139,8 +139,6 @@ class TestInterServiceCommunicationSearch:
     def test_worker_service_dependencies(self):
         """Test that worker service dependencies are found"""
         report = self.report
-        # Worker service might call API service or be called by API service
-        [dep for dep_key, dep in report["dependencies"].items() if "worker-service" in dep_key]
         # Worker dependencies might be 0 if worker doesn't call API via HTTP (uses Redis queues)
         # But API → Worker should exist
         api_to_worker = [
@@ -148,8 +146,8 @@ class TestInterServiceCommunicationSearch:
             for dep_key, dep in report["dependencies"].items()
             if dep["source_service"] == "api-service" and dep["target_service"] == "worker-service"
         ]
-        assert len(api_to_worker) > 0 or report["summary"]["api_to_external_calls"] > 0, (
-            "Expected API → Worker communication (via Redis queues)"
+        assert len(api_to_worker) > 0, (
+            "Expected API → Worker communication dependency to be detected"
         )
 
     def test_service_client_types(self):
@@ -235,7 +233,7 @@ class TestInterServiceCommunicationSearch:
         report = self.report
         # Should have both HTTP calls and queue-based communication
         http_calls = [c for c in report["service_calls"] if c["method"] != "ENQUEUE"]
-        [
+        queue_calls = [
             c
             for c in report["service_calls"]
             if c["method"] == "ENQUEUE" or "queue" in c["endpoint"].lower()

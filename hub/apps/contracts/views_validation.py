@@ -6,6 +6,7 @@ Validation, linting, and conversion actions for contract viewsets.
 SAVING CHECKPOINT: This module contains validation-related actions.
 """
 
+from django.db import transaction
 from django.utils import timezone
 from drf_spectacular.utils import (
     OpenApiResponse,
@@ -18,7 +19,7 @@ from rest_framework.response import Response
 
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.jobs.models import JobType
-from hub.apps.jobs.utils import create_job
+from hub.apps.jobs.utils import create_job, get_queue, get_queue_for_job_type
 
 from .cli_client import (
     SYNC_TIMEOUT,
@@ -220,6 +221,17 @@ class ContractValidationMixin:
                     created_by=request.user,
                     details_json={"contract_id": str(contract.id), "validation_type": "async"},
                     queue_name="default",
+                )
+
+                # Enqueue job for worker processing
+                from hub.apps.jobs.tasks import process_job
+
+                queue = get_queue(get_queue_for_job_type(JobType.CONTRACT_VALIDATION))
+                _job_id = str(job.id)
+                transaction.on_commit(
+                    lambda: queue.enqueue(
+                        process_job, _job_id, job_type=JobType.CONTRACT_VALIDATION,
+                    )
                 )
 
                 # Log audit event

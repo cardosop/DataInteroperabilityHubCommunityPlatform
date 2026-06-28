@@ -222,7 +222,7 @@ class DatasetVersioningTest(DatasetsAPITestBase):
 
         self.assertEqual(new_version.semantic_version, "1.0.1")
 
-    def test_semantic_versioning_invalid_format(self):
+    def test_semantic_versioning_permissive_format(self):
         """Invalid semantic versions are accepted and stored as-is (no validation)."""
         new_version = self.versioning_service.create_version(
             dataset_id=str(self.base_dataset.id),
@@ -277,8 +277,8 @@ class DatasetVersioningTest(DatasetsAPITestBase):
 
     # ========== VERSION COMPARISON TESTS ==========
 
-    def test_compare_versions_same_schema(self):
-        """Test comparing versions with same schema"""
+    def test_versions_with_same_schema_have_equal_json(self):
+        """Two dataset versions with identical schema_json fields compare equal."""
         # Create version with same schema
         version2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -292,14 +292,11 @@ class DatasetVersioningTest(DatasetsAPITestBase):
             created_by=self.user,
         )
 
-        # Comparison should indicate no changes
-        # Note: Actual comparison logic depends on VersionComparisonService implementation
-        # This test verifies the structure exists
         self.assertIsNotNone(version2.schema_json)
         self.assertEqual(version2.schema_json, self.base_dataset.schema_json)
 
-    def test_compare_versions_different_schema(self):
-        """Test comparing versions with different schema"""
+    def test_versions_with_different_schema_have_unequal_json(self):
+        """Two dataset versions with different schema_json fields compare unequal."""
         # Create version with different schema
         version2 = Dataset.objects.create(
             tenant=self.tenant,
@@ -315,12 +312,31 @@ class DatasetVersioningTest(DatasetsAPITestBase):
             created_by=self.user,
         )
 
-        # Comparison should indicate schema changes
         self.assertNotEqual(version2.schema_json, self.base_dataset.schema_json)
         self.assertGreater(
             len(version2.schema_json.get("fields", [])),
             len(self.base_dataset.schema_json.get("fields", [])),
         )
+
+    def test_compare_versions_via_service(self):
+        """VersioningService.compare_versions() returns structured diff dict."""
+        version2 = self.versioning_service.create_version(
+            dataset_id=str(self.base_dataset.id),
+            tenant_id=str(self.tenant.id),
+            semantic_version="1.1.0",
+            is_current=True,
+        )
+
+        result = self.versioning_service.compare_versions(
+            dataset_id_1=str(self.base_dataset.id),
+            dataset_id_2=str(version2.id),
+            tenant_id=str(self.tenant.id),
+        )
+
+        self.assertIsInstance(result, dict)
+        self.assertIn("metadata", result)
+        self.assertIn("schema_diff", result)
+        self.assertIn("side_by_side_fields", result)
 
     # ========== EDGE CASES ==========
 
@@ -393,13 +409,107 @@ class DatasetVersioningTest(DatasetsAPITestBase):
 
         self.assertEqual(cm.exception.code, "NOT_FOUND")
 
-    def test_get_version_history_nonexistent_dataset(self):
-        """Test getting version history for non-existent dataset returns result."""
+    def test_get_version_tree_with_unsaved_dataset(self):
+        """get_version_tree on an unsaved Dataset returns a result without raising."""
         fake_dataset = Dataset(id=uuid.uuid4(), tenant=self.tenant)
 
-        # get_version_tree must handle a non-persisted dataset gracefully —
-        # returning a result (even if empty), not raising.
         history = VersionHistoryManager.get_version_tree(fake_dataset)
         self.assertIsNotNone(
-            history, "get_version_tree must return a result even for non-existent dataset"
+            history, "get_version_tree must return a result even for unsaved dataset"
         )
+
+    # ========== SERVICE-LAYER METHOD COVERAGE ==========
+
+    def test_update_version_success(self):
+        """VersioningService.update_version() updates a dataset version field."""
+        new_version = self.versioning_service.create_version(
+            dataset_id=str(self.base_dataset.id),
+            tenant_id=str(self.tenant.id),
+            semantic_version="1.1.0",
+            is_current=True,
+        )
+
+        updated = self.versioning_service.update_version(
+            version_id=str(new_version.id),
+            tenant_id=str(self.tenant.id),
+            changes={"semantic_version": "2.0.0"},
+        )
+        self.assertEqual(updated.semantic_version, "2.0.0")
+        updated.refresh_from_db()
+        self.assertEqual(updated.semantic_version, "2.0.0")
+
+    def test_update_version_not_found(self):
+        """VersioningService.update_version() raises NotFoundError for unknown ID."""
+        with self.assertRaises(NotFoundError) as cm:
+            self.versioning_service.update_version(
+                version_id=str(uuid.uuid4()),
+                tenant_id=str(self.tenant.id),
+                changes={"semantic_version": "2.0.0"},
+            )
+        self.assertEqual(cm.exception.code, "NOT_FOUND")
+
+    def test_delete_version_success(self):
+        """VersioningService.delete_version() deletes the dataset row."""
+        new_version = self.versioning_service.create_version(
+            dataset_id=str(self.base_dataset.id),
+            tenant_id=str(self.tenant.id),
+            semantic_version="1.1.0",
+            is_current=True,
+        )
+
+        self.versioning_service.delete_version(
+            version_id=str(new_version.id),
+            tenant_id=str(self.tenant.id),
+            reason="test deletion",
+        )
+        self.assertFalse(
+            Dataset.objects.filter(id=new_version.id).exists()
+        )
+
+    def test_delete_version_not_found(self):
+        """VersioningService.delete_version() raises NotFoundError for unknown ID."""
+        with self.assertRaises(NotFoundError) as cm:
+            self.versioning_service.delete_version(
+                version_id=str(uuid.uuid4()),
+                tenant_id=str(self.tenant.id),
+            )
+        self.assertEqual(cm.exception.code, "NOT_FOUND")
+
+    def test_promote_version_success(self):
+        """VersioningService.promote_version() swaps staging→production tags."""
+        new_version = self.versioning_service.create_version(
+            dataset_id=str(self.base_dataset.id),
+            tenant_id=str(self.tenant.id),
+            version_tags=["staging"],
+            is_current=True,
+        )
+
+        promoted = self.versioning_service.promote_version(
+            version_id=str(new_version.id),
+            tenant_id=str(self.tenant.id),
+            promoted_from="staging",
+            promoted_to="production",
+        )
+        self.assertIn("production", promoted.version_tags)
+        self.assertNotIn("staging", promoted.version_tags)
+
+    def test_promote_version_not_found(self):
+        """VersioningService.promote_version() raises NotFoundError for unknown ID."""
+        with self.assertRaises(NotFoundError) as cm:
+            self.versioning_service.promote_version(
+                version_id=str(uuid.uuid4()),
+                tenant_id=str(self.tenant.id),
+                promoted_from="staging",
+                promoted_to="production",
+            )
+        self.assertEqual(cm.exception.code, "NOT_FOUND")
+
+    def test_compare_versions_not_found(self):
+        """VersioningService.compare_versions() raises NotFoundError for unknown ID."""
+        with self.assertRaises(NotFoundError) as cm:
+            self.versioning_service.compare_versions(
+                dataset_id_1=str(self.base_dataset.id),
+                dataset_id_2=str(uuid.uuid4()),
+                tenant_id=str(self.tenant.id),
+            )
+        self.assertEqual(cm.exception.code, "NOT_FOUND")

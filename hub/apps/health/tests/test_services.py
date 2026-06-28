@@ -31,6 +31,13 @@ class HealthServiceTest(TestCase):
         """Set up test data"""
         self.service = HealthService()
 
+    def _require_circuit_breaker_service(self, **kwargs):
+        """Call get_circuit_breaker_status, skip if the service is unavailable."""
+        try:
+            return self.service.get_circuit_breaker_status(**kwargs)
+        except Exception:
+            self.skipTest("Circuit breaker service not available")
+
     # ========== CHECK DATABASE HEALTH TESTS ==========
 
     def test_check_database_health_success(self):
@@ -104,15 +111,23 @@ class HealthServiceTest(TestCase):
         # all_healthy may be False if Redis is unavailable, which is acceptable
 
     def test_check_redis_health_unhealthy_instances_list(self):
-        """Test that unhealthy instances are properly tracked"""
+        """Unhealthy-instance tracking is structurally correct in both states.
+
+        When Redis is healthy, unhealthy_instances is empty.  When unhealthy
+        instances exist they are listed with their error strings.
+        """
         result = self.service.check_redis_health()
 
-        # If there are unhealthy instances, they should be in the list
+        self.assertIsInstance(result["unhealthy_instances"], list)
         if not result["all_healthy"]:
-            self.assertGreater(len(result["unhealthy_instances"]), 0)
+            self.assertGreater(len(result["unhealthy_instances"]), 0,
+                               "all_healthy=False but unhealthy_instances is empty")
             for instance_name in result["unhealthy_instances"]:
                 self.assertIn(instance_name, result["instances"])
                 self.assertIn("error:", result["instances"][instance_name])
+        else:
+            self.assertEqual(len(result["unhealthy_instances"]), 0,
+                             "all_healthy=True but unhealthy_instances is non-empty")
 
     # ========== GET OVERALL HEALTH STATUS TESTS ==========
 
@@ -170,16 +185,25 @@ class HealthServiceTest(TestCase):
             self.assertEqual(result["status"], "unhealthy")
             self.assertEqual(result["http_status"], 503)
 
-    def test_get_overall_health_status_unhealthy_when_database_unhealthy(self):
-        """Test that http_status 503 when database reports error"""
+    def test_get_overall_health_status_healthy_when_database_connected(self):
+        """Verify database status is 'connected' in the test environment.
+
+        The unhealthy-database path (http_status=503) is exercised
+        indirectly by production monitoring — the service code includes
+        the error-handling branch at services.py:55-60.
+        """
         result = self.service.get_overall_health_status()
 
-        # In test env, DB is available — verify the healthy path at minimum
         self.assertEqual(result["database"], "connected")
-        # The status/http_status consistency is verified by test_http_status_matches_health
 
-    def test_get_overall_health_status_unhealthy_when_redis_unhealthy(self):
-        """Test that unhealthy Redis instances are reflected in overall status"""
+    def test_get_overall_health_status_reflects_redis_status(self):
+        """Overall status agrees with per-instance Redis status.
+
+        When Redis is unhealthy in the test environment, the overall
+        status is 'unhealthy' with http_status=503.  When all instances
+        are connected, the healthy-path coverage is provided by
+        test_get_overall_health_status_healthy_when_all_services_healthy.
+        """
         result = self.service.get_overall_health_status()
 
         has_unhealthy_redis = any(str(s).startswith("error:") for s in result["redis"].values())
@@ -187,6 +211,10 @@ class HealthServiceTest(TestCase):
         if has_unhealthy_redis:
             self.assertEqual(result["status"], "unhealthy")
             self.assertEqual(result["http_status"], 503)
+        else:
+            # All Redis instances are connected — verify consistency
+            self.assertEqual(result["status"], "healthy")
+            self.assertEqual(result["http_status"], 200)
 
     def test_get_overall_health_status_http_status_matches_health(self):
         """Test that HTTP status code matches health status"""
@@ -201,11 +229,7 @@ class HealthServiceTest(TestCase):
 
     def test_get_circuit_breaker_status_all_breakers_structure(self):
         """Test that getting all circuit breakers returns correct structure"""
-        try:
-            result = self.service.get_circuit_breaker_status()
-        except Exception:
-            # Circuit breaker service may not be available in test environment
-            self.skipTest("Circuit breaker service not available")
+        result = self._require_circuit_breaker_service()
 
         self.assertIn("status", result)
         self.assertIn("http_status", result)
@@ -214,10 +238,7 @@ class HealthServiceTest(TestCase):
 
     def test_get_circuit_breaker_status_all_breakers_includes_counts(self):
         """Test that getting all circuit breakers includes counts"""
-        try:
-            result = self.service.get_circuit_breaker_status()
-        except Exception:
-            self.skipTest("Circuit breaker service not available")
+        result = self._require_circuit_breaker_service()
 
         self.assertIn("total_breakers", result)
         self.assertIn("open_breakers", result)
@@ -230,10 +251,7 @@ class HealthServiceTest(TestCase):
 
     def test_get_circuit_breaker_status_all_breakers_open_breakers_logic(self):
         """Test that open breakers count matches open breaker names"""
-        try:
-            result = self.service.get_circuit_breaker_status()
-        except Exception:
-            self.skipTest("Circuit breaker service not available")
+        result = self._require_circuit_breaker_service()
 
         self.assertEqual(
             result["open_breakers"],
@@ -243,10 +261,7 @@ class HealthServiceTest(TestCase):
 
     def test_get_circuit_breaker_status_specific_service_structure(self):
         """Test that getting specific circuit breaker returns correct structure"""
-        try:
-            result = self.service.get_circuit_breaker_status(service_name="test-service")
-        except Exception:
-            self.skipTest("Circuit breaker service not available")
+        result = self._require_circuit_breaker_service(service_name="test-service")
 
         # May return not_found or breaker status
         if result.get("status") == "not_found":
@@ -259,15 +274,17 @@ class HealthServiceTest(TestCase):
 
     def test_get_circuit_breaker_status_nonexistent_service(self):
         """Test that getting nonexistent circuit breaker returns not_found"""
-        try:
-            result = self.service.get_circuit_breaker_status(service_name="nonexistent-service-xyz")
-        except Exception:
-            self.skipTest("Circuit breaker service not available")
+        result = self._require_circuit_breaker_service(service_name="nonexistent-service-xyz")
 
         # Should return not_found or error
         if result.get("status") == "not_found":
             self.assertIn("error", result)
             self.assertEqual(result["http_status"], 404)
+        else:
+            self.fail(
+                f"Expected status='not_found' for nonexistent service, "
+                f"got status={result.get('status')} (result={result})"
+            )
 
     def test_get_circuit_breaker_status_handles_exceptions_gracefully(self):
         """Test that circuit breaker status does not raise and returns valid structure"""
@@ -360,10 +377,7 @@ class HealthServiceTest(TestCase):
 
     def test_get_circuit_breaker_status_returns_all_required_fields(self):
         """Test that circuit breaker status returns all required fields"""
-        try:
-            result = self.service.get_circuit_breaker_status()
-        except Exception:
-            self.skipTest("Circuit breaker service not available")
+        result = self._require_circuit_breaker_service()
 
         # Verify all required fields are present
         self.assertIn("status", result)
@@ -371,25 +385,25 @@ class HealthServiceTest(TestCase):
 
     # ========== ERROR HANDLING TESTS ==========
 
-    def test_check_database_health_handles_connection_errors(self):
-        """Test that database health check handles connection errors gracefully"""
-        # In test environment, database should be available
-        # But we verify the error handling path exists
-        result = self.service.check_database_health()
+    def test_check_database_health_does_not_raise(self):
+        """Database health check returns a structured dict and never raises.
 
-        # Should not raise exception
+        Actual connection-error handling (the unhealthy branch at
+        services.py:55-60) is verified indirectly by the error-structure
+        assertion in test_check_database_health_returns_all_required_fields.
+        """
+        result = self.service.check_database_health()
         self.assertIn("status", result)
         self.assertIn("healthy", result)
-        # If unhealthy, should have error field
         if not result["healthy"]:
             self.assertIn("error", result)
 
-    def test_check_redis_health_handles_unavailable_redis(self):
-        """Test that Redis health check handles unavailable Redis"""
-        result = self.service.check_redis_health()
+    def test_check_redis_health_does_not_raise(self):
+        """Redis health check returns a structured dict and never raises.
 
-        # Should not raise exception even if Redis is unavailable
+        The unavailable-Redis branch (all_healthy=False) is exercised
+        when Redis is not reachable in the test environment.
+        """
+        result = self.service.check_redis_health()
         self.assertIn("instances", result)
         self.assertIn("all_healthy", result)
-        # If Redis is unavailable, all_healthy should be False
-        # But the method should still return valid structure

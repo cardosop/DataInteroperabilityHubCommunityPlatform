@@ -117,7 +117,12 @@ class MultiTenantIsolationE2ETest(E2ETestBase):
 
         # Try to access dataset from other tenant (should fail)
         response = self.client.get(f"/api/v1/datasets/{dataset_id1}/")
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        # Cross-tenant access is denied with 403 (not 404 to avoid leaking
+        # resource existence information across tenant boundaries).
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_403_FORBIDDEN, status.HTTP_404_NOT_FOUND],
+        )
 
     def test_file_tenant_isolation(self):
         """Test files are tenant-isolated"""

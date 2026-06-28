@@ -37,10 +37,16 @@ sys.path.insert(0, str(project_root))
 
 # For runtime tests, prevent pytest-django from loading Django
 # This must be done before pytest-django plugin loads
-if os.getenv("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1":
+_RUNTIME_TESTS_ENABLED = os.getenv("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1"
+if _RUNTIME_TESTS_ENABLED:
     # Unset DJANGO_SETTINGS_MODULE to prevent pytest-django from loading Django
     os.environ.pop("DJANGO_SETTINGS_MODULE", None)
     os.environ["SKIP_DJANGO_SETUP"] = "1"
+
+_HOST_ONLY_REASON = (
+    "Docker Compose runtime test — requires PYTEST_DOCKER_COMPOSE_RUNTIME=1. "
+    "Run on the host via: ./scripts/run_docker_compose_integration_tests.sh"
+)
 
 
 class DockerComposeManager:
@@ -231,30 +237,53 @@ class DockerComposeManager:
 
 
 def _docker_available() -> bool:
-    """Check if Docker CLI is available (required for these tests)."""
-    return shutil.which("docker") is not None
+    """Check if Docker CLI and daemon are available (required for these tests)."""
+    if shutil.which("docker") is None:
+        return False
+    # Verify the daemon is actually running and accessible
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["docker", "info"], capture_output=True, text=True, timeout=10
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
 
 
 @pytest.fixture(scope="module")
-def docker_compose_file():
-    """Get path to docker-compose.yml."""
-    if not _docker_available():
-        pytest.skip("Docker CLI not available (run these tests on host with Docker)")
+def compose_file_path():
+    """Get path to docker-compose.yml — no Docker check (for YAML-only tests)."""
     compose_file = project_root / "docker-compose.yml"
     assert compose_file.exists(), f"docker-compose.yml not found at {compose_file}"
     return compose_file
 
 
 @pytest.fixture(scope="module")
-def docker_compose_config(docker_compose_file):
+def docker_compose_file(compose_file_path):
+    """Get path to docker-compose.yml (requires Docker for runtime tests)."""
+    if not _docker_available():
+        pytest.skip("Docker CLI not available (run these tests on host with Docker)")
+    return compose_file_path
+
+
+@pytest.fixture(scope="module")
+def docker_compose_config(compose_file_path):
     """Load docker-compose.yml configuration."""
-    with open(docker_compose_file) as f:
+    with open(compose_file_path) as f:
         return yaml.safe_load(f)
 
 
 @pytest.fixture(scope="module")
 def docker_compose_manager(docker_compose_file):
-    """Create Docker Compose manager."""
+    """Create Docker Compose manager.
+
+    Skips when PYTEST_DOCKER_COMPOSE_RUNTIME is not set — these runtime tests
+    are host-only and should be executed via:
+        ./scripts/run_docker_compose_integration_tests.sh
+    """
+    if not _RUNTIME_TESTS_ENABLED:
+        pytest.skip(_HOST_ONLY_REASON)
     manager = DockerComposeManager(docker_compose_file)
     yield manager
     # Cleanup
@@ -269,12 +298,17 @@ def infrastructure_services(docker_compose_config):
 
 @pytest.fixture(scope="module")
 def application_services(docker_compose_config):
-    """Get application service names."""
+    """Get application service names that must be present in docker-compose.yml."""
     return [
-        "workflow-engine-service",
-        "workflow-registry-service",
         "api-service",
         "worker-service",
+        "compliance-service",
+        "dq-service",
+        "datacontract-service",
+        "semantic-service",
+        "prefect-server",
+        "prefect-worker",
+        "prefect-integration-service",
     ]
 
 
@@ -282,10 +316,10 @@ def application_services(docker_compose_config):
 class TestDockerComposeDeployment:
     """Integration tests for Docker Compose deployment."""
 
-    def test_docker_compose_file_exists(self, docker_compose_file):
+    def test_docker_compose_file_exists(self, compose_file_path):
         """Test that docker-compose.yml exists."""
-        assert docker_compose_file.exists(), (
-            f"docker-compose.yml not found at {docker_compose_file}"
+        assert compose_file_path.exists(), (
+            f"docker-compose.yml not found at {compose_file_path}"
         )
 
     def test_docker_compose_valid_yaml(self, docker_compose_config):
@@ -407,7 +441,7 @@ class TestDockerComposeHealthChecks:
     """Integration tests for service health checks."""
 
     # Health endpoint mappings: (service_name, host_port, endpoint_path)
-    # Host ports from docker-compose.yml: workflow-engine 8098, workflow-registry 8089, event-bus 8090, event-schema 8091, api 8000
+    # Host ports from docker-compose.yml: workflow-engine 8098, workflow-registry 8089, api 8000
     HEALTH_ENDPOINTS = [
         ("workflow-engine-service", 8098, "/healthz"),
         ("workflow-engine-service", 8098, "/ready"),
@@ -460,13 +494,17 @@ class TestDockerComposeHealthChecks:
                 f"Liveness probe {url} returned {response.status_code}"
             )
 
-            # Check response format
+            # Check response format — validate the JSON structure, not just substring presence
             try:
                 data = response.json()
-                assert "status" in data or "ok" in str(data).lower()
+                status_val = data.get("status", "")
+                self.assertIn(
+                    status_val.lower(),
+                    ["ok", "healthy", "pass"],
+                    f"Unexpected liveness probe response: {data}",
+                )
             except (json.JSONDecodeError, ValueError):
-                # Some endpoints may return plain text
-                assert response.text.lower() in ["ok", "healthy", "true"]
+                assert response.text.lower().strip() in ["ok", "healthy", "true"]
 
     def test_readiness_probes_respond(self, docker_compose_manager, started_services):
         """Test that readiness probes respond correctly."""
@@ -488,33 +526,14 @@ class TestDockerComposeHealthChecks:
             # Check response includes dependency status
             try:
                 data = response.json()
-                # Readiness should include dependency checks
-                assert "status" in data or "ready" in str(data).lower()
+                status_val = data.get("status", data.get("ready", ""))
+                self.assertIn(
+                    status_val.lower(),
+                    ["ok", "ready"],
+                    f"Unexpected readiness probe response: {data}",
+                )
             except (json.JSONDecodeError, ValueError):
-                assert response.text.lower() in ["ready", "ok", "true"]
-
-    def test_comprehensive_health_checks(self, docker_compose_manager, started_services):
-        """Test comprehensive health check endpoints."""
-        comprehensive_endpoints = []
-
-        for service_name, port, endpoint in comprehensive_endpoints:
-            status = docker_compose_manager.get_service_status(service_name)
-            if not status or status.get("State") != "running":
-                pytest.skip(f"Service {service_name} is not running")  # noqa: skip-in-body — runtime service dependency
-
-            url = f"http://localhost:{port}{endpoint}"
-            response = requests.get(url, timeout=5)
-            assert response.status_code == 200, (
-                f"Health endpoint {url} returned {response.status_code}"
-            )
-
-            data = response.json()
-            assert "status" in data, "Health check response should include status"
-            assert data["status"] in [
-                "healthy",
-                "ready",
-                "ok",
-            ], f"Health status should be healthy/ready/ok, got {data['status']}"
+                assert response.text.lower().strip() in ["ready", "ok", "true"]
 
     def test_metrics_endpoints_accessible(self, docker_compose_manager, started_services):
         """Test that Prometheus metrics endpoints are accessible."""
@@ -562,65 +581,56 @@ class TestDockerComposeServiceCommunication:
         workflow_status = docker_compose_manager.get_service_status("workflow-engine-service")
         postgres_status = docker_compose_manager.get_service_status("postgres")
 
-        if workflow_status and postgres_status:
-            # Both services should be running
-            assert workflow_status.get("State") == "running"
-            assert postgres_status.get("State") == "running"
-
-            # Test network connectivity by checking if workflow-engine can connect to postgres
-            # This is verified by the service being healthy (which requires DB connection)
-            workflow_health = requests.get("http://localhost:8098/ready", timeout=5)
-            assert workflow_health.status_code == 200, (
-                "workflow-engine-service should be able to connect to postgres"
+        if not workflow_status or not postgres_status:
+            pytest.fail(
+                f"Required services not found: "
+                f"workflow={workflow_status is not None}, "
+                f"postgres={postgres_status is not None}"
             )
+        assert workflow_status.get("State") == "running"
+        assert postgres_status.get("State") == "running"
 
-    def test_event_bus_redis_connection(self, docker_compose_manager, started_services):
-        """Test that event bus service can connect to Redis (redis-cache and other redis instances)."""
-        redis_cache_status = docker_compose_manager.get_service_status("redis-cache")
-
-        if event_bus_status and redis_cache_status:
-            assert event_bus_status.get("State") == "running"
-            assert redis_cache_status.get("State") == "running"
-
-            # Check event bus health includes Redis status
-            health_response = requests.get("http://localhost:8090/health", timeout=5)
-            assert health_response.status_code == 200
-
-            health_data = health_response.json()
-            if "redis" in health_data:
-                redis_info = health_data["redis"]
-                assert redis_info.get("connected") is True, "Event bus should be connected to Redis"
+        # Test network connectivity by checking if workflow-engine can connect to postgres
+        workflow_health = requests.get("http://localhost:8098/ready", timeout=5)
+        assert workflow_health.status_code == 200, (
+            "workflow-engine-service should be able to connect to postgres"
+        )
 
     def test_service_discovery_works(self, docker_compose_manager, started_services):
-        """Test that service discovery works within Docker network."""
-        # Services should be able to resolve each other by name
-        # This is tested indirectly by services being healthy (which requires service discovery)
+        """Test that service discovery works within Docker network.
 
-        # Test that workflow-registry-service can discover workflow-engine-service
+        Services should be able to resolve each other by name — verified
+        indirectly via health checks that require service discovery.
+        """
         registry_status = docker_compose_manager.get_service_status("workflow-registry-service")
         engine_status = docker_compose_manager.get_service_status("workflow-engine-service")
 
-        if registry_status and engine_status:
-            assert registry_status.get("State") == "running"
-            assert engine_status.get("State") == "running"
+        if not registry_status or not engine_status:
+            pytest.fail(
+                f"Required services not found: "
+                f"registry={registry_status is not None}, "
+                f"engine={engine_status is not None}"
+            )
+        assert registry_status.get("State") == "running"
+        assert engine_status.get("State") == "running"
 
-            # Both services should be healthy, indicating service discovery works
-            registry_health = requests.get("http://localhost:8089/health", timeout=5)
-            engine_health = requests.get("http://localhost:8098/healthz", timeout=5)
-
-            assert registry_health.status_code == 200
-            assert engine_health.status_code == 200
+        registry_health = requests.get("http://localhost:8089/health", timeout=5)
+        engine_health = requests.get("http://localhost:8098/healthz", timeout=5)
+        assert registry_health.status_code == 200
+        assert engine_health.status_code == 200
 
     def test_api_service_can_reach_backend_services(self, docker_compose_manager, started_services):
         """Test that API service can reach backend services."""
         api_status = docker_compose_manager.get_service_status("api-service")
 
-        if api_status and api_status.get("State") == "running":
-            # API service health check should succeed
-            api_health = requests.get("http://localhost:8000/health", timeout=5)
-            assert api_health.status_code == 200, (
-                "API service should be healthy and able to reach backend services"
+        if not api_status or api_status.get("State") != "running":
+            pytest.fail(
+                f"API service not running: status={'found' if api_status else 'missing'}"
             )
+        api_health = requests.get("http://localhost:8000/health", timeout=5)
+        assert api_health.status_code == 200, (
+            "API service should be healthy and able to reach backend services"
+        )
 
 
 @pytest.mark.integration
@@ -673,22 +683,6 @@ class TestDockerComposeServiceDependencies:
         # Verify redis-cache is healthy
         redis_cache_status = docker_compose_manager.get_service_status("redis-cache")
         assert redis_cache_status is not None
-        assert redis_cache_status.get("State") == "running"
-
-    def test_event_bus_depends_on_postgres_and_redis(
-        self, docker_compose_manager, started_services, docker_compose_config
-    ):
-        event_bus_config = docker_compose_config.get("services", {}).get()
-        depends_on = event_bus_config.get("depends_on", {})
-        list(depends_on.keys()) if isinstance(depends_on, dict) else (depends_on or [])
-
-        # Verify dependencies are healthy
-        postgres_status = docker_compose_manager.get_service_status("postgres")
-        redis_cache_status = docker_compose_manager.get_service_status("redis-cache")
-
-        assert postgres_status is not None
-        assert redis_cache_status is not None
-        assert postgres_status.get("State") == "running"
         assert redis_cache_status.get("State") == "running"
 
     def test_api_service_depends_on_infrastructure(
@@ -752,27 +746,3 @@ class TestDockerComposeServiceDependencies:
             ) from e
         finally:
             docker_compose_manager.start_services(["postgres"], wait=True, force=True)
-
-
-def pytest_configure(config):
-    """Register custom markers."""
-    config.addinivalue_line(
-        "markers", "docker_compose_runtime: marks tests as requiring Docker Compose runtime"
-    )
-
-
-def pytest_collection_modifyitems(config, items):
-    """Modify test items based on command-line options."""
-    # Check if we should skip runtime tests
-    # Runtime tests are skipped by default unless explicitly enabled via environment variable
-    skip_runtime = pytest.mark.skip(
-        reason="Docker Compose runtime tests require services to be started. Set PYTEST_DOCKER_COMPOSE_RUNTIME=1 to run them."
-    )
-
-    # Check environment variable - this is the primary way to enable runtime tests
-    run_runtime = os.getenv("PYTEST_DOCKER_COMPOSE_RUNTIME") == "1"
-
-    if not run_runtime:
-        for item in items:
-            if "docker_compose_runtime" in item.keywords:
-                item.add_marker(skip_runtime)

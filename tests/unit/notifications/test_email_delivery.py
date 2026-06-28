@@ -322,89 +322,75 @@ class EmailDeliveryAsyncSendingTest(TestCase):
         )
 
     def test_send_email_async_creates_delivery_record(self):
-        """Test that async email sending creates delivery record"""
+        """Async email sending creates and persists a delivery record.
+
+        SMTPEmailService._get_connection() automatically selects the
+        locmem backend when running under pytest, so no real SMTP
+        server is required.
+        """
         from django.test import override_settings
 
         with override_settings(
             EMAIL_BACKEND="smtp", SMTP_HOST="localhost", SMTP_FROM_EMAIL="noreply@example.com"
         ):
-            try:
-                result = send_email_async(
-                    email_type=EmailType.USER_INVITATION,
-                    to_email="recipient@example.com",
-                    subject="Test Email",
-                    template_name="notifications/emails/user_invitation.html",
-                    context={"user": self.user, "tenant": self.tenant},
-                    tenant_id=str(self.tenant.id),
-                    user_id=str(self.user.id),
-                )
+            result = send_email_async(
+                email_type=EmailType.USER_INVITATION,
+                to_email="recipient@example.com",
+                subject="Test Email",
+                template_name="notifications/emails/user_invitation.html",
+                context={"user": self.user, "tenant": self.tenant},
+                tenant_id=str(self.tenant.id),
+                user_id=str(self.user.id),
+            )
 
-                # Should create delivery record
-                self.assertIn("delivery_id", result)
-                delivery_id = result["delivery_id"]
-                delivery = EmailDelivery.objects.get(id=delivery_id)
-                self.assertEqual(delivery.email_type, EmailType.USER_INVITATION)
-                self.assertEqual(delivery.to_email, "recipient@example.com")
-            except Exception:
-                # Email service may not be available - that's OK
-                # This test verifies the structure is correct
-                pass
+            self.assertIn("delivery_id", result)
+            delivery = EmailDelivery.objects.get(id=result["delivery_id"])
+            self.assertEqual(delivery.email_type, EmailType.USER_INVITATION)
+            self.assertEqual(delivery.to_email, "recipient@example.com")
 
     def test_send_email_async_retry_on_failure(self):
-        """Test that async email sending retries on failure"""
+        """Async send propagates retry configuration to the delivery record."""
         from django.test import override_settings
 
-        # This test verifies retry logic structure
-        # Actual retry would happen in background job queue
         with override_settings(
             EMAIL_BACKEND="smtp", SMTP_HOST="localhost", SMTP_FROM_EMAIL="noreply@example.com"
         ):
-            try:
-                result = send_email_async(
-                    email_type=EmailType.USER_INVITATION,
-                    to_email="recipient@example.com",
-                    subject="Test Email",
-                    template_name="notifications/emails/user_invitation.html",
-                    context={"user": self.user},
-                    retry_count=0,
-                    max_retries=3,
-                )
+            result = send_email_async(
+                email_type=EmailType.USER_INVITATION,
+                to_email="recipient@example.com",
+                subject="Test Email",
+                template_name="notifications/emails/user_invitation.html",
+                context={"user": self.user},
+                retry_count=0,
+                max_retries=3,
+            )
 
-                # Should have delivery_id
-                if "delivery_id" in result:
-                    delivery = EmailDelivery.objects.get(id=result["delivery_id"])
-                    self.assertEqual(delivery.max_retries, 3)
-            except Exception:
-                # Email service may not be available
-                pass
+            self.assertIn("delivery_id", result)
+            delivery = EmailDelivery.objects.get(id=result["delivery_id"])
+            self.assertEqual(delivery.max_retries, 3)
 
     def test_send_email_async_tracks_metadata(self):
-        """Test that async email sending tracks metadata"""
+        """Async send persists context metadata on the delivery record."""
         from django.test import override_settings
 
         with override_settings(
             EMAIL_BACKEND="smtp", SMTP_HOST="localhost", SMTP_FROM_EMAIL="noreply@example.com"
         ):
-            try:
-                context = {
-                    "user": self.user,
-                    "tenant": self.tenant,
-                    "invitation_url": "http://example.com/invite?token=123",
-                }
+            context = {
+                "user": self.user,
+                "tenant": self.tenant,
+                "invitation_url": "http://example.com/invite?token=123",
+            }
 
-                result = send_email_async(
-                    email_type=EmailType.USER_INVITATION,
-                    to_email="recipient@example.com",
-                    subject="Test Email",
-                    template_name="notifications/emails/user_invitation.html",
-                    context=context,
-                    tenant_id=str(self.tenant.id),
-                )
+            result = send_email_async(
+                email_type=EmailType.USER_INVITATION,
+                to_email="recipient@example.com",
+                subject="Test Email",
+                template_name="notifications/emails/user_invitation.html",
+                context=context,
+                tenant_id=str(self.tenant.id),
+            )
 
-                # Should store metadata
-                if "delivery_id" in result:
-                    delivery = EmailDelivery.objects.get(id=result["delivery_id"])
-                    self.assertIsNotNone(delivery.metadata_json)
-            except Exception:
-                # Email service may not be available
-                pass
+            self.assertIn("delivery_id", result)
+            delivery = EmailDelivery.objects.get(id=result["delivery_id"])
+            self.assertIsNotNone(delivery.metadata_json)

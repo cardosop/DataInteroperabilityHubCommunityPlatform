@@ -6,6 +6,7 @@ Unit tests: hub/apps/platform/tests/test_views.py (Gap #2, task 1.5).
 """
 
 import logging
+import uuid
 
 from django.db import transaction
 from drf_spectacular.utils import extend_schema
@@ -112,6 +113,7 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
         from django.utils import timezone
 
         from hub.apps.tenants.models import Tenant, TenantStatus
+        from hub.apps.tenants.request_tenant import tenant_context
 
         # Get current month
         now = timezone.now()
@@ -128,54 +130,92 @@ class PlatformTenantViewSet(viewsets.ReadOnlyModelViewSet):
                 tzinfo=month_start.tzinfo,
             ) - timedelta(seconds=1)
 
+        # Optional tenant_id filter for O(1) single-tenant lookup
+        # (used by integration tests to avoid O(n) iteration over
+        # thousands of --reuse-db tenants).
+        tenant_id_filter = request.query_params.get("tenant_id")
+        if tenant_id_filter:
+            try:
+                uuid.UUID(tenant_id_filter)
+            except (ValueError, AttributeError):
+                return Response(
+                    {"error": "tenant_id must be a valid UUID"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
         # Get all tenants (ACTIVE and SUSPENDED for usage visibility)
-        tenants = Tenant.objects.filter(
+        tenant_qs = Tenant.objects.filter(
             status__in=[TenantStatus.ACTIVE, TenantStatus.SUSPENDED]
         ).order_by("name")
+        if tenant_id_filter:
+            tenant_qs = tenant_qs.filter(id=tenant_id_filter)
+        tenants = tenant_qs
 
         usage_service = TenantUsageService()
         results = []
 
         for tenant in tenants:
             try:
-                # Get usage summary for current month
-                usage_summary = usage_service.get_usage_summary(
-                    tenant_id=str(tenant.id), period_start=month_start
-                )
+                # Switch RLS context to this tenant so the usage-summary
+                # lookup passes the tenant_isolation RLS policy on
+                # tenant_usage_summaries.
+                with tenant_context(str(tenant.id)):
+                    usage_summary = usage_service.get_usage_summary(
+                        tenant_id=str(tenant.id), period_start=month_start
+                    )
 
-                # Get plan limits (defensive: limits_json can be None)
-                plan_limits = {}
-                if tenant.plan and tenant.plan.limits_json:
-                    plan_limits = dict(tenant.plan.limits_json)
+                    plan_limits = {}
+                    if tenant.plan and tenant.plan.limits_json:
+                        plan_limits = dict(tenant.plan.limits_json)
 
-                results.append(
-                    {
-                        "tenant_id": str(tenant.id),
-                        "tenant_name": tenant.name,
-                        "tenant_slug": tenant.slug,
-                        "plan_slug": tenant.plan.slug if tenant.plan else None,
-                        "plan_tier": tenant.plan.tier if tenant.plan else None,
-                        "usage": {
-                            "api_calls_count": usage_summary.api_calls_count,
-                            "asset_count": usage_summary.asset_count,
-                            "dataset_count": usage_summary.dataset_count,
-                            "scheduled_ingestion_runs_count": usage_summary.scheduled_ingestion_runs_count,
-                            "scheduled_export_runs_count": usage_summary.scheduled_export_runs_count,
-                            "storage_bytes": usage_summary.storage_bytes,
-                            "storage_gb": usage_summary.get_storage_gb(),
-                        },
-                        "plan_limits": plan_limits,
-                        "period_start": usage_summary.period_start.isoformat(),
-                        "period_end": usage_summary.period_end.isoformat(),
-                    }
-                )
-            except Exception as e:
+                    results.append(
+                        {
+                            "tenant_id": str(tenant.id),
+                            "tenant_name": tenant.name,
+                            "tenant_slug": tenant.slug,
+                            "plan_slug": tenant.plan.slug if tenant.plan else None,
+                            "plan_tier": tenant.plan.tier if tenant.plan else None,
+                            "usage": {
+                                "api_calls_count": usage_summary.api_calls_count,
+                                "asset_count": usage_summary.asset_count,
+                                "dataset_count": usage_summary.dataset_count,
+                                "scheduled_ingestion_runs_count": usage_summary.scheduled_ingestion_runs_count,
+                                "scheduled_export_runs_count": usage_summary.scheduled_export_runs_count,
+                                "storage_bytes": usage_summary.storage_bytes,
+                                "storage_gb": usage_summary.get_storage_gb(),
+                            },
+                            "plan_limits": plan_limits,
+                            "period_start": usage_summary.period_start.isoformat(),
+                            "period_end": usage_summary.period_end.isoformat(),
+                        }
+                    )
+            except (ServiceValidationError, NotFoundError) as e:
                 logger.warning(
                     "Failed to get usage for tenant %s: %s",
                     tenant.id,
                     e,
                 )
-                # Continue with other tenants
+                continue
+            except Exception as e:
+                logger.error(
+                    "Unexpected error getting usage for tenant %s: %s",
+                    tenant.id,
+                    e,
+                    exc_info=True,
+                )
+                # Track the failure but continue processing remaining tenants.
+                # Include failure metadata in results so callers can detect
+                # partial responses (Phase 274 health contract).
+                results.append(
+                    {
+                        "tenant_id": str(tenant.id),
+                        "tenant_name": tenant.name,
+                        "tenant_slug": tenant.slug,
+                        "error": "USAGE_CALCULATION_FAILED",
+                        "error_detail": str(e)[:256],
+                    }
+                )
+                continue
 
         return Response(
             {
@@ -222,24 +262,37 @@ class PlatformUserViewSet(viewsets.ReadOnlyModelViewSet):
             erasure_request = service.create_request(user_id=str(user.id))
 
             # Execute erasure immediately
+            execution_error = None
             try:
                 erasure_request = service.execute_erasure(request_id=str(erasure_request.id))
-            except Exception as e:
-                logger.warning(f"Failed to execute erasure immediately: {e}")
+            except (ServiceValidationError, NotFoundError) as e:
+                execution_error = str(e)[:256]
+                logger.warning(
+                    "Erasure execution deferred for request %s: %s",
+                    erasure_request.id,
+                    e,
+                )
+            except Exception:
+                execution_error = "Internal erasure execution error"
+                logger.error(
+                    "Unexpected error executing erasure for request %s",
+                    erasure_request.id,
+                    exc_info=True,
+                )
 
-            return Response(
-                {
-                    "request_id": str(erasure_request.id),
-                    "status": erasure_request.status,
-                    "requested_at": erasure_request.requested_at.isoformat(),
-                    "completed_at": (
-                        erasure_request.completed_at.isoformat()
-                        if erasure_request.completed_at
-                        else None
-                    ),
-                },
-                status=status.HTTP_201_CREATED,
-            )
+            response_data = {
+                "request_id": str(erasure_request.id),
+                "status": erasure_request.status,
+                "requested_at": erasure_request.requested_at.isoformat(),
+                "completed_at": (
+                    erasure_request.completed_at.isoformat()
+                    if erasure_request.completed_at
+                    else None
+                ),
+            }
+            if execution_error:
+                response_data["execution_error"] = execution_error
+            return Response(response_data, status=status.HTTP_201_CREATED)
         except (ServiceValidationError, NotFoundError) as e:
             return handle_service_exception(e)
 

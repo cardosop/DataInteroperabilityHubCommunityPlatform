@@ -199,8 +199,13 @@ class RateLimitMiddlewareTest(TestCase):
 
         # Should call get_rate_limit_headers
         mock_get_headers.assert_called_once_with(request, request.rate_limit_results)
-        # Should set headers on response
-        self.assertEqual(response.__setitem__.call_count, 4)  # 4 headers
+        # Should set the expected rate-limit headers (production code at
+        # service.py:248-258 emits these four; Type is conditional).
+        set_headers = [call[0][0] for call in response.__setitem__.call_args_list]
+        self.assertIn("X-RateLimit-Limit", set_headers)
+        self.assertIn("X-RateLimit-Remaining", set_headers)
+        self.assertIn("X-RateLimit-Reset", set_headers)
+        self.assertIn("X-RateLimit-Category", set_headers)
 
     @patch("hub.apps.rate_limiting.middleware.get_rate_limit_headers")
     @patch("hub.apps.rate_limiting.middleware.settings")

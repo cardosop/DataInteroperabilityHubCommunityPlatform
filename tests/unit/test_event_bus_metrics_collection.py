@@ -158,16 +158,13 @@ class TestEventBusMetricsCollection:
                 }
             ]
 
-            # This will call _listen which processes the event
-            # We need to mock the listen loop
-            with patch.object(mock_event_bus, "_listen"):
-                pass
-
-            # Directly test the queue depth increment
+            # _listen iterates pubsub.listen() and calls
+            # event_queue_depth.labels(...).inc() at bus.py:831
             mock_event_bus._listen(pubsub, "test-subscriber", Mock())
 
-            # Verify queue depth was incremented
-            # (This is tested indirectly through the _listen method)
+            assert mock_labels.called, (
+                "event_queue_depth.labels must be called during _listen")
+            mock_gauge.inc.assert_called_once()
 
     def test_queue_depth_decremented_on_acknowledge(self, mock_event_bus):
         """Test that queue depth is decremented when event is acknowledged."""
@@ -199,7 +196,13 @@ class TestEventBusMetricsCollection:
             mock_gauge.dec.assert_called_once()
 
     def test_retry_attempts_metric_recorded(self, mock_event_bus):
-        """Test that retry attempts metric is recorded."""
+        """Test that retry attempts metric is recorded on handler failure.
+
+        The handler runs through _run_with_timeout which spawns a daemon
+        thread — we patch it to run synchronously so mock state is
+        visible to both the test and the code under test.
+        """
+        from hub.apps.core.events.bus import _run_with_timeout
         from hub.apps.core.events.metrics import event_retry_attempts_total
 
         event = {
@@ -216,24 +219,34 @@ class TestEventBusMetricsCollection:
             patch.object(event_retry_attempts_total, "labels") as mock_labels,
             patch("hub.apps.core.events.bus.check_event_duplicate", return_value=(False, None)),
             patch("hub.apps.core.events.bus.get_retry_policy") as mock_retry_policy,
+            patch("hub.apps.core.events.bus._run_with_timeout") as mock_run,
+            patch("hub.apps.core.events.bus.mark_event_processing"),
+            patch("hub.apps.core.events.bus.store_event_id"),
         ):
             mock_policy = Mock()
             mock_policy.should_retry.return_value = True
             mock_policy.calculate_delay.return_value = 0.1
+            mock_policy.max_retries = 3  # Explicit — Mock auto-creates attrs
             mock_retry_policy.return_value = mock_policy
 
             mock_counter = Mock()
             mock_labels.return_value = mock_counter
 
-            # This will trigger retry logic
-            try:
-                mock_event_bus._handle_event("test-subscriber", event, handler, retry_count=0)
-            except Exception:
-                pass  # Expected to fail
+            # Run handler synchronously, raising the expected exception
+            mock_run.side_effect = lambda func, args=(), timeout_seconds=30: func(*args)
 
-            # Verify retry attempts metric was called
-            assert mock_labels.called
-            mock_counter.inc.assert_called_once()
+            # Handler raises every time → retry loop exhausts all attempts
+            # (should_retry always True, max_retries=3, so 4 calls).
+            # When should_retry is True on the final attempt the loop
+            # continues and then falls through after exhaustion — no
+            # exception is raised.
+            mock_event_bus._handle_event("test-subscriber", event, handler, retry_count=0)
+
+            assert mock_labels.called, (
+                "event_retry_attempts_total.labels must be called on handler failure")
+            # Called once per retry attempt (max_retries - retry_count + 1 = 4)
+            assert mock_counter.inc.call_count == 4, (
+                f"Expected 4 inc calls, got {mock_counter.inc.call_count}")
 
     def test_failed_events_metric_recorded(self, mock_event_bus):
         """Test that failed events metric is recorded."""

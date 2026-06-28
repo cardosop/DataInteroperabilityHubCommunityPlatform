@@ -596,9 +596,12 @@ class TenantConfigViewSet(viewsets.ViewSet):
         - TenantConfig with platform defaults
         - Stripe customer and subscription (if not FREE plan)
         """
-        # Only Platform Admins can create organizations
+        # Only Platform Admins can create organizations.
+        # Checks is_platform_admin (project-specific field), is_superuser
+        # (Django PermissionsMixin), and PLATFORM_ADMIN role assignment.
         if not (
-            request.user.is_superuser
+            getattr(request.user, "is_platform_admin", False)
+            or request.user.is_superuser
             or (
                 hasattr(request.user, "user_roles")
                 and request.user.user_roles.filter(role__name="PLATFORM_ADMIN").exists()

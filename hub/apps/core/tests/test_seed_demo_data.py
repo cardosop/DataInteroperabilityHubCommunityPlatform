@@ -30,8 +30,12 @@ class SeedDemoDataCommandTests(TransactionTestCase):
         super().setUp()
         self.tenant, _ = Tenant.objects.get_or_create(
             slug="seed-test-tenant",
-            defaults={"name": "seed-test-tenant"},
+            defaults={"name": "seed-test-tenant", "kyc_status": "VERIFIED"},
         )
+        # Ensure KYC is VERIFIED even on re-used DB (defaults only apply on create)
+        if self.tenant.kyc_status != "VERIFIED":
+            self.tenant.kyc_status = "VERIFIED"
+            self.tenant.save(update_fields=["kyc_status"])
         User.objects.get_or_create(
             email="e2e_test@example.com",
             defaults={"password": "testpass123", "tenant": self.tenant},
@@ -70,13 +74,12 @@ class SeedDemoDataCommandTests(TransactionTestCase):
         call_command("seed_demo_data", stdout=out, stderr=err)
         # Command completes without exception and writes meaningful output
         output = out.getvalue()
-        assert isinstance(output, str) and len(output) > 0, (
-            "seed_demo_data should produce stdout output"
-        )
+        self.assertGreater(len(output), 0, "seed_demo_data should produce stdout output")
+        self.assertIn("Seeded", output, "Output should indicate seeding completed")
         # If stderr has content, it should only be warnings/notices
         # (the command handles missing data gracefully)
         err_output = err.getvalue()
-        assert isinstance(err_output, str)
+        self.assertIsInstance(err_output, str)
 
     def test_command_is_idempotent(self):
         """Running twice does not crash. The command handles duplicates
@@ -85,8 +88,8 @@ class SeedDemoDataCommandTests(TransactionTestCase):
         call_command("seed_demo_data", stdout=out1, stderr=StringIO())
         out2 = StringIO()
         call_command("seed_demo_data", stdout=out2, stderr=StringIO())
-        # Second run completes without raising
-        assert isinstance(out2.getvalue(), str)
+        # Second run completes without raising — output should indicate handling of existing data
+        self.assertGreater(len(out2.getvalue()), 0)
 
     def test_command_verbosity_flag_accepted(self):
         """--verbosity flag is accepted without error."""

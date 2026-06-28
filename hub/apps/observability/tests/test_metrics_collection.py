@@ -89,8 +89,6 @@ class MetricsCollectionTest(TestCase):
 
     def test_job_metrics_labels(self):
         """Test that job metrics have correct labels"""
-        str(self.tenant.id)
-
         # Test jobs_started_total
         labels = jobs_started_total._labelnames
         self.assertIn("job_type", labels)
@@ -194,7 +192,7 @@ class MetricsCollectionTest(TestCase):
         self.assertEqual(labeled._value.get(), before + 1)
 
     def test_per_tenant_metrics_isolation(self):
-        """Test that per-tenant metrics are isolated"""
+        """Test that per-tenant metrics are value-isolated"""
         tenant1 = Tenant.objects.create(
             name="Tenant 1", slug="tenant-1", kyc_status=KYCStatus.VERIFIED
         )
@@ -205,17 +203,19 @@ class MetricsCollectionTest(TestCase):
         tenant1_id = str(tenant1.id)
         tenant2_id = str(tenant2.id)
 
-        # Increment metrics for tenant 1
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant1_id).inc()
-
-        # Increment metrics for tenant 2
-        jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant2_id).inc()
-
-        # Verify both metrics exist (they should be separate)
+        # Get labeled metrics for each tenant
         metric1 = jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant1_id)
         metric2 = jobs_started_total.labels(job_type="DQ_RUN", tenant_id=tenant2_id)
 
-        self.assertIsNotNone(metric1)
-        self.assertIsNotNone(metric2)
-        # They should be different metric instances
-        self.assertNotEqual(id(metric1), id(metric2))
+        # Capture before values
+        before1 = metric1._value.get()
+        before2 = metric2._value.get()
+
+        # Increment only tenant 1
+        metric1.inc()
+
+        # Tenant 1's counter should increase, tenant 2's should not
+        self.assertEqual(metric1._value.get(), before1 + 1,
+                         "Tenant 1 metric did not increment")
+        self.assertEqual(metric2._value.get(), before2,
+                         "Tenant 2 metric was affected by tenant 1's increment")

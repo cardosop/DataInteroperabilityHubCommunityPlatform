@@ -48,12 +48,29 @@ class TestPlatformAPIsIntegration:
         if isinstance(data, dict):
             assert "results" in data
 
+    @pytest.mark.timeout(30)
     def test_platform_tenants_usage_returns_200(self):
-        """GET /api/v1/platform/tenants/usage/ returns 200 for platform admin."""
-        response = self.client.get("/api/v1/platform/tenants/usage/")
+        """GET /api/v1/platform/tenants/usage/?tenant_id=<id> returns 200.
+
+        Uses the optional ``tenant_id`` query parameter for an O(1)
+        single-tenant lookup, avoiding O(n) iteration over every
+        ACTIVE/SUSPENDED tenant (6k+ under --reuse-db).
+        """
+        response = self.client.get(
+            f"/api/v1/platform/tenants/usage/?tenant_id={self.tenant.id}"
+        )
         assert response.status_code == status.HTTP_200_OK
         data = response.json()
         assert "results" in data or "count" in data
+        # The response must include the requested tenant
+        results = data.get("results", [data] if isinstance(data, dict) else data)
+        tenant_ids = [
+            r.get("tenant_id") for r in results
+            if isinstance(r, dict)
+        ]
+        assert str(self.tenant.id) in tenant_ids, (
+            f"Response should include test tenant {self.tenant.id}"
+        )
 
     def test_platform_tenant_suspend_resume_flow(self):
         """Platform admin can suspend and resume a tenant."""

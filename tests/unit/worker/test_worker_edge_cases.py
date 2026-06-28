@@ -57,16 +57,16 @@ class WorkerServiceEdgeCaseTest(TransactionTestCase):
         self.assertIn(job.status, [JobStatus.RUNNING, JobStatus.FAILED, JobStatus.PENDING])
 
     def test_redis_connection_loss(self):
-        """Test handling of Redis connection loss"""
-        # Try to increment tenant job counter
-        # If Redis is unavailable, should handle gracefully
+        """Test handling of Redis connection loss.
+
+        If Redis is available, the counter is incremented and decremented.
+        If Redis is unavailable, a ConnectionError is raised and caught.
+        """
         try:
             increment_tenant_job_counter(str(self.tenant.id), "running")
-            # If successful, decrement it
             decrement_tenant_job_counter(str(self.tenant.id), "running")
-        except Exception as e:
-            # Redis unavailable - should handle gracefully
-            self.assertIsNotNone(e)
+        except ConnectionError:
+            self.skipTest("Redis not available in test environment")
 
     def test_concurrent_job_creation_100_jobs(self):
         """Test creating 100 jobs simultaneously"""
@@ -129,9 +129,14 @@ class WorkerServiceEdgeCaseTest(TransactionTestCase):
         self.assertEqual(job.status, JobStatus.PENDING)
 
     def test_job_with_missing_required_fields(self):
-        """Test job with missing required fields"""
-        # Try to create job without required fields
-        # Job model may have required fields that prevent creation
+        """Test job creation with intentionally incomplete field set.
+
+        If the model enforces required fields via NOT NULL constraints,
+        creation raises (e.g. IntegrityError).  If creation succeeds,
+        the model is lenient about those fields.
+        """
+        from django.db import IntegrityError
+
         try:
             job = Job.objects.create(
                 tenant=self.tenant,
@@ -141,10 +146,9 @@ class WorkerServiceEdgeCaseTest(TransactionTestCase):
                 resource_id=uuid.uuid4(),
                 # Missing other required fields
             )
-            # If created, should handle missing fields gracefully
             self.assertIsNotNone(job)
-        except Exception:
-            # Expected if required fields are enforced
+        except IntegrityError:
+            # Expected — NOT NULL constraint on required fields
             pass
 
     def test_job_timeout_handling(self):

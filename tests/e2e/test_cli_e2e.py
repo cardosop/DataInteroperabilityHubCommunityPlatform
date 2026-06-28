@@ -38,6 +38,31 @@ pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.e2e4]
 User = get_user_model()
 
 
+def _assert_cli_exit_ok(result):
+    """Assert CLI exited cleanly (0=success or 1=network error, not a parsing bug).
+
+    Exit code 0 means the command executed against a running server.
+    Exit code 1 means a network/connection error (no live server in tests).
+    Exit code 2+ means a usage/parsing error or crash — these should fail.
+    """
+    assert result.exit_code in [0, 1], (
+        f"CLI exited with code {result.exit_code} (2=usage/parsing error, >2=crash). "
+        f"Output: {result.output[:300]}"
+    )
+    if result.exit_code != 0:
+        _output = result.output.lower()
+        assert any(
+            kw in _output
+            for kw in [
+                "connection", "refused", "timeout", "could not",
+                "unreachable", "error",
+            ]
+        ), (
+            f"Expected connection/network error when server is unavailable, "
+            f"got exit={result.exit_code}, output: {result.output[:300]}"
+        )
+
+
 @pytest.fixture
 def temp_config_dir(tmp_path, monkeypatch):
     """Create a temporary config directory"""
@@ -204,7 +229,7 @@ class CLIJourneyTest:
         # Note: Would require running test server for full test
         result = runner.invoke(cli, ["login"], input=f"{user.email}\ntestpass123\n")
         # May fail without running server, but should parse input
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_asset_management_journey(
         self, runner, temp_config_dir, api_key_for_cli, test_user_and_tenant
@@ -240,13 +265,13 @@ class CLIJourneyTest:
             ],
         )
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
         # Test asset list command structure
         result = runner.invoke(
             cli, ["assets", "list", "--status", "DRAFT", "--domain", "test", "--format", "json"]
         )
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_contract_management_journey(
         self, runner, temp_config_dir, api_key_for_cli, test_user_and_tenant
@@ -278,13 +303,13 @@ class CLIJourneyTest:
                 cli, ["contracts", "create", "--file", temp_file, "--format", "json"]
             )
             # May fail without running server, but should parse file correctly
-            assert result.exit_code in [0, 1]
+            _assert_cli_exit_ok(result)
 
             # Test contract list
             result = runner.invoke(
                 cli, ["contracts", "list", "--status", "DRAFT", "--format", "json"]
             )
-            assert result.exit_code in [0, 1]
+            _assert_cli_exit_ok(result)
         finally:
             os.unlink(temp_file)
 
@@ -312,13 +337,13 @@ class CLIJourneyTest:
                 cli, ["files", "upload", temp_file, "--name", "test.csv", "--format", "json"]
             )
             # May fail without running server, but should parse file correctly
-            assert result.exit_code in [0, 1]
+            _assert_cli_exit_ok(result)
 
             # Test file list
             result = runner.invoke(
                 cli, ["files", "list", "--status", "UPLOADED", "--format", "json"]
             )
-            assert result.exit_code in [0, 1]
+            _assert_cli_exit_ok(result)
         finally:
             os.unlink(temp_file)
 
@@ -340,11 +365,11 @@ class CLIJourneyTest:
             cli, ["jobs", "list", "--type", "DQ_RUN", "--status", "PENDING", "--format", "json"]
         )
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
         # Test job get command structure
         result = runner.invoke(cli, ["jobs", "get", "test-job-id", "--format", "json"])
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_output_formats(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI output formats (table and JSON)"""
@@ -356,11 +381,11 @@ class CLIJourneyTest:
 
         # Test table format (default)
         result = runner.invoke(cli, ["assets", "list", "--format", "table"])
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
         # Test JSON format
         result = runner.invoke(cli, ["assets", "list", "--format", "json"])
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_error_handling_invalid_command(self, runner):
         """Test CLI error handling for invalid command"""
@@ -442,7 +467,7 @@ schema:
                 cli, ["contracts", "create", "--file", temp_file, "--format", "json"]
             )
             # May fail without running server, but should parse YAML correctly
-            assert result.exit_code in [0, 1]
+            _assert_cli_exit_ok(result)
         finally:
             os.unlink(temp_file)
 
@@ -466,7 +491,7 @@ schema:
         # Test contract validate
         result = runner.invoke(cli, ["contracts", "validate", str(contract.id), "--format", "json"])
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_contract_lint_journey(
         self, runner, temp_config_dir, api_key_for_cli, test_user_and_tenant
@@ -488,7 +513,7 @@ schema:
         # Test contract lint
         result = runner.invoke(cli, ["contracts", "lint", str(contract.id), "--format", "json"])
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_jobs_watch_journey(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI jobs watch journey"""
@@ -514,7 +539,7 @@ schema:
             ],
         )
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_assets_update_journey(
         self, runner, temp_config_dir, api_key_for_cli, test_user_and_tenant
@@ -549,7 +574,7 @@ schema:
             ],
         )
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_assets_activate_journey(
         self, runner, temp_config_dir, api_key_for_cli, test_user_and_tenant
@@ -571,7 +596,7 @@ schema:
         # Test asset activate
         result = runner.invoke(cli, ["assets", "activate", str(asset.id), "--format", "json"])
         # May fail without running server, but should parse options correctly
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_files_download_journey(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI files download journey"""
@@ -588,7 +613,7 @@ schema:
                 cli, ["files", "download", "test-file-id", "--output", output_path]
             )
             # May fail without running server, but should parse options correctly
-            assert result.exit_code in [0, 1]
+            _assert_cli_exit_ok(result)
 
     def test_cli_edge_case_empty_results(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI handling of empty results"""
@@ -601,7 +626,7 @@ schema:
         # Test list commands with empty results
         result = runner.invoke(cli, ["assets", "list", "--format", "table"])
         # Should handle empty results gracefully
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_edge_case_large_output(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI handling of large output"""
@@ -614,7 +639,7 @@ schema:
         # Test with large limit
         result = runner.invoke(cli, ["assets", "list", "--limit", "1000", "--format", "json"])
         # Should handle large limits
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_edge_case_special_characters(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI handling of special characters in arguments"""
@@ -639,7 +664,7 @@ schema:
             ],
         )
         # Should handle special characters
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)
 
     def test_cli_edge_case_unicode(self, runner, temp_config_dir, api_key_for_cli):
         """Test CLI handling of unicode characters"""
@@ -664,4 +689,4 @@ schema:
             ],
         )
         # Should handle unicode
-        assert result.exit_code in [0, 1]
+        _assert_cli_exit_ok(result)

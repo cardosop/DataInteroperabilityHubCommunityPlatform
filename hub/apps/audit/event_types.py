@@ -514,6 +514,8 @@ CONSENT_PURPOSE_CHANGED: str = "CONSENT_PURPOSE_CHANGED"
 
 #: Phase 232.4 — RoPA artefact materialised to object storage (register export).
 ROPA_GENERATED: str = "ROPA_GENERATED"
+#: Phase 283.3.3.3 — RoPA artefact deleted from storage.
+ROPA_DELETED: str = "ROPA_DELETED"
 
 #: Phase 232.3 — breach incident lifecycle.
 BREACH_INCIDENT_OPENED: str = "BREACH_INCIDENT_OPENED"
@@ -1310,6 +1312,7 @@ __all__ = [
     "CONSENT_REVOKED",
     "CONSENT_PURPOSE_CHANGED",
     "ROPA_GENERATED",
+    "ROPA_DELETED",
     "BREACH_INCIDENT_OPENED",
     "BREACH_INCIDENT_STATUS_CHANGED",
     "BREACH_NOTIFICATION_SENT",

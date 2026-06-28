@@ -150,7 +150,6 @@ class ConsentAuditEmissionTests(TestCase):
             tenant=self.tenant, action="CONSENT_PURPOSE_CHANGED", resource_id=str(pid)
         ).first()
         self.assertIsNotNone(ev)
-        assert ev is not None
         self.assertEqual(ev.details_json.get("operation"), "created")
 
     @pytest.mark.integration
@@ -186,6 +185,5 @@ class ConsentAuditEmissionTests(TestCase):
             .first()
         )
         self.assertIsNotNone(ev)
-        assert ev is not None
         self.assertTrue(ev.details_json.get("version_bumped"))
         self.assertEqual(ev.details_json["after"]["name"], "UpdatedPurpose")

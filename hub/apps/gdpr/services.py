@@ -350,6 +350,8 @@ class DataPortabilityService(BaseService):
                         "created_at": o.created_at.isoformat() if o.created_at else None,
                     }
                 )
+        except ImportError:
+            pass  # marketplace app not installed — expected, not an error
         except Exception:
             logger.exception("gdpr_export_orders_failed")
 
@@ -369,6 +371,8 @@ class DataPortabilityService(BaseService):
                         "created_at": tx.created_at.isoformat() if tx.created_at else None,
                     }
                 )
+        except ImportError:
+            pass  # marketplace app not installed
         except Exception:
             logger.exception("gdpr_export_payments_failed")
 
@@ -388,6 +392,8 @@ class DataPortabilityService(BaseService):
                         "created_at": d.created_at.isoformat() if d.created_at else None,
                     }
                 )
+        except ImportError:
+            pass  # webhooks app not installed
         except Exception:
             logger.exception("gdpr_export_webhooks_failed")
 
@@ -405,6 +411,8 @@ class DataPortabilityService(BaseService):
                         "created_at": c.created_at.isoformat() if c.created_at else None,
                     }
                 )
+        except ImportError:
+            pass  # consent app not installed
         except Exception:
             logger.exception("gdpr_export_consents_failed")
 
@@ -694,7 +702,11 @@ class ErasureService(BaseService):
                                 if decoded.get("_auth_user_id") == user_id_str:
                                     session_keys_to_delete.append(s.session_key)
                         except Exception:
-                            pass
+                            logger.warning(
+                                "Failed to decode session %s during erasure for user %s",
+                                getattr(s, "session_key", "?"), user_id_str,
+                                exc_info=True,
+                            )
                     if session_keys_to_delete:
                         Session.objects.filter(session_key__in=session_keys_to_delete).delete()
                     deleted_resources.append("sessions")

@@ -100,3 +100,47 @@ class DsarHandlerApiTests(TestCase):
         self.assertEqual(r.data["status"], DSARStatus.CLOSED_REJECTED)
         refreshed = DSARRequest.objects.get(pk=self.row.pk)
         self.assertEqual(refreshed.status, DSARStatus.CLOSED_REJECTED)
+
+    @pytest.mark.integration
+    def test_legal_hold_activate(self):
+        """legal_hold endpoint sets legal_hold=True and persists reason."""
+        self.client.force_authenticate(user=self.dpo)
+        url = f"/api/v1/dsar/requests/{self.row.id}/legal_hold/"
+        r = self.client.post(
+            url,
+            {"active": True, "reason": "Pending litigation"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["legal_hold"], True)
+        self.assertEqual(r.data["legal_hold_reason"], "Pending litigation")
+        refreshed = DSARRequest.objects.get(pk=self.row.pk)
+        self.assertTrue(refreshed.legal_hold)
+        self.assertEqual(refreshed.legal_hold_reason, "Pending litigation")
+
+    @pytest.mark.integration
+    def test_legal_hold_deactivate(self):
+        """legal_hold endpoint sets legal_hold=False and clears suspension."""
+        self.row.legal_hold = True
+        self.row.legal_hold_reason = "Old reason"
+        self.row.save()
+        self.client.force_authenticate(user=self.dpo)
+        url = f"/api/v1/dsar/requests/{self.row.id}/legal_hold/"
+        r = self.client.post(
+            url,
+            {"active": False, "reason": "Litigation resolved"},
+            format="json",
+        )
+        self.assertEqual(r.status_code, status.HTTP_200_OK)
+        self.assertEqual(r.data["legal_hold"], False)
+        refreshed = DSARRequest.objects.get(pk=self.row.pk)
+        self.assertFalse(refreshed.legal_hold)
+
+    @pytest.mark.integration
+    def test_issue_download_url_not_materialized(self):
+        """issue_download_url returns 409 when package not yet materialized."""
+        self.client.force_authenticate(user=self.dpo)
+        url = f"/api/v1/dsar/requests/{self.row.id}/issue_download_url/"
+        r = self.client.post(url, format="json")
+        self.assertEqual(r.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("not material", r.data.get("detail", "").lower())

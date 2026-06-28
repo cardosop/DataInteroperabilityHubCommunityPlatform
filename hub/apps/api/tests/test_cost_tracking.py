@@ -8,6 +8,7 @@ import uuid
 
 import pytest
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -204,7 +205,7 @@ class CostsViewSetTest(TestCase):
 
     def test_costs_list_success(self):
         """GET /api/v1/analytics/costs/ returns 200 with cost data."""
-        response = self.client.get("/api/v1/analytics/costs/")
+        response = self.client.get(reverse("costs-list"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["tenant_id"], str(self.tenant.id))
         self.assertIn("total_cost", response.data)
@@ -212,33 +213,33 @@ class CostsViewSetTest(TestCase):
 
     def test_costs_breakdown_success(self):
         """GET /api/v1/analytics/costs/breakdown/ returns 200."""
-        response = self.client.get("/api/v1/analytics/costs/breakdown/")
+        response = self.client.get(reverse("costs-breakdown"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("breakdown", response.data)
 
     def test_costs_by_asset_success(self):
         """GET /api/v1/analytics/costs/by-asset/ returns 200."""
-        response = self.client.get("/api/v1/analytics/costs/by-asset/")
+        response = self.client.get(reverse("costs-by-asset"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("by_asset", response.data)
         self.assertIn("total_cost", response.data)
 
     def test_costs_recommendations_success(self):
         """GET /api/v1/analytics/costs/recommendations/ returns 200."""
-        response = self.client.get("/api/v1/analytics/costs/recommendations/")
+        response = self.client.get(reverse("costs-recommendations"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("recommendations", response.data)
 
     def test_costs_trends_success(self):
         """GET /api/v1/analytics/costs/trends/ returns 200."""
-        response = self.client.get("/api/v1/analytics/costs/trends/")
+        response = self.client.get(reverse("costs-trends"))
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertIn("trends", response.data)
 
     def test_costs_401_unauthenticated(self):
         """Costs endpoints return 401 when unauthenticated."""
         self.client.force_authenticate(user=None)
-        response = self.client.get("/api/v1/analytics/costs/")
+        response = self.client.get(reverse("costs-list"))
         self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_costs_403_or_400_when_no_tenant(self):
@@ -250,8 +251,7 @@ class CostsViewSetTest(TestCase):
             status=UserStatus.ACTIVE,
         )
         self.client.force_authenticate(user=user_no_tenant)
-        response = self.client.get("/api/v1/analytics/costs/")
-        # 403 when user lacks TENANT_ADMIN/PLATFORM_ADMIN; 400 when tenant context missing
+        response = self.client.get(reverse("costs-list"))
         self.assertIn(
             response.status_code, (status.HTTP_403_FORBIDDEN, status.HTTP_400_BAD_REQUEST)
         )

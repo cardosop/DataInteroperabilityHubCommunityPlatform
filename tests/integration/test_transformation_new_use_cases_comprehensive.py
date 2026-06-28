@@ -113,8 +113,12 @@ class TransformationNewUseCasesTestBase(TestCase, TestDatabaseIsolationMixin):
                 csv_content,
                 "text/csv",
             )
-        except Exception:
-            pass  # MinIO may not be available in all envs
+        except Exception as exc:
+            # MinIO may not be available in all envs — log but don't block
+            import logging
+            logging.getLogger(__name__).warning(
+                "S3/MinIO upload failed in setUp: %s", exc
+            )
         self.dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -622,13 +626,12 @@ class UCTRANS008CustomTransformationFunctionsTest(TransformationNewUseCasesTestB
             data,
             format="json",
         )
-        # Empty type should be rejected; if API currently accepts it,
-        # this documents a validation gap to fix.
-        self.assertLess(
+        self.assertIn(
             response.status_code,
-            500,
-            "Empty type string: API should reject (400) or "
-            "at minimum accept (201) -- track as validation gap",
+            [201, 400],
+            f"Empty step type string: got {response.status_code}. "
+            f"API currently accepts empty type (201) — track as validation-gap "
+            f"to reject with 400. Body: {getattr(response, 'data', '')}",
         )
 
     def test_pipeline_definition_not_dict_returns_400(self):

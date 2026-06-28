@@ -26,8 +26,9 @@ from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
-from hub.apps.files.models import File, FileStatus
-from hub.apps.files.storage import S3StorageClient
+from hub.apps.files.models import File, FileScanStatus, FileStatus
+from hub.apps.files.storage import S3StorageClient, StorageError
+from botocore.exceptions import ClientError, EndpointConnectionError
 from hub.apps.tenants.models import TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.testing.role_support import ensure_user_has_data_provider_role
@@ -379,22 +380,27 @@ class TestFileInitUploadAPI(TestCase):
                 break
             time.sleep(0.2)  # noqa: sleep-needed  # INTENTIONAL: e2e/integration test polling real services
 
-        # Verify audit event was created if available
-        # Note: Audit events are created synchronously, so they should be available immediately
-        # This test verifies the endpoint works and audit logging is functional
-        if new_count > initial_count:
-            # Verify latest audit event matches
-            audit_event = (
-                AuditEvent.objects.filter(resource_type="FILE", action="FILE_UPLOAD_INITIATED")
-                .order_by("-timestamp")
-                .first()
-            )
-            if audit_event:
-                # Verify resource_id matches (may be UUID or string)
-                resource_id_str = str(audit_event.resource_id) if audit_event.resource_id else None
-                self.assertEqual(resource_id_str, response.data["file_id"])
-        # If audit events are not created, that's acceptable - endpoint still works
-        # The test passes as long as the upload initiation succeeds (already verified above)
+        # Verify audit event was created
+        self.assertGreater(
+            new_count,
+            initial_count,
+            f"Expected audit event count to increase from {initial_count} "
+            f"but got {new_count} — audit logging may be broken",
+        )
+
+        # Verify latest audit event matches
+        audit_event = (
+            AuditEvent.objects.filter(resource_type="FILE", action="FILE_UPLOAD_INITIATED")
+            .order_by("-timestamp")
+            .first()
+        )
+        self.assertIsNotNone(
+            audit_event,
+            "Expected at least one FILE_UPLOAD_INITIATED audit event",
+        )
+        # Verify resource_id matches (may be UUID or string)
+        resource_id_str = str(audit_event.resource_id) if audit_event.resource_id else None
+        self.assertEqual(resource_id_str, response.data["file_id"])
 
     # ========== PERFORMANCE TESTS ==========
 
@@ -490,7 +496,7 @@ class TestFileCompleteUploadAPI(TestCase):
                 Body=test_content,
                 ContentType=self.file_obj.content_type,
             )
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             # If storage is not available, skip this test
             self.skipTest("Storage not available for integration test")
 
@@ -525,34 +531,52 @@ class TestFileCompleteUploadAPI(TestCase):
             },
         )
 
-        # Note: Actual multipart completion requires real S3/MinIO integration
-        # This test verifies the endpoint accepts multipart completion data
-        self.client.post(
-            f"/api/v1/files/{multipart_file.id}/complete",
+        # Use a valid 64-char hex SHA-256 hash so the format check passes
+        valid_hash = "a" * 64
+
+        response = self.client.post(
+            f"/api/v1/files/{multipart_file.id}/complete/",
             {
-                "content_sha256": "abc123" * 8,  # 48 chars
+                "content_sha256": valid_hash,
                 "parts": [{"ETag": "etag1", "PartNumber": 1}, {"ETag": "etag2", "PartNumber": 2}],
             },
             format="json",
         )
 
-        # May fail if storage not available, but tests endpoint structure
-        # In real scenario, would complete multipart upload in MinIO
+        # Multipart completion requires real S3/MinIO integration.
+        # In test environments without S3 the endpoint returns a structured
+        # error (409 if the upload doesn't exist, 502 if storage is unreachable).
+        # In environments with S3 available, it returns 200 on success.
+        if response.status_code == status.HTTP_200_OK:
+            self.assertIn("id", response.data)
+            self.assertEqual(response.data["name"], "multipart.bin")
+            # Verify file was updated in DB
+            multipart_file.refresh_from_db()
+            self.assertEqual(multipart_file.status, FileStatus.ACTIVE)
+            self.assertEqual(multipart_file.content_sha256, valid_hash)
+        else:
+            # Endpoint returned a structured error — must not be an unhandled 500 crash
+            self.assertIn(response.status_code, [
+                status.HTTP_400_BAD_REQUEST,
+                status.HTTP_409_CONFLICT,
+                status.HTTP_502_BAD_GATEWAY,
+            ])
 
     # ========== ERROR SCENARIOS ==========
 
     def test_complete_upload_error_hash_mismatch(self):
         """Test error when hash doesn't match"""
-        # This would require actual file verification, which may not be implemented
-        # For now, test that endpoint accepts hash
-        self.client.post(
+        # "invalid_hash" * 4 produces a 48-char non-hex string which fails
+        # the 64-char hex format validation in the view.
+        response = self.client.post(
             f"/api/v1/files/{self.file_obj.id}/complete/",
             {"content_sha256": "invalid_hash" * 4},
             format="json",
         )
 
-        # Endpoint may accept hash without verification in MVP
-        # In production, would verify hash against actual file
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("error", response.data)
+        self.assertIn("Invalid SHA-256 hash format", response.data["error"])
 
     def test_complete_upload_error_wrong_status(self):
         """Test error when file is not in PENDING or UPLOADING status"""
@@ -565,8 +589,9 @@ class TestFileCompleteUploadAPI(TestCase):
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        # API returns 409 Conflict when file status is not PENDING/UPLOADING
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        self.assertIn("detail", response.data)
 
     def test_complete_upload_error_missing_hash(self):
         """Test error when content_sha256 is missing"""
@@ -612,7 +637,7 @@ class TestFileCompleteUploadAPI(TestCase):
         )
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn("error", response.data)
+        self.assertIn("detail", response.data)
 
     # ========== INTEGRATION TESTS ==========
 
@@ -630,19 +655,19 @@ class TestFileCompleteUploadAPI(TestCase):
                 Body=test_content,
                 ContentType=self.file_obj.content_type,
             )
-
-            response = self.client.post(
-                f"/api/v1/files/{self.file_obj.id}/complete/",
-                {"content_sha256": content_hash},
-                format="json",
-            )
-
-            # Verify file was verified and status updated
-            if response.status_code == status.HTTP_200_OK:
-                self.file_obj.refresh_from_db()
-                self.assertEqual(self.file_obj.status, FileStatus.ACTIVE)
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             self.skipTest("MinIO not available for integration test")
+
+        response = self.client.post(
+            f"/api/v1/files/{self.file_obj.id}/complete/",
+            {"content_sha256": content_hash},
+            format="json",
+        )
+
+        # Verify file was verified and status updated
+        if response.status_code == status.HTTP_200_OK:
+            self.file_obj.refresh_from_db()
+            self.assertEqual(self.file_obj.status, FileStatus.ACTIVE)
 
     def test_complete_upload_integration_audit_logging(self):
         """Test audit logging for upload completion"""
@@ -662,20 +687,20 @@ class TestFileCompleteUploadAPI(TestCase):
                 Body=test_content,
                 ContentType=self.file_obj.content_type,
             )
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
+            self.skipTest("Storage not available for integration test")
 
-            response = self.client.post(
-                f"/api/v1/files/{self.file_obj.id}/complete/",
-                {"content_sha256": content_hash},
-                format="json",
-            )
+        response = self.client.post(
+            f"/api/v1/files/{self.file_obj.id}/complete/",
+            {"content_sha256": content_hash},
+            format="json",
+        )
 
-            if response.status_code == status.HTTP_200_OK:
-                new_count = AuditEvent.objects.filter(
-                    resource_type="FILE", action="FILE_UPLOAD_COMPLETED"
-                ).count()
-                self.assertEqual(new_count, initial_count + 1)
-        except Exception:
-            self.skipTest("Storage not available")
+        if response.status_code == status.HTTP_200_OK:
+            new_count = AuditEvent.objects.filter(
+                resource_type="FILE", action="FILE_UPLOAD_COMPLETED"
+            ).count()
+            self.assertEqual(new_count, initial_count + 1)
 
 
 class TestFileGetInfoAPI(TestCase):
@@ -806,6 +831,7 @@ class TestFileDownloadAPI(TestCase):
             size=1024,
             storage_path=f"{self.tenant.id}/{uuid.uuid4()}/download_test.csv",
             status=FileStatus.ACTIVE,
+            scan_status=FileScanStatus.CLEAN,
             created_by=self.user,
         )
 
@@ -979,9 +1005,9 @@ class TestFileDeleteAPI(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
 
-        # Verify file status changed to DELETED
+        # Verify file status changed to DELETING (soft-delete state; Phase 260.1.C)
         self.file_obj.refresh_from_db()
-        self.assertEqual(self.file_obj.status, FileStatus.DELETED)
+        self.assertEqual(self.file_obj.status, FileStatus.DELETING)
 
     def test_delete_file_success_storage_cleanup(self):
         """Test storage cleanup on file deletion"""
@@ -996,18 +1022,18 @@ class TestFileDeleteAPI(TestCase):
                 Body=test_content,
                 ContentType=self.file_obj.content_type,
             )
-
-            file_id = self.file_obj.id
-
-            response = self.client.delete(f"/api/v1/files/{file_id}/")
-
-            self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-            # Verify file deleted from storage
-            # Note: Actual deletion may be async or soft delete
-            # This tests the endpoint works
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             self.skipTest("Storage not available for integration test")
+
+        file_id = self.file_obj.id
+
+        response = self.client.delete(f"/api/v1/files/{file_id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Verify file deleted from storage
+        # Note: Actual deletion may be async or soft delete
+        # This tests the endpoint works
 
     # ========== AUTHORIZATION TESTS ==========
 
@@ -1064,17 +1090,17 @@ class TestFileDeleteAPI(TestCase):
                 Body=test_content,
                 ContentType=self.file_obj.content_type,
             )
-
-            file_id = self.file_obj.id
-            response = self.client.delete(f"/api/v1/files/{file_id}/")
-
-            self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
-
-            # Verify file deleted (or marked for deletion)
-            self.file_obj.refresh_from_db()
-            self.assertEqual(self.file_obj.status, FileStatus.DELETED)
-        except Exception:
+        except (StorageError, ClientError, EndpointConnectionError, OSError):
             self.skipTest("MinIO not available for integration test")
+
+        file_id = self.file_obj.id
+        response = self.client.delete(f"/api/v1/files/{file_id}/")
+
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+
+        # Verify file deleted — soft-delete transitions to DELETING (Phase 260.1.C)
+        self.file_obj.refresh_from_db()
+        self.assertIn(self.file_obj.status, [FileStatus.DELETING, FileStatus.DELETED])
 
     def test_delete_file_integration_audit_logging(self):
         """Test audit logging for file deletion"""

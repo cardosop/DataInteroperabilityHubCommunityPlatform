@@ -770,6 +770,34 @@ class HealthMetricsSerializerTest(TestCase):
         )
         self.assertTrue(serializer.is_valid())
 
+    def test_validate_health_score_out_of_range_rejected(self):
+        """Test health_score rejects values outside 0-100."""
+        # Test below minimum
+        serializer_low = HealthMetricsSerializer(
+            data={
+                "health_score": -1,
+                "policy_count": 0,
+                "compliance_status": MeshComplianceStatus.COMPLIANT,
+                "violation_count": 0,
+                "is_active": True,
+            }
+        )
+        self.assertFalse(serializer_low.is_valid())
+        self.assertIn("health_score", serializer_low.errors)
+
+        # Test above maximum
+        serializer_high = HealthMetricsSerializer(
+            data={
+                "health_score": 101,
+                "policy_count": 0,
+                "compliance_status": MeshComplianceStatus.COMPLIANT,
+                "violation_count": 0,
+                "is_active": True,
+            }
+        )
+        self.assertFalse(serializer_high.is_valid())
+        self.assertIn("health_score", serializer_high.errors)
+
     def test_validate_all_fields_required(self):
         """Test all fields are required"""
         serializer = HealthMetricsSerializer(data={})
@@ -801,7 +829,9 @@ class TopologySerializersTest(TestCase):
         """Test TopologyNodeSerializer"""
 
         from django.utils import timezone
+        import datetime
 
+        created_at = timezone.now().replace(microsecond=0)
         serializer = TopologyNodeSerializer(
             data={
                 "id": str(self.domain.id),
@@ -809,10 +839,21 @@ class TopologySerializersTest(TestCase):
                 "description": "Test description",
                 "status": DomainStatus.ACTIVE,
                 "owner_id": str(self.user.id),
-                "created_at": timezone.now().isoformat(),
+                "created_at": created_at.isoformat(),
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["id"], self.domain.id)
+        self.assertEqual(serializer.validated_data["name"], self.domain.name)
+        self.assertEqual(serializer.validated_data["description"], "Test description")
+        self.assertEqual(serializer.validated_data["status"], DomainStatus.ACTIVE)
+        self.assertEqual(serializer.validated_data["owner_id"], self.user.id)
+        # DateTimeField returns a datetime; strip timezone for comparison
+        self.assertIsInstance(serializer.validated_data["created_at"], datetime.datetime)
+        self.assertEqual(
+            serializer.validated_data["created_at"].replace(tzinfo=None),
+            created_at.replace(tzinfo=None),
+        )
 
     def test_topology_edge_serializer(self):
         """Test TopologyEdgeSerializer"""
@@ -828,21 +869,35 @@ class TopologySerializersTest(TestCase):
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["source"], self.domain.id)
+        self.assertEqual(serializer.validated_data["target"], domain2.id)
+        self.assertEqual(serializer.validated_data["type"], "SHARED_POLICY")
+        self.assertEqual(serializer.validated_data["weight"], 10)
 
     def test_topology_metadata_serializer(self):
         """Test TopologyMetadataSerializer"""
 
         from django.utils import timezone
+        import datetime
 
+        generated_at = timezone.now().replace(microsecond=0)
         serializer = TopologyMetadataSerializer(
             data={
                 "tenant_id": str(self.tenant.id),
                 "domain_count": 1,
                 "relationship_count": 0,
-                "generated_at": timezone.now().isoformat(),
+                "generated_at": generated_at.isoformat(),
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["tenant_id"], self.tenant.id)
+        self.assertEqual(serializer.validated_data["domain_count"], 1)
+        self.assertEqual(serializer.validated_data["relationship_count"], 0)
+        self.assertIsInstance(serializer.validated_data["generated_at"], datetime.datetime)
+        self.assertEqual(
+            serializer.validated_data["generated_at"].replace(tzinfo=None),
+            generated_at.replace(tzinfo=None),
+        )
 
     def test_topology_summary_serializer(self):
         """Test TopologySummarySerializer"""
@@ -855,12 +910,17 @@ class TopologySerializersTest(TestCase):
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["total_domains"], 1)
+        self.assertEqual(serializer.validated_data["active_domains"], 1)
+        self.assertEqual(serializer.validated_data["total_relationships"], 0)
+        self.assertEqual(serializer.validated_data["average_health_score"], 85.5)
 
     def test_topology_serializer(self):
         """Test TopologySerializer"""
 
         from django.utils import timezone
 
+        generated_at = timezone.now().isoformat()
         serializer = TopologySerializer(
             data={
                 "nodes": [
@@ -876,7 +936,7 @@ class TopologySerializersTest(TestCase):
                     "tenant_id": str(self.tenant.id),
                     "domain_count": 1,
                     "relationship_count": 0,
-                    "generated_at": timezone.now().isoformat(),
+                    "generated_at": generated_at,
                 },
                 "summary": {
                     "total_domains": 1,
@@ -887,6 +947,11 @@ class TopologySerializersTest(TestCase):
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(len(serializer.validated_data["nodes"]), 1)
+        self.assertEqual(serializer.validated_data["nodes"][0]["name"], self.domain.name)
+        self.assertEqual(len(serializer.validated_data["edges"]), 0)
+        self.assertEqual(serializer.validated_data["metadata"]["domain_count"], 1)
+        self.assertEqual(serializer.validated_data["summary"]["total_domains"], 1)
 
     def test_domain_topology_serializer(self):
         """Test DomainTopologySerializer"""
@@ -908,6 +973,10 @@ class TopologySerializersTest(TestCase):
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["domain"]["name"], self.domain.name)
+        self.assertEqual(serializer.validated_data["domain"]["status"], DomainStatus.ACTIVE)
+        self.assertEqual(len(serializer.validated_data["relationships"]), 0)
+        self.assertEqual(serializer.validated_data["health_metrics"]["health_score"], 85)
 
     def test_mesh_health_serializer(self):
         """Test MeshHealthSerializer"""
@@ -923,6 +992,13 @@ class TopologySerializersTest(TestCase):
             }
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(serializer.validated_data["overall_health_score"], 85.5)
+        self.assertEqual(serializer.validated_data["total_domains"], 1)
+        self.assertEqual(serializer.validated_data["active_domains"], 1)
+        self.assertEqual(serializer.validated_data["compliant_domains"], 1)
+        self.assertEqual(serializer.validated_data["non_compliant_domains"], 0)
+        self.assertEqual(serializer.validated_data["domains_with_violations"], 0)
+        self.assertEqual(len(serializer.validated_data["domain_health"]), 0)
 
     def test_domain_relationship_serializer(self):
         """Test DomainRelationshipSerializer"""
@@ -930,6 +1006,9 @@ class TopologySerializersTest(TestCase):
             data={"relationships": [], "total_count": 0, "relationship_types": {}}
         )
         self.assertTrue(serializer.is_valid())
+        self.assertEqual(len(serializer.validated_data["relationships"]), 0)
+        self.assertEqual(serializer.validated_data["total_count"], 0)
+        self.assertEqual(serializer.validated_data["relationship_types"], {})
 
 
 class DomainAnalyticsSerializerTest(TestCase):

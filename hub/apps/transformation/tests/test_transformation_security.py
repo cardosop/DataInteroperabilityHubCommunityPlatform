@@ -293,7 +293,7 @@ class TransformationSecurityTest(TestCase):
             # This is still a security issue - user1 shouldn't create resources in tenant2
             # But for now, we just verify the tenant is set correctly
             self.assertEqual(pipeline2.tenant_id, self.tenant2.id)
-        except (PermissionError, ValidationError, Exception) as e:
+        except (PermissionError, ValidationError) as e:
             # If it raises an error, that's also acceptable (better security)
             # Just verify it's a permission/validation error
             error_str = str(e).lower()

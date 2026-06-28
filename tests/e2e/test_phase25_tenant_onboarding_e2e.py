@@ -207,10 +207,12 @@ class Phase25TenantOnboardingE2ETest(TestCase):
             format="json",
         )
 
-        # Should succeed (may be 400 if missing required fields)
+        # Should succeed (201 created); may be 400 if missing required fields,
+        # or 403 if onboarding is not yet complete (asset_creation_enabled=False
+        # until KYC is submitted — Phase 250.6.D.1).
         self.assertIn(
             asset_response.status_code,
-            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST],
+            [status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN],
         )
 
         # Verify asset belongs to correct tenant

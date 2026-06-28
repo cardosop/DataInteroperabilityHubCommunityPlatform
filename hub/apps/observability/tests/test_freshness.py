@@ -133,7 +133,7 @@ class FreshnessMonitorTest(TestCase):
         self.assertGreater(len(dashboard["results"]), 0)
 
     def test_detect_stale_data(self):
-        """Test stale data detection"""
+        """Test stale data detection returns records with correct content"""
         # Record stale metric
         FreshnessMonitor.record_metric(
             tenant_id=str(self.tenant.id),
@@ -146,8 +146,14 @@ class FreshnessMonitorTest(TestCase):
             tenant_id=str(self.tenant.id), dataset_id=str(self.dataset.id)
         )
 
-        self.assertGreater(len(stale_data), 0)
-        self.assertTrue(stale_data[0]["freshness_age_seconds"] > 3600)
+        self.assertGreater(len(stale_data), 0, "Expected at least one stale record")
+        record = stale_data[0]
+        # Verify record contains all expected fields with correct values
+        self.assertEqual(record["dataset_id"], str(self.dataset.id))
+        self.assertGreater(record["freshness_age_seconds"], 3600)
+        self.assertEqual(record["freshness_sla"], FreshnessSLA.HOURLY.value)
+        self.assertIn("recorded_at", record)
+        self.assertIn("last_update_time", record)
 
 
 class FreshnessMonitorFailureTest(TestCase):
@@ -167,8 +173,9 @@ class FreshnessMonitorFailureTest(TestCase):
         )
 
     def test_record_metric_invalid_tenant_id(self):
-        """Test recording metric with invalid tenant ID"""
-        with self.assertRaises(Exception):  # NotFoundError or ValidationError
+        """Test recording metric with invalid tenant ID — raises ValueError (missing dataset/asset)."""
+        # record_metric requires either dataset or asset; passing neither raises ValueError
+        with self.assertRaises(ValueError):
             FreshnessMonitor.record_metric(
                 tenant_id=str(uuid.uuid4()),  # Non-existent tenant
                 dataset=None,
@@ -177,25 +184,22 @@ class FreshnessMonitorFailureTest(TestCase):
             )
 
     def test_get_freshness_dashboard_invalid_tenant_id(self):
-        """Test getting freshness dashboard with invalid tenant ID"""
-        with self.assertRaises(Exception):  # NotFoundError or ValidationError
+        """Test getting freshness dashboard with invalid tenant ID raises NotFoundError."""
+        from hub.apps.core.services.base import NotFoundError
+
+        with self.assertRaises(NotFoundError):
             FreshnessMonitor.get_freshness_dashboard(
                 tenant_id=str(uuid.uuid4())  # Non-existent tenant
             )
 
     def test_detect_stale_data_invalid_dataset_id(self):
-        """Test detecting stale data with invalid dataset ID"""
-        # Should handle gracefully or raise appropriate error
-        try:
-            stale_data = FreshnessMonitor.detect_stale_data(
-                tenant_id=str(self.tenant.id),
-                dataset_id=str(uuid.uuid4()),  # Non-existent dataset
-            )
-            # May return empty list if handled gracefully
-            self.assertIsInstance(stale_data, list)
-        except Exception:
-            # Exception acceptable if validation is strict
-            pass
+        """Test detecting stale data with invalid dataset ID returns empty list"""
+        stale_data = FreshnessMonitor.detect_stale_data(
+            tenant_id=str(self.tenant.id),
+            dataset_id=str(uuid.uuid4()),  # Non-existent dataset
+        )
+        self.assertIsInstance(stale_data, list)
+        self.assertEqual(len(stale_data), 0)
 
 
 class FreshnessMonitorEdgeCasesTest(TestCase):
@@ -260,6 +264,80 @@ class FreshnessMonitorEdgeCasesTest(TestCase):
         self.assertIn("summary", dashboard)
         self.assertEqual(len(dashboard["results"]), 0)
 
+    def test_record_metric_with_schema_json(self):
+        """Test record_metric calculates schema_hash from schema_json"""
+        asset = Asset.objects.create(
+            tenant=self.tenant,
+            key="schema-hash-test",
+            name="Schema Hash Test",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        schema = {"fields": [{"name": "col1", "type": "string"}]}
+
+        metric = FreshnessMonitor.record_metric(
+            tenant_id=str(self.tenant.id),
+            asset=asset,
+            last_update_time=timezone.now(),
+            freshness_sla=FreshnessSLA.DAILY,
+            schema_json=schema,
+        )
+
+        self.assertIsNotNone(metric)
+        self.assertIsNotNone(metric.schema_hash, "schema_hash must be set when schema_json provided")
+        self.assertEqual(len(metric.schema_hash), 64, "schema_hash must be SHA-256 (64 hex chars)")
+        # Same schema → same hash
+        metric2 = FreshnessMonitor.record_metric(
+            tenant_id=str(self.tenant.id),
+            asset=asset,
+            last_update_time=timezone.now(),
+            freshness_sla=FreshnessSLA.DAILY,
+            schema_json=schema,
+        )
+        self.assertEqual(metric.schema_hash, metric2.schema_hash,
+                         "Same schema must produce identical hash")
+
+    def test_detect_stale_data_without_resource_filter(self):
+        """Test detect_stale_data returns records across multiple resources when unfiltered"""
+        asset1 = Asset.objects.create(
+            tenant=self.tenant,
+            key="stale-asset-1",
+            name="Stale Asset 1",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+        asset2 = Asset.objects.create(
+            tenant=self.tenant,
+            key="stale-asset-2",
+            name="Stale Asset 2",
+            status=AssetStatus.ACTIVE,
+            created_by=self.user,
+        )
+
+        # Record stale metrics for both assets (no dataset)
+        FreshnessMonitor.record_metric(
+            tenant_id=str(self.tenant.id),
+            asset=asset1,
+            last_update_time=timezone.now() - timedelta(hours=3),
+            freshness_sla=FreshnessSLA.HOURLY,
+        )
+        FreshnessMonitor.record_metric(
+            tenant_id=str(self.tenant.id),
+            asset=asset2,
+            last_update_time=timezone.now() - timedelta(hours=5),
+            freshness_sla=FreshnessSLA.HOURLY,
+        )
+
+        # Unfiltered detection should return records for all stale resources
+        stale_data = FreshnessMonitor.detect_stale_data(tenant_id=str(self.tenant.id))
+
+        self.assertGreaterEqual(len(stale_data), 2,
+                              "Expected stale records for at least 2 resources")
+        # Records should have asset_id set (no dataset)
+        for record in stale_data:
+            self.assertIn("dataset_id", record)
+            self.assertIn("asset_id", record)
+
 
 class FreshnessMonitorErrorHandlingTest(TestCase):
     """Test FreshnessMonitor error handling"""
@@ -287,19 +365,16 @@ class FreshnessMonitorErrorHandlingTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle None values gracefully
-        try:
-            metric = FreshnessMonitor.record_metric(
-                tenant_id=str(self.tenant.id),
-                asset=asset,
-                last_update_time=None,  # None last update
-                freshness_sla=None,  # None SLA
-            )
-            # May succeed with None values or handle gracefully
-            self.assertIsNotNone(metric)
-        except Exception:
-            # Exception acceptable if None values are not allowed
-            pass
+        # Should handle None values and still create a metric record
+        metric = FreshnessMonitor.record_metric(
+            tenant_id=str(self.tenant.id),
+            asset=asset,
+            last_update_time=None,  # None last update
+            freshness_sla=None,  # None SLA
+        )
+        self.assertIsNotNone(metric)
+        self.assertIsNone(metric.freshness_age_seconds)
+        self.assertIsNone(metric.freshness_sla)
 
     def test_get_freshness_dashboard_handles_missing_data(self):
         """Test getting freshness dashboard handles missing data"""

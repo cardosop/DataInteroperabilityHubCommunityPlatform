@@ -12,8 +12,11 @@ import pytest
 from django.test import TestCase
 
 from hub.apps.core.business_rules.chain_registry import (
-    get_chain,
     register_chain,
+)
+from hub.apps.core.business_rules.chains import (
+    execute_chain,
+    get_chain,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)

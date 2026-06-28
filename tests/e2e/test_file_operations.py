@@ -207,7 +207,7 @@ class FileOperationsE2ETest(E2ETestBase):
 
         # Verify file status updated
         file_obj = File.objects.get(id=file_id)
-        self.assertEqual(file_obj.status, FileStatus.DELETED)
+        self.assertEqual(file_obj.status, FileStatus.DELETING)
 
         # Verify audit log created
         self.verify_audit_log(
@@ -344,10 +344,10 @@ class FileOperationsE2ETest(E2ETestBase):
         file_obj.refresh_from_db()
         self.assertEqual(file_obj.status, FileStatus.ACTIVE)
 
-        # Delete (should be DELETED)
+        # Delete (soft-delete → DELETING with grace window per Phase 260.1.C)
         self.client.delete(f"/api/v1/files/{file_id}/")
         file_obj.refresh_from_db()
-        self.assertEqual(file_obj.status, FileStatus.DELETED)
+        self.assertEqual(file_obj.status, FileStatus.DELETING)
 
     def test_get_file_metadata(self):
         """Test retrieving file metadata"""

@@ -343,7 +343,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
             "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     def test_token_refresh_revoked_token(self):
         """Test token refresh with revoked refresh token.
@@ -404,7 +404,7 @@ class AuthenticationFlowsE2ETest(E2ETestBase):
             "/api/v1/auth/refresh/", {"refresh_token": refresh_token}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ========== Token Expiration Tests ==========
 
@@ -952,7 +952,7 @@ class ErrorScenariosE2ETest(E2ETestBase):
             "/api/v1/auth/refresh/", {"refresh_token": refresh_token_str}, format="json"
         )
 
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(response.status_code, status.HTTP_401_UNAUTHORIZED)
 
     # ========== Insufficient Permissions Tests ==========
 

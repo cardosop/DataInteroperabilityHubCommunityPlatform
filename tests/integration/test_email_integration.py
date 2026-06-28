@@ -3,6 +3,11 @@ Integration tests for email service.
 
 Tests user invitation, password reset, and service unavailable scenarios.
 Uses real services (no mocks).
+
+When the SMTP server is unavailable, these tests verify that the integration
+layer handles failures gracefully.  Assertions inside the try block run when
+the service is reachable; the except clause prevents infrastructure-dependent
+failures from blocking CI.
 """
 
 import uuid
@@ -24,6 +29,14 @@ from hub.apps.tenants.models import Tenant
 
 pytestmark = pytest.mark.django_db(transaction=True)
 User = get_user_model()
+
+# Exceptions that indicate the email transport is unavailable, not a code bug.
+_EMAIL_TRANSPORT_ERRORS = (
+    EmailServiceError,
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 
 class EmailIntegrationTest(TestCase):
@@ -55,11 +68,8 @@ class EmailIntegrationTest(TestCase):
         self.user.save()
 
         try:
-            # Send invitation email
             result = send_invitation_email(str(self.user.id))
 
-            # Verify email was sent (or attempted)
-            # May fail if SMTP server unavailable, but structure should be correct
             if result.get("success"):
                 # Verify email delivery record was created
                 delivery = EmailDelivery.objects.filter(
@@ -67,9 +77,9 @@ class EmailIntegrationTest(TestCase):
                 ).first()
                 self.assertIsNotNone(delivery)
                 self.assertEqual(delivery.status, EmailDeliveryStatus.SENT)
-        except Exception:
-            # Email service may not be available - that's OK
-            # This test verifies the integration structure is correct
+        except _EMAIL_TRANSPORT_ERRORS:
+            # SMTP server not available — the integration structure is sound;
+            # the assertion pathway was not reachable this run.
             pass
 
     @override_settings(
@@ -86,10 +96,8 @@ class EmailIntegrationTest(TestCase):
         self.user.save()
 
         try:
-            # Send password reset email
             result = send_password_reset_email(str(self.user.id))
 
-            # Verify email was sent (or attempted)
             if result.get("success"):
                 # Verify email delivery record was created
                 delivery = EmailDelivery.objects.filter(
@@ -97,8 +105,8 @@ class EmailIntegrationTest(TestCase):
                 ).first()
                 self.assertIsNotNone(delivery)
                 self.assertEqual(delivery.status, EmailDeliveryStatus.SENT)
-        except Exception:
-            # Email service may not be available - that's OK
+        except _EMAIL_TRANSPORT_ERRORS:
+            # SMTP server not available — the integration structure is sound.
             pass
 
     @override_settings(
@@ -127,8 +135,7 @@ class EmailIntegrationTest(TestCase):
                 self.assertEqual(delivery.to_email, "recipient@example.com")
                 self.assertEqual(delivery.tenant, self.tenant)
                 self.assertEqual(delivery.user, self.user)
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass
 
     @override_settings(
@@ -140,7 +147,6 @@ class EmailIntegrationTest(TestCase):
     def test_email_async_retry_on_failure(self):
         """Test that async email sending retries on transient failure"""
         try:
-            # Attempt to send email (may fail if SMTP unavailable)
             result = send_email_async(
                 email_type=EmailType.USER_INVITATION,
                 to_email="recipient@example.com",
@@ -151,16 +157,13 @@ class EmailIntegrationTest(TestCase):
                 max_retries=3,
             )
 
-            # Should create delivery record
             if "delivery_id" in result:
                 delivery = EmailDelivery.objects.get(id=result["delivery_id"])
-                # If failed, should be DEFERRED for retry
                 if not result.get("success"):
                     self.assertIn(
                         delivery.status, [EmailDeliveryStatus.DEFERRED, EmailDeliveryStatus.FAILED]
                     )
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass
 
     @override_settings(
@@ -172,7 +175,6 @@ class EmailIntegrationTest(TestCase):
     def test_email_async_max_retries_reached(self):
         """Test that email fails after max retries"""
         try:
-            # Send email with max retries already reached
             result = send_email_async(
                 email_type=EmailType.USER_INVITATION,
                 to_email="recipient@example.com",
@@ -186,13 +188,11 @@ class EmailIntegrationTest(TestCase):
             # Should fail (no retry)
             self.assertFalse(result.get("success", True))
 
-            # Verify delivery record is failed
             if "delivery_id" in result:
                 delivery = EmailDelivery.objects.get(id=result["delivery_id"])
                 self.assertEqual(delivery.status, EmailDeliveryStatus.FAILED)
                 self.assertEqual(delivery.retry_count, 3)
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass
 
     @override_settings(
@@ -212,10 +212,7 @@ class EmailIntegrationTest(TestCase):
                 )
                 # Should handle error gracefully
             except EmailServiceError:
-                # Expected - service unavailable
-                pass
-            except Exception:
-                # Other errors are acceptable
+                # Expected — service unavailable due to bad host
                 pass
 
     @override_settings(
@@ -227,7 +224,6 @@ class EmailIntegrationTest(TestCase):
     def test_email_delivery_tracking_integration(self):
         """Test that email delivery is tracked through full lifecycle"""
         try:
-            # Send email
             result = send_email_async(
                 email_type=EmailType.USER_INVITATION,
                 to_email="recipient@example.com",
@@ -250,8 +246,7 @@ class EmailIntegrationTest(TestCase):
                     delivery.refresh_from_db()
                     self.assertEqual(delivery.status, EmailDeliveryStatus.SENT)
                     self.assertIsNotNone(delivery.sent_at)
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass
 
     @override_settings(
@@ -280,8 +275,7 @@ class EmailIntegrationTest(TestCase):
                 delivery = EmailDelivery.objects.get(id=result["delivery_id"])
                 # Metadata should contain template context
                 self.assertIsNotNone(delivery.metadata_json)
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass
 
     @override_settings(
@@ -308,8 +302,7 @@ class EmailIntegrationTest(TestCase):
                 # Should be associated with tenant and user
                 self.assertEqual(delivery.tenant, self.tenant)
                 self.assertEqual(delivery.user, self.user)
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass
 
     @override_settings(
@@ -341,8 +334,7 @@ class EmailIntegrationTest(TestCase):
                 if "delivery_id" in result:
                     delivery = EmailDelivery.objects.get(id=result["delivery_id"])
                     self.assertEqual(delivery.email_type, email_type)
-            except Exception:
-                # Email service may not be available
+            except _EMAIL_TRANSPORT_ERRORS:
                 pass
 
     @override_settings(
@@ -354,7 +346,6 @@ class EmailIntegrationTest(TestCase):
     def test_email_retry_count_tracking(self):
         """Test that retry count is tracked correctly"""
         try:
-            # Send email with retry_count=1
             result = send_email_async(
                 email_type=EmailType.USER_INVITATION,
                 to_email="recipient@example.com",
@@ -370,6 +361,5 @@ class EmailIntegrationTest(TestCase):
                 # Retry count should be tracked (may be incremented if retry scheduled)
                 self.assertGreaterEqual(delivery.retry_count, 0)
                 self.assertLessEqual(delivery.retry_count, delivery.max_retries)
-        except Exception:
-            # Email service may not be available
+        except _EMAIL_TRANSPORT_ERRORS:
             pass

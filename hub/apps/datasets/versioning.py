@@ -6,6 +6,7 @@ Provides version creation, tree traversal, and querying for dataset version hist
 
 import hashlib
 import json
+import logging
 from datetime import datetime
 from typing import Any
 from uuid import UUID
@@ -16,6 +17,8 @@ from hub.apps.core.services.base import ValidationError
 from hub.apps.tenants.services import get_tenant_config_value
 
 from .models import Dataset
+
+logger = logging.getLogger(__name__)
 
 
 class VersionHistoryManager:
@@ -106,16 +109,27 @@ class VersionHistoryManager:
 
         dataset.save()
 
-        # Track schema evolution
+        # Track schema evolution.
+        # Schema tracking is best-effort — a tracking failure must never
+        # abort version creation, but it MUST produce a log record so
+        # operators can detect a silent tracking outage.
         try:
             from .schema_evolution import SchemaEvolutionTracker
 
             SchemaEvolutionTracker.track_schema_version(
                 dataset=dataset, parent_dataset=parent_version
             )
+        except ImportError:
+            logger.warning(
+                "SchemaEvolutionTracker module not available — "
+                "schema evolution tracking skipped for dataset %s",
+                dataset.id,
+            )
         except Exception:
-            # Schema tracking is optional, don't fail version creation
-            pass
+            logger.exception(
+                "Schema evolution tracking failed for dataset %s",
+                dataset.id,
+            )
 
         return dataset
 

@@ -91,8 +91,12 @@ unique_id = '{unique_id}'
 # Get or create tenant
 tenant, _ = Tenant.objects.get_or_create(
     slug=f"odh-e2e-test-tenant--{uuid.uuid4().hex[:8]}" + unique_id,
-    defaults={{'name': 'ODH E2E Test Tenant ' + unique_id}}
+    defaults={{'name': 'ODH E2E Test Tenant ' + unique_id, 'ml_enabled': True}}
 )
+# Ensure ML flag is enabled for CLI/SDK tests that hit the API (gate checked by MLFeatureFlagMixin)
+if not tenant.ml_enabled:
+    tenant.ml_enabled = True
+    tenant.save(update_fields=['ml_enabled'])
 
 # Get or create user
 user, _ = User.objects.get_or_create(
@@ -287,6 +291,11 @@ def api_key(api_available, django_db_blocker):
             )
             if api_key_obj and api_key_obj.tenant:
                 ensure_e2e_tenant_ready(api_key_obj.tenant)
+                # Enable feature flags required by CLI/SDK E2E tests.
+                # MLFeatureFlagMixin gates ML API endpoints on ml_enabled.
+                if not api_key_obj.tenant.ml_enabled:
+                    api_key_obj.tenant.ml_enabled = True
+                    api_key_obj.tenant.save(update_fields=["ml_enabled"])
     except Exception:
         pass  # Best-effort
 
@@ -317,10 +326,17 @@ def api_base_url():
 @pytest.fixture
 def runner(api_key):
     """Create CLI runner with authentication configured."""
+    import os
+
     from datahub_cli.config import config
 
     config.set_api_key(api_key)
-    config.set_api_base_url("http://localhost:8000/api/v1")
+    # Set both the config value and the env var — `get_api_base_url()`
+    # checks env vars first (DATAHUB_BASE_URL, MESHANT_API_URL, API_BASE_URL),
+    # and the Docker test environment sets API_BASE_URL without /api/v1.
+    api_url = "http://localhost:8000/api/v1"
+    config.set_api_base_url(api_url)
+    os.environ["API_BASE_URL"] = api_url
     return CliRunner()
 
 
@@ -381,8 +397,6 @@ def sdk_client(api_key, api_base_url):
 
 
 @pytest.fixture
-@pytest.mark.skip(reason="f'Failed to create test model: {create_resp.status_code} - {create_resp.text}'")
-@pytest.mark.skip(reason="f'Failed to set up test model: {e}'")
 def test_model(api_available, api_key, test_asset):
     """Create (or retrieve) a test ML model for consistency tests."""
     headers = {
@@ -447,12 +461,13 @@ def test_model(api_available, api_key, test_asset):
         )
         if create_resp.status_code in (200, 201):
             yield str(create_resp.json()["id"])
+            return
         pytest.skip(f"Failed to create test model: {create_resp.status_code} - {create_resp.text}")
     except Exception as e:
+        pytest.skip(f"Failed to create test model via API: {e}")
 
 
 @pytest.fixture
-@pytest.mark.skip(reason="f'Failed to create test asset: {e}'")
 def test_asset(api_available, api_key):
     """Create a test asset"""
     headers = {"Authorization": f"ApiKey {api_key}", "Content-Type": "application/json"}
@@ -482,6 +497,7 @@ def test_asset(api_available, api_key):
         else:  # noqa: skip-in-body — runtime service dependency
             pytest.skip(f"Failed to create test asset: {response.status_code} - {response.text}")
     except Exception as e:
+        pytest.skip(f"Failed to create test asset: {e}")
 
 
 @pytest.fixture
@@ -672,7 +688,6 @@ class TestODHCLICompleteWorkflow:
         assert "id" in data, f"Response missing 'id': {data}"
         assert data["id"], "Model ID should be non-empty"
 
-@pytest.mark.skip(reason="API not reachable for training workflow")
     def test_cli_complete_workflow_train_model(
         self, runner, api_available, api_key, test_asset, test_dataset
     ):
@@ -723,9 +738,14 @@ class TestODHCLICompleteWorkflow:
                 assert result.exit_code == 0, (
                     f"CLI training submit failed (exit_code={result.exit_code}):\n{result.output}"
                 )
+            else:
+                pytest.skip(
+                    f"Failed to create model for training test: "
+                    f"{create_response.status_code} - {create_response.text}"
+                )
         except requests.exceptions.ConnectionError:
+            pytest.skip("External API not reachable for training workflow")
 
-@pytest.mark.skip(reason="API not reachable for deployment workflow")
     def test_cli_complete_workflow_deploy_model(self, runner, api_available, api_key, test_asset):
         """Test complete CLI workflow: deploy model"""
         if cli is None:  # noqa: skip-in-body — runtime service dependency
@@ -780,9 +800,14 @@ class TestODHCLICompleteWorkflow:
                 assert result.exit_code == 0, (
                     f"CLI deploy failed (exit_code={result.exit_code}):\n{result.output}"
                 )
+            else:
+                pytest.skip(
+                    f"Failed to create model for deployment test: "
+                    f"{create_response.status_code} - {create_response.text}"
+                )
         except requests.exceptions.ConnectionError:
+            pytest.skip("External API not reachable for deployment workflow")
 
-@pytest.mark.skip(reason="API not reachable for full lifecycle workflow")
     def test_cli_complete_workflow_full_lifecycle(
         self, runner, api_available, api_key, test_asset, test_dataset
     ):
@@ -894,6 +919,7 @@ class TestODHCLICompleteWorkflow:
             )
 
         except requests.exceptions.ConnectionError:
+            pytest.skip("External API not reachable for full lifecycle workflow")
 
 
 class TestODHSDKCompleteWorkflow:

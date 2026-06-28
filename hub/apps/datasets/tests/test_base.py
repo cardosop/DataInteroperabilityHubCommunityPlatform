@@ -5,6 +5,7 @@ This module provides common base classes to eliminate code duplication
 in setUp methods across test files.
 """
 
+import logging
 import uuid
 
 from django.contrib.auth import get_user_model
@@ -17,6 +18,7 @@ from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
 from hub.apps.users.models import UserStatus
 
+logger = logging.getLogger(__name__)
 User = get_user_model()
 
 
@@ -66,26 +68,38 @@ class DatasetsTestBase(TestCase):
         # Surface failures via ``storage_available`` so downstream tests
         # can skip rather than failing with an opaque storage error.
         self.storage_available = False
-        try:
-            import boto3
-            from django.conf import settings
+        if getattr(self, "_needs_storage", True):
+            try:
+                import boto3
+                from django.conf import settings
 
-            s3 = boto3.client(
-                "s3",
-                endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
-                aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
-                aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
-            )
-            s3.put_object(
-                Bucket=getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-test"),
-                Key=storage_path,
-                Body=csv_body,
-                ContentType="text/csv",
-            )
-            self.storage_available = True
-        except (OSError, ConnectionError, TimeoutError):
-            # MinIO / S3 unreachable — test will conditionally skip.
-            pass
+                s3 = boto3.client(
+                    "s3",
+                    endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                    aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
+                    aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
+                )
+                s3.put_object(
+                    Bucket=getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-test"),
+                    Key=storage_path,
+                    Body=csv_body,
+                    ContentType="text/csv",
+                )
+                self.storage_available = True
+            except Exception:
+                # MinIO / S3 unreachable, or boto3/botocore error
+                # (ClientError, EndpointConnectionError, NoCredentialsError, etc.)
+                # — downstream tests that need real storage MUST check
+                # self.storage_available and call self.skipTest().
+                logger.warning(
+                    "S3/MinIO upload failed for %s — storage-dependent tests will skip.",
+                    storage_path,
+                    exc_info=True,
+                )
+        else:
+            # _needs_storage=False — test class doesn't read file bytes
+            # from S3 (e.g. unit tests that only check model attributes).
+            self.storage_available = False
 
 
 class DatasetsTransactionTestBase(TestCase):
@@ -130,26 +144,38 @@ class DatasetsTransactionTestBase(TestCase):
             created_by=self.user,
         )
         self.storage_available = False
-        try:
-            import boto3
-            from django.conf import settings
+        if getattr(self, "_needs_storage", True):
+            try:
+                import boto3
+                from django.conf import settings
 
-            s3 = boto3.client(
-                "s3",
-                endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
-                aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
-                aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
-            )
-            s3.put_object(
-                Bucket=getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-test"),
-                Key=storage_path,
-                Body=csv_body,
-                ContentType="text/csv",
-            )
-            self.storage_available = True
-        except (OSError, ConnectionError, TimeoutError):
-            # MinIO / S3 unreachable — test will conditionally skip.
-            pass
+                s3 = boto3.client(
+                    "s3",
+                    endpoint_url=getattr(settings, "AWS_S3_ENDPOINT_URL", None),
+                    aws_access_key_id=getattr(settings, "AWS_ACCESS_KEY_ID", ""),
+                    aws_secret_access_key=getattr(settings, "AWS_SECRET_ACCESS_KEY", ""),
+                )
+                s3.put_object(
+                    Bucket=getattr(settings, "AWS_STORAGE_BUCKET_NAME", "hub-test"),
+                    Key=storage_path,
+                    Body=csv_body,
+                    ContentType="text/csv",
+                )
+                self.storage_available = True
+            except Exception:
+                # MinIO / S3 unreachable, or boto3/botocore error
+                # (ClientError, EndpointConnectionError, NoCredentialsError, etc.)
+                # — downstream tests that need real storage MUST check
+                # self.storage_available and call self.skipTest().
+                logger.warning(
+                    "S3/MinIO upload failed for %s — storage-dependent tests will skip.",
+                    storage_path,
+                    exc_info=True,
+                )
+        else:
+            # _needs_storage=False — test class doesn't read file bytes
+            # from S3 (e.g. unit tests that only check model attributes).
+            self.storage_available = False
 
 
 class DatasetsAPITestBase(DatasetsTestBase):

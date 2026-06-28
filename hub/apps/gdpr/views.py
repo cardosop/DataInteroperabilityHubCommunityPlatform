@@ -117,7 +117,7 @@ class ErasureRequestViewSet(viewsets.ReadOnlyModelViewSet):
         """
         Request data erasure (GDPR Article 17 - Right to be Forgotten).
 
-        POST /api/v1/users/me/request-erasure/
+        POST /api/v1/users/me/erasure-requests/request-erasure/
 
         Creates an erasure request.
         """
@@ -132,7 +132,13 @@ class ErasureRequestViewSet(viewsets.ReadOnlyModelViewSet):
             try:
                 erasure_request = service.execute_erasure(request_id=str(erasure_request.id))
             except Exception as e:
-                logger.warning(f"Failed to execute erasure immediately: {e}")
+                logger.error(
+                    "Failed to execute erasure immediately for request %s: %s",
+                    erasure_request.id, e, exc_info=True,
+                )
+                # Persist the error on the request so the consumer can see it
+                erasure_request.error_message = str(e)[:1000]
+                erasure_request.save(update_fields=["error_message", "updated_at"])
                 # Request is created, execution can be retried
 
             return Response(

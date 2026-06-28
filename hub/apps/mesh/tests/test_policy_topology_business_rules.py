@@ -38,7 +38,6 @@ from hub.apps.mesh.models import (
 from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
-UserModel = get_user_model()
 
 
 class PolicyBusinessRulesTest(TestCase):
@@ -95,7 +94,6 @@ class PolicyBusinessRulesTest(TestCase):
         )
 
         self.assertTrue(result.is_valid)
-        self.assertEqual(len(result.errors), 0)
 
     def test_validate_policy_application_domain_inactive(self):
         """Test policy application validation fails for inactive domain"""

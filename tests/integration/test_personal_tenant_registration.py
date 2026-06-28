@@ -33,7 +33,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
     def test_register_then_login_then_fetch_me_has_tenant(self):
         """Register without tenant_id, login, GET /auth/me/ returns tenant_id."""
         email = f"int-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass!123@Test"
         name = "Integration User"
 
         reg = self.client.post(
@@ -63,7 +63,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
     def test_register_then_create_asset_in_personal_tenant(self):
         """Register without tenant_id, login, create asset in personal tenant."""
         email = f"asset-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass!123@Test"
         name = "Asset User"
 
         reg = self.client.post(
@@ -93,7 +93,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
     def test_register_then_access_marketplace_as_consumer(self):
         """Register without tenant_id, login, GET marketplace listings works (DATA_CONSUMER)."""
         email = f"consumer-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass!123@Test"
         name = "Consumer User"
 
         reg = self.client.post(
@@ -131,7 +131,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
 
         try:
             email = f"isol-{uuid.uuid4().hex[:8]}@example.com"
-            password = "SecurePass123"
+            password = "SecurePass!123@Test"
             name = "Isolation User"
 
             reg = self.client.post(
@@ -183,7 +183,7 @@ class PersonalTenantRegistrationIntegrationTest(TestCase):
             kyc_status="UNVERIFIED",
         )
         email = f"provided-{uuid.uuid4().hex[:8]}@example.com"
-        password = "SecurePass123"
+        password = "SecurePass!123@Test"
         name = "Provided User"
 
         reg = self.client.post(

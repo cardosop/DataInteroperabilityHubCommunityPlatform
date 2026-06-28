@@ -218,7 +218,6 @@ class TestDockerComposeStaging:
             "dq-service",
             "compliance-service",
             "datacontract-service",
-            "search-service",
         ]
 
         for service_name in application_services:
@@ -245,13 +244,14 @@ class TestDockerComposeStaging:
         application_services = [
             "api-service",
             "worker-service",
-            "workflow-engine-service",
         ]
 
         for service_name in application_services:
-            if service_name in services:
-                service_config = services[service_name]
-                if "deploy" in service_config:
+            assert service_name in services, (
+                f"Required service '{service_name}' not found in docker-compose.staging.yml"
+            )
+            service_config = services[service_name]
+            if "deploy" in service_config:
                     deploy = service_config["deploy"]
                     assert "restart_policy" in deploy, (
                         f"Service {service_name} should have restart policy configured"
@@ -295,7 +295,6 @@ class TestDockerComposeStaging:
             "dq-service",
             "compliance-service",
             "datacontract-service",
-            "search-service",
         ]
         for service_name in application_services:
             assert service_name in services, (

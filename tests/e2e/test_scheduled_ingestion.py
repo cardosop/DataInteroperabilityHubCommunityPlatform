@@ -125,7 +125,6 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
 
         self.client.force_authenticate(user=self.user)
 
-@pytest.mark.skip(reason="f'Trigger request failed: {e!r} - Prefect may not be available'")
     def test_complete_ingestion_lifecycle(self):
         """Test complete ingestion lifecycle from creation to completion
 
@@ -215,7 +214,9 @@ class ScheduledIngestionE2ETest(TransactionTestCase):
                     f"/api/v1/scheduled-ingestions/{ingestion_id}/trigger/", timeout=30
                 )
             except Exception as e:
-            if response.status_code != status.HTTP_503_SERVICE_UNAVAILABLE:
+                # Connection/network error — will retry
+                pass
+            if response is not None and response.status_code != status.HTTP_503_SERVICE_UNAVAILABLE:
                 break
             if attempt < 2:
                 time.sleep(5)  # INTENTIONAL: e2e/integration test polling real services

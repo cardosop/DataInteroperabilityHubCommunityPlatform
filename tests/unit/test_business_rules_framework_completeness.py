@@ -10,6 +10,8 @@ Tests that verify:
 
 import inspect
 
+import pytest
+
 # Import all business rules classes
 from hub.apps.contracts.business_rules import ODPSBusinessRules, ODPSExportRules, ODPSLinkingRules
 from hub.apps.contracts.business_rules import ValidationResult as ContractsValidationResult
@@ -212,7 +214,16 @@ class TestFrameworkGaps:
         assert base_class_exists is True, "BusinessRules base class should exist (gap was closed)"
 
     def test_validation_result_no_duplication(self):
-        """Test that ValidationResult is not duplicated across modules (gap closed)."""
+        """Test that ValidationResult is consolidated to a single shared base class.
+
+        The duplication gap was closed by consolidating all ValidationResult
+        references to a single class at hub.apps.core.business_rules.base.
+        All three domain modules import and re-export the same class — this
+        eliminates code duplication while preserving the namespaced aliases
+        that calling code expects.
+        """
+        from hub.apps.core.business_rules.base import ValidationResult as BaseVR
+
         validation_results = [
             ContractsValidationResult,
             MeshValidationResult,
@@ -224,25 +235,81 @@ class TestFrameworkGaps:
             "All ValidationResult classes should exist"
         )
 
-        # They should be distinct classes (not duplicated from a common base)
+        # They should all be the SAME class (consolidated into one shared class)
+        # — this is what closed the duplication gap.
         unique_classes = set(id(cls) for cls in validation_results)
-        assert len(unique_classes) == len(validation_results), (
-            "ValidationResult classes should be distinct — duplication gap is closed"
+        assert len(unique_classes) == 1, (
+            f"ValidationResult should be a single shared class, not duplicated. "
+            f"Found {len(unique_classes)} distinct classes — consolidation gap remains."
         )
 
-    def test_common_utilities_do_not_exist(self):
-        """Test that common utilities do not exist (gap identified)."""
+        # All should resolve to the base ValidationResult
+        for cls in validation_results:
+            assert cls is BaseVR, (
+                f"{cls.__module__}.{cls.__name__} should be the base ValidationResult"
+            )
 
-        # Try to import common utilities
-        try:
-            from hub.apps.core.business_rules import utils
+    def test_common_utilities_module_exists_and_functional(self):
+        """Verify the common utilities module exists and is functional.
 
-            utils_exist = True
-        except (ImportError, ModuleNotFoundError):
-            utils_exist = False
+        The framework review identified a gap: no shared utilities module
+        existed for common validation helpers. This gap is now closed —
+        ``hub.apps.core.business_rules.utils`` provides five documented
+        helper functions.
+        """
+        from hub.apps.core.business_rules import utils
 
-        # This test documents the gap - utilities should exist but don't
-        assert utils_exist is False, "Common utilities do not exist (gap identified in review)"
+        assert utils is not None, "Common utilities module should be functional"
+
+        # All five utility functions should be callable
+        assert callable(utils.get_field_path)
+        assert callable(utils.validate_tenant_context)
+        assert callable(utils.check_value_overlap)
+        assert callable(utils.collect_errors)
+        assert callable(utils.make_validation_result)
+
+        # Smoke-test get_field_path — nested dict access
+        nested = {"a": {"b": {"c": 42}}}
+        assert utils.get_field_path(nested, "a.b.c") == 42
+        assert utils.get_field_path(nested, "a.b.x") is None
+        assert utils.get_field_path(nested, "a.b.x", default="fallback") == "fallback"
+        assert utils.get_field_path({"a": 1}, "a.b", default="missing") == "missing"
+
+        # Smoke-test validate_tenant_context — match
+        result = utils.validate_tenant_context("t1", ("resource", "t1"))
+        assert result.is_valid is True
+        assert len(result.errors) == 0
+
+        # Smoke-test validate_tenant_context — mismatch
+        result = utils.validate_tenant_context("t1", ("resource", "t2"))
+        assert result.is_valid is False
+        assert len(result.errors) == 1
+        assert "t2" in result.errors[0]
+
+        # Smoke-test check_value_overlap — list intersection
+        overlap = utils.check_value_overlap(["a", "b"], ["b", "c"])
+        assert overlap["overlaps"] is True
+        assert overlap["type"] == "LIST_INTERSECTION"
+        assert overlap["overlap_values"] == ["b"]
+
+        # Smoke-test collect_errors
+        errs = utils.collect_errors(
+            (True, "should not appear"),
+            (False, "should appear"),
+            (False, "also appears"),
+        )
+        assert errs == ["should appear", "also appears"]
+
+        # Smoke-test make_validation_result
+        vr = utils.make_validation_result(errors=["bad"], warnings=["careful"])
+        assert vr.is_valid is False
+        assert vr.errors == ["bad"]
+        assert vr.warnings == ["careful"]
+
+        vr2 = utils.make_validation_result()
+        assert vr2.is_valid is True
+        assert vr2.errors == []
+        assert vr2.warnings == []
 
 
 class TestFrameworkRequirements:

@@ -16,6 +16,7 @@ import json
 import time
 import uuid
 from datetime import UTC, datetime
+from unittest.mock import patch
 
 from django.http import JsonResponse
 from django.test import RequestFactory, TestCase, override_settings
@@ -89,8 +90,13 @@ class TestIdempotencyErrorHandling(TestCase):
             "Empty key should be ignored, allowing normal request processing",
         )
 
-    def test_expired_idempotency_key_detection(self):
-        """Test expired idempotency key detection via TTL expiry.
+    def test_redis_ttl_eviction_removes_idempotency_record(self):
+        """Test that Redis TTL eviction removes idempotency records.
+
+        After TTL expiry, get_idempotency_record() returns None. This
+        tests Redis behavior, NOT the middleware's 410 Gone response.
+        For the middleware-level expired-key test, see
+        test_expired_idempotency_key_returns_410_through_middleware.
 
         Uses a short TTL with polling to avoid a hard time.sleep() that
         slows down the suite and is fragile under load.
@@ -158,6 +164,45 @@ class TestIdempotencyErrorHandling(TestCase):
             # Response should be returned (fail-open behavior)
             self.assertIsNotNone(response_from_process_response)
             self.assertEqual(response_from_process_response.status_code, 201)
+
+    @patch("hub.apps.api.middleware.idempotency.check_idempotency_key_expired")
+    @patch("hub.apps.api.middleware.idempotency.get_idempotency_record")
+    def test_expired_idempotency_key_returns_410_through_middleware(
+        self, mock_get_record, mock_expired
+    ):
+        """Middleware must return 410 Gone when idempotency key has expired.
+
+        The 410 path at idempotency.py:160-183 requires TWO conditions:
+        1. ``get_idempotency_record`` returns None (record cannot be read)
+        2. ``check_idempotency_key_expired`` returns True (key existed but TTL==0)
+
+        Condition (2) is a near-impossible race condition in practice
+        because Redis deletes keys with TTL==0. We patch both helpers
+        to deterministically exercise the 410 response path.
+        """
+        mock_get_record.return_value = None
+        mock_expired.return_value = True
+
+        idempotency_key = str(uuid.uuid4())
+
+        def get_response(request):
+            return JsonResponse({"id": "new"}, status=201)
+
+        middleware = IdempotencyMiddleware(get_response)
+        request = self.factory.post(
+            "/api/v1/assets/",
+            data=json.dumps({"name": "test"}),
+            content_type="application/json",
+            HTTP_IDEMPOTENCY_KEY=idempotency_key,
+        )
+        response = middleware(request)
+
+        self.assertEqual(response.status_code, 410)
+        response_body = json.loads(response.content)
+        self.assertEqual(
+            response_body["error"]["code"], "IDEMPOTENCY_KEY_EXPIRED"
+        )
+        self.assertEqual(response_body["error"]["http_status"], 410)
 
     def test_idempotency_conflict_returns_409(self):
         """Test idempotency conflict (same key, different body) returns 409."""
@@ -234,49 +279,6 @@ class TestIdempotencyErrorHandling(TestCase):
         self.assertEqual(
             response_data["id"], "123", "Response body should match the get_response handler output"
         )
-
-    def test_redis_connection_error_handled_gracefully(self):
-        """Test Redis connection failure is handled gracefully (fail-open).
-
-        Covers both retrieval failure and lock-acquisition failure, which
-        follow the same fail-open code path. Previously had two identical
-        tests that only varied by docstring — consolidated into one.
-        """
-
-        def get_response(request):
-            return JsonResponse({"id": "123"}, status=201)
-
-        middleware = IdempotencyMiddleware(get_response)
-        idempotency_key = str(uuid.uuid4())
-
-        # Create a request with valid idempotency key
-        request = self.factory.post(
-            "/api/v1/assets/",
-            data=json.dumps({"name": "test"}),
-            content_type="application/json",
-            HTTP_IDEMPOTENCY_KEY=idempotency_key,
-        )
-
-        # Simulate Redis failure by using invalid URL
-        with override_settings(REDIS_URL="redis://invalid-host:6379/0"):
-            # Reset middleware Redis client
-            middleware._redis_client = None
-
-            # process_request should return None (fail open)
-            response_from_process_request = middleware.process_request(request)
-            self.assertIsNone(
-                response_from_process_request,
-                "Should fail open and return None from process_request",
-            )
-
-            # process_response will still be called and add headers
-            # but the request was processed normally
-            actual_response = get_response(request)
-            response_from_process_response = middleware.process_response(request, actual_response)
-
-            # Response should be returned (fail-open behavior)
-            self.assertIsNotNone(response_from_process_response)
-            self.assertEqual(response_from_process_response.status_code, 201)
 
     def test_idempotency_key_header_present_in_success_responses(self):
         """Test Idempotency-Key header is present in success responses."""

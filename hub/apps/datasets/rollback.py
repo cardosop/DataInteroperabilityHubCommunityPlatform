@@ -19,6 +19,8 @@ from .versioning import VersionHistoryManager
 
 logger = structlog.get_logger(__name__)
 
+logger = structlog.get_logger(__name__)
+
 
 class RollbackTrigger(str, Enum):
     """Rollback trigger types"""
@@ -196,8 +198,13 @@ class VersionRollbackManager:
                     },
                 }
         except (ImportError, AttributeError):
-            # Compliance models not available or field doesn't exist
-            pass
+            # Compliance models not available or expected field missing —
+            # log a warning so operators can detect a silent compliance-gap.
+            logger.warning(
+                "Compliance check skipped — compliance models unavailable "
+                "or field mismatch for dataset %s",
+                dataset.id,
+            )
 
         return None
 

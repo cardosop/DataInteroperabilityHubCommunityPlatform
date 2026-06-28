@@ -169,7 +169,6 @@ class JobTimeoutsTest(TestCase):
             expected = JOB_RETRY_BASE_DELAY * (2**retry_count)
             self.assertEqual(delay, expected)
 
-@pytest.mark.skip(reason="f'django-rq not properly configured: {e}'")
     def test_retry_job_transient_failure_first_retry(self):
         """Test retrying job with transient failure on first retry"""
         job = JobFactory.create_job(
@@ -191,8 +190,8 @@ class JobTimeoutsTest(TestCase):
             self.assertEqual(job.details_json.get("retry_count"), 1)
             self.assertIsNotNone(job.details_json.get("last_retry_error"))
             self.assertIsNotNone(job.details_json.get("last_retry_at"))
-        except (ImportError, AttributeError) as e:
-            # django-rq not properly configured - skip this test
+        except (ImportError, AttributeError):
+            self.skipTest("django-rq not configured — skipping")
 
     def test_retry_job_transient_failure_max_retries(self):
         """Test retrying job with transient failure when max retries reached"""
@@ -248,7 +247,6 @@ class JobTimeoutsTest(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, JobStatus.FAILED)  # Status unchanged
 
-@pytest.mark.skip(reason="f'django-rq not properly configured: {e}'")
     def test_retry_job_increments_retry_count(self):
         """Test that retry count is incremented on each retry"""
         job = JobFactory.create_job(
@@ -265,10 +263,9 @@ class JobTimeoutsTest(TestCase):
             self.assertTrue(retried)
             job.refresh_from_db()
             self.assertEqual(job.details_json.get("retry_count"), 2)
-        except (ImportError, AttributeError) as e:
-            # django-rq not properly configured - skip this test
+        except (ImportError, AttributeError):
+            self.skipTest("django-rq not configured — skipping")
 
-@pytest.mark.skip(reason="f'django-rq not properly configured: {e}'")
     def test_retry_job_resets_status_and_timestamps(self):
         """Test that retry resets job status and timestamps"""
         job = JobFactory.create_job(
@@ -291,10 +288,9 @@ class JobTimeoutsTest(TestCase):
             self.assertIsNone(job.started_at)
             self.assertIsNone(job.completed_at)
             self.assertIsNone(job.error_message)
-        except (ImportError, AttributeError) as e:
-            # django-rq not properly configured - skip this test
+        except (ImportError, AttributeError):
+            self.skipTest("django-rq not configured — skipping")
 
-@pytest.mark.skip(reason="f'django-rq not properly configured: {e}'")
     def test_retry_job_different_max_retries_per_type(self):
         """Test that different job types have different max retries"""
         error = ConnectionError("Service unavailable")
@@ -310,7 +306,9 @@ class JobTimeoutsTest(TestCase):
         try:
             retried = retry_job(job1, JobType.DQ_RUN, error)
             self.assertTrue(retried)  # Should retry (2 < 3)
-        except (ImportError, AttributeError) as e:
+        except (ImportError, AttributeError):
+            # django-rq not properly configured
+            pass
 
         # CONTRACT_MIGRATION: 1 retry
         job2 = JobFactory.create_job(

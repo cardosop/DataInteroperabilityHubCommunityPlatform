@@ -41,10 +41,14 @@ class APIVersion:
         return self == other or self < other
 
     def __gt__(self, other) -> bool:
-        return not self <= other
+        if not isinstance(other, APIVersion):
+            return False
+        return (self.major, self.minor, self.patch) > (other.major, other.minor, other.patch)
 
     def __ge__(self, other) -> bool:
-        return not self < other
+        if not isinstance(other, APIVersion):
+            return False
+        return (self.major, self.minor, self.patch) >= (other.major, other.minor, other.patch)
 
     @classmethod
     def parse(cls, version_str: str) -> APIVersion | None:

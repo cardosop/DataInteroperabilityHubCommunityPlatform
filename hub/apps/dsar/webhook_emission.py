@@ -38,6 +38,12 @@ def publish_dsar_event(row: DSARRequest, event_type: WebhookEventType) -> int:
             event_data=_payload(row),
         )
     except Exception as exc:
+        # Webhook emission is best-effort — a delivery failure must not
+        # crash the caller's DSAR workflow (status transitions, SLA
+        # scans, etc.).  All exception types are caught so programming
+        # errors inside WebhookDeliveryService (e.g. a missing field
+        # in the payload) are surfaced in logs rather than propagated
+        # as 500s to the API consumer.
         logger.exception(
             "dsar_webhook_trigger_failed",
             dsar_id=str(row.id),

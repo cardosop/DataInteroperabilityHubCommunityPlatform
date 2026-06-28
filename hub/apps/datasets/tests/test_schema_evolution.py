@@ -276,51 +276,10 @@ class SchemaEvolutionTrackerTest(DatasetsTestBase):
 
     # ========== ERROR HANDLING ==========
 
-    def test_schema_evolution_no_changes(self):
-        """Test error handling in schema evolution"""
-        old_schema = {"fields": [{"name": "col1", "data_type": "string"}]}
-        new_schema = {"fields": [{"name": "col1", "data_type": "string"}]}
-
-        # Should handle errors gracefully
-        try:
-            diff = SchemaEvolutionTracker.calculate_schema_diff(old_schema, new_schema)
-            # Should return diff
-            self.assertIsNotNone(diff)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("calculate_schema_diff should handle errors gracefully")
-
-    def test_track_schema_version_with_parent(self):
-        """Test error handling when tracking schema version fails"""
-        parent = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": []},
-            format="CSV",
-            version=1,
-            created_by=self.user,
-        )
-
-        child = Dataset.objects.create(
-            tenant=self.tenant,
-            asset=self.asset,
-            file=self.file,
-            schema_json={"fields": []},
-            format="CSV",
-            version=2,
-            created_by=self.user,
-        )
-
-        # Should handle errors gracefully (no exception)
-        try:
-            schema_version = SchemaEvolutionTracker.track_schema_version(
-                child, parent_dataset=parent
-            )
-            # May return a SchemaVersion instance or None
-            self.assertTrue(
-                schema_version is None or hasattr(schema_version, "dataset"),
-                f"Expected None or SchemaVersion, got {type(schema_version).__name__}",
-            )
-        except Exception:
-            self.fail("track_schema_version should handle errors gracefully")
+    # calculate_schema_diff error paths are covered by
+    # test_calculate_schema_diff_no_changes (line 37) and
+    # test_schema_evolution_failure_empty_schemas (line 269).
+    #
+    # track_schema_version with parent is covered by
+    # test_track_schema_version (line 185) which verifies the
+    # full SchemaVersion shape including compatibility_level.

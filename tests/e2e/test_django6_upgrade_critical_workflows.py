@@ -169,14 +169,16 @@ class Django6JSONFieldWorkflowTest(TestCase):
             created_by=self.user,
         )
 
-        # Query by jurisdiction
+        # Query by jurisdiction (tenant-scoped to avoid --reuse-db cross-contamination)
         gdpr_contracts = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__jurisdictions__contains=["GDPR"]
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__jurisdictions__contains=["GDPR"],
         )
         self.assertEqual(gdpr_contracts.count(), 2)
 
         ccpa_contracts = Contract.objects.filter(
-            hub_contract_json__privacy_compliance__jurisdictions__contains=["CCPA"]
+            tenant=self.tenant,
+            hub_contract_json__privacy_compliance__jurisdictions__contains=["CCPA"],
         )
         self.assertEqual(ccpa_contracts.count(), 1)
         self.assertEqual(ccpa_contracts.first().id, contract1.id)
@@ -431,7 +433,9 @@ class Django6DatabaseOperationsTest(TestCase):
         unique_key = f"rollback-test-{self.tenant.id}"
         asset = Asset.objects.create(tenant=self.tenant, key=unique_key, name="Test Asset Rollback")
 
-        try:
+        # Verify transaction rollback: contract created inside the atomic block
+        # must be rolled back when the exception is raised.
+        with self.assertRaises(Exception, msg="Transaction must raise and roll back") as cm:
             with transaction.atomic():
                 Contract.objects.create(
                     tenant=self.tenant,
@@ -447,11 +451,20 @@ class Django6DatabaseOperationsTest(TestCase):
                     created_by=self.user,
                 )
                 raise Exception("Test rollback")
-        except Exception:
-            pass
 
-        # Our contract should not exist after rollback (query by our asset)
-        self.assertEqual(Contract.objects.filter(asset=asset).count(), 0)
+        # Confirm the exception is our rollback trigger, not a DB error from create()
+        self.assertIn(
+            "Test rollback",
+            str(cm.exception),
+            "Exception must be the intentional rollback trigger, not a DB error",
+        )
+
+        # Contract must not exist after rollback
+        self.assertEqual(
+            Contract.objects.filter(asset=asset).count(),
+            0,
+            "Contract should not exist after transaction rollback",
+        )
 
     def test_bulk_operations(self):
         """Test bulk operations work correctly."""

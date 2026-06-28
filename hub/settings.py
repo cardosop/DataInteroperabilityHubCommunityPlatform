@@ -718,7 +718,14 @@ if "test" in sys.argv or "pytest" in sys.modules:
                     use_production_db or use_shared_test_db
                 ),  # Don't create if using existing
             },
-            "CONN_MAX_AGE": 0,  # Don't reuse connections in tests
+            # With --reuse-db and long test classes (e.g. 16 tests × 30s = 8 min),
+            # CONN_MAX_AGE=0 forces every connection to be immediately expired while
+            # Django TestCase atomics require persistent connections.  PostgreSQL
+            # eventually idles-out the connection, and Django 6.0's
+            # CONN_HEALTH_CHECKS does not catch InterfaceError (it is a sibling of
+            # DatabaseError in Django 6.0, not a child).  Setting a reasonable max
+            # age lets connections survive the class lifetime so health checks work.
+            "CONN_MAX_AGE": env.int("DB_TEST_CONN_MAX_AGE", default=600),
             "CONN_HEALTH_CHECKS": True,  # Detect stale connections
             "OPTIONS": {
                 # TCP keepalive — prevents server-side idle-timeout

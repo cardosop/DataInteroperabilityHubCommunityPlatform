@@ -15,15 +15,17 @@ Coverage:
 """
 
 import uuid
+from datetime import timedelta
 
 import pytest
+from django.contrib.sessions.models import Session
 from django.test import TestCase
 from django.utils import timezone
 from rest_framework import status
 from rest_framework.test import APIClient
 
 from hub.apps.audit.models import AuditEvent
-from hub.apps.auth.models import APIKey
+from hub.apps.baas.models import APIKey, APITier, APITierModel
 from hub.apps.gdpr.models import ErasureRequest, ErasureRequestStatus
 from hub.apps.tenants.models import Tenant, TenantStatus
 from hub.apps.testing.billing_support import ensure_tenant_has_active_subscription
@@ -56,12 +58,17 @@ class ErasureWorkflowIntegrationTest(TestCase):
             display_name="User To Erase",
         )
 
-        # Create API key for user
+        # Create API tier and key for user
+        self.api_tier, _ = APITierModel.objects.get_or_create(
+            name=APITier.FREE,
+            defaults={"max_requests_per_month": 1000, "requests_per_minute": 10},
+        )
         test_key = "test_api_key_12345"
         key_hash = APIKey.hash_key(test_key)
         self.api_key = APIKey.objects.create(
             tenant=self.tenant,
             user=self.user_to_erase,
+            tier=self.api_tier,
             name="Test API Key",
             key_hash=key_hash,
         )
@@ -81,7 +88,7 @@ class ErasureWorkflowIntegrationTest(TestCase):
         self.client.force_authenticate(user=self.user_to_erase)
 
         response = self.client.post(
-            "/api/v1/users/me/request-erasure/",
+            "/api/v1/users/me/erasure-requests/request-erasure/",
             {},
             format="json",
         )
@@ -124,8 +131,17 @@ class ErasureWorkflowIntegrationTest(TestCase):
         )
 
     def test_erasure_request_tenant_isolation(self):
-        """Test erasure request tenant isolation"""
-        # Create another tenant and user
+        """Test erasure request tenant isolation — users from tenant B
+        cannot see erasure requests from tenant A."""
+        # Create an erasure request for user_to_erase in tenant A
+        erasure_request = ErasureRequest.objects.create(
+            tenant=self.tenant,
+            user=self.user_to_erase,
+            status=ErasureRequestStatus.PENDING,
+            requested_at=timezone.now(),
+        )
+
+        # Create another tenant and user (tenant B)
         tenant2 = Tenant.objects.create(
             name=f"Other Tenant {uuid.uuid4().hex[:8]}",
             slug=f"other-tenant-{uuid.uuid4().hex[:8]}",
@@ -138,23 +154,26 @@ class ErasureWorkflowIntegrationTest(TestCase):
             status=UserStatus.ACTIVE,
         )
 
+        # Authenticate as user2 (tenant B)
         self.client.force_authenticate(user=user2)
 
-        # Try to create erasure request for user in different tenant (should fail)
-        response = self.client.post(
-            "/api/v1/users/me/request-erasure/",
-            {},
-            format="json",
+        # List erasure requests — user2 should only see their own (empty), not
+        # user_to_erase's request from tenant A.
+        response = self.client.get("/api/v1/users/me/erasure-requests/")
+        self.assertIn(
+            response.status_code,
+            [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND],
+            f"Unexpected status code: {response.status_code}",
         )
 
-        # Should only create request for user2, not user_to_erase
-        if response.status_code in [status.HTTP_201_CREATED, status.HTTP_200_OK]:
-            erasure_requests = ErasureRequest.objects.filter(user=user2)
-            self.assertTrue(erasure_requests.exists())
-
-            # Verify user_to_erase's request not created by user2
-            ErasureRequest.objects.filter(user=self.user_to_erase)
-            # Should be empty or created by user_to_erase themselves
+        if response.status_code == status.HTTP_200_OK:
+            results = response.data if isinstance(response.data, list) else response.data.get("results", [])
+            erasure_ids = [r["id"] for r in results]
+            self.assertNotIn(
+                str(erasure_request.id),
+                erasure_ids,
+                "user2 in tenant B should not see user_to_erase's erasure request from tenant A",
+            )
 
     def test_list_erasure_requests(self):
         """Test listing erasure requests"""
@@ -199,7 +218,6 @@ class ErasureWorkflowIntegrationTest(TestCase):
             self.assertEqual(response.data["id"], str(erasure_request.id))
             self.assertEqual(response.data["status"], ErasureRequestStatus.PENDING)
 
-@pytest.mark.skip(reason="ErasureService.execute_erasure not fully implemented")
     def test_erasure_execution_anonymizes_user(self):
         """Test that erasure execution anonymizes user data"""
         # Create erasure request
@@ -216,8 +234,8 @@ class ErasureWorkflowIntegrationTest(TestCase):
         erasure_service = ErasureService()
         try:
             erasure_service.execute_erasure(str(erasure_request.id))
-        except Exception:
-            # Service may not be fully implemented, skip if error
+        except Exception as e:
+            self.skipTest(f"ErasureService.execute_erasure not available: {e}")
 
         # Refresh user from DB
         self.user_to_erase.refresh_from_db()
@@ -235,9 +253,25 @@ class ErasureWorkflowIntegrationTest(TestCase):
         self.assertEqual(erasure_request.status, ErasureRequestStatus.COMPLETED)
         self.assertIsNotNone(erasure_request.completed_at)
 
-@pytest.mark.skip(reason="ErasureService.execute_erasure not fully implemented")
     def test_erasure_execution_revokes_sessions(self):
         """Test that erasure execution revokes user sessions"""
+        # Create a Django session for the user (must be properly encoded)
+        from django.contrib.sessions.backends.db import SessionStore as DBSessionStore
+
+        session_key = f"test-erasure-session-{uuid.uuid4().hex[:16]}"
+        store = DBSessionStore()
+        store["_auth_user_id"] = str(self.user_to_erase.id)
+        encoded_session_data = store.encode(store._session)
+        Session.objects.create(
+            session_key=session_key,
+            session_data=encoded_session_data,
+            expire_date=timezone.now() + timedelta(days=1),
+        )
+        self.assertTrue(
+            Session.objects.filter(session_key=session_key).exists(),
+            "Session should exist before erasure",
+        )
+
         # Create erasure request
         erasure_request = ErasureRequest.objects.create(
             tenant=self.tenant,
@@ -252,12 +286,15 @@ class ErasureWorkflowIntegrationTest(TestCase):
         erasure_service = ErasureService()
         try:
             erasure_service.execute_erasure(str(erasure_request.id))
-        except Exception:
+        except Exception as e:
+            self.fail(f"Erasure execution raised unexpected exception: {e}")
 
-        # Verify sessions revoked (check session model if exists)
-        # Sessions should be deleted or invalidated
+        # Verify session was deleted
+        self.assertFalse(
+            Session.objects.filter(session_key=session_key).exists(),
+            "User session should be deleted after erasure execution",
+        )
 
-@pytest.mark.skip(reason="ErasureService.execute_erasure not fully implemented")
     def test_erasure_execution_revokes_api_keys(self):
         """Test that erasure execution revokes API keys"""
         # Create erasure request
@@ -277,7 +314,8 @@ class ErasureWorkflowIntegrationTest(TestCase):
         erasure_service = ErasureService()
         try:
             erasure_service.execute_erasure(str(erasure_request.id))
-        except Exception:
+        except Exception as e:
+            self.fail(f"Erasure execution raised unexpected exception: {e}")
 
         # Verify API key revoked (deleted or marked as revoked)
         api_key_refreshed = APIKey.objects.filter(id=self.api_key.id).first()
@@ -290,7 +328,6 @@ class ErasureWorkflowIntegrationTest(TestCase):
             # Or deleted
             self.assertFalse(APIKey.objects.filter(id=self.api_key.id).exists())
 
-@pytest.mark.skip(reason="ErasureService.execute_erasure not fully implemented")
     def test_erasure_execution_creates_audit_event(self):
         """Test that erasure execution creates audit event"""
         # Create erasure request
@@ -307,9 +344,19 @@ class ErasureWorkflowIntegrationTest(TestCase):
         erasure_service = ErasureService()
         try:
             erasure_service.execute_erasure(str(erasure_request.id))
-        except Exception:
+        except Exception as e:
+            self.fail(f"Erasure execution raised unexpected exception: {e}")
 
         # Verify audit event created (ErasureService creates ERASURE_COMPLETED for ERASURE_REQUEST)
+        audit_event = AuditEvent.objects.filter(
+            resource_type="ERASURE_REQUEST",
+            action="ERASURE_COMPLETED",
+            resource_id=str(erasure_request.id),
+        ).first()
+        self.assertIsNotNone(
+            audit_event,
+            "ERASURE_COMPLETED audit event should be created during erasure execution",
+        )
         audit_events = AuditEvent.objects.filter(
             resource_type="ERASURE_REQUEST",
             resource_id=str(erasure_request.id),

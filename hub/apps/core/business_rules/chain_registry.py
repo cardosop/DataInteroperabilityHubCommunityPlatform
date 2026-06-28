@@ -8,7 +8,11 @@ previous chain with the same name.
 
 from __future__ import annotations
 
-from hub.apps.core.business_rules.chains import register_chain
+from hub.apps.core.business_rules.chains import (
+    execute_chain,
+    get_chain,
+    register_chain,
+)
 
 # ── contract.publish ──────────────────────────────────────────────
 

@@ -37,7 +37,23 @@ class EventPublisher:
         self.service_name = service_name
         self.default_tenant_id = tenant_id
         self.default_user_id = user_id
-        self.event_bus = get_event_bus()
+        self._event_bus = None  # lazy — deferred until first publish()
+
+    @property
+    def event_bus(self):
+        """Lazy singleton accessor — EventBus is created on first use, not at init.
+
+        This prevents service constructors (e.g. MarketplaceIntegrationService)
+        from triggering Redis connection during import / LiveServer thread start.
+        """
+        if self._event_bus is None:
+            self._event_bus = get_event_bus()
+        return self._event_bus
+
+    @event_bus.setter
+    def event_bus(self, value):
+        """Allow tests to inject a mock/stub event bus."""
+        self._event_bus = value
 
     def publish(
         self,

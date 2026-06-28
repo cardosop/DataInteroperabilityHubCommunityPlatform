@@ -5,12 +5,15 @@ Service layer for dataset versioning operations.
 Extracts versioning logic from versioning.py module.
 """
 
+import logging
 from typing import Any
 
 from hub.apps.core.events.service_publishers import VersioningEventPublisher
 from hub.apps.core.services.base import BaseService
 from hub.apps.datasets.models import Dataset
 from hub.apps.datasets.versioning import VersionHistoryManager
+
+logger = logging.getLogger(__name__)
 
 
 class VersioningService(BaseService, VersioningEventPublisher):
@@ -153,9 +156,10 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 user_id=self.user_id,
             )
         except Exception:
-            # Don't fail version creation if event publishing fails
-            # Event publishing errors are logged by the publisher
-            pass
+            logger.exception(
+                "Failed to publish version.created event for dataset %s",
+                updated_dataset.id,
+            )
 
         return updated_dataset
 
@@ -236,8 +240,10 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 **kwargs,
             )
         except Exception:
-            # Don't fail version update if event publishing fails
-            pass
+            logger.exception(
+                "Failed to publish version.updated event for dataset %s",
+                dataset.id,
+            )
 
         return dataset
 
@@ -273,8 +279,10 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 **kwargs,
             )
         except Exception:
-            # Don't fail deletion if event publishing fails
-            pass
+            logger.exception(
+                "Failed to publish version.deleted event for dataset %s",
+                dataset.id,
+            )
 
         # Delete the dataset version
         dataset.delete()
@@ -332,8 +340,10 @@ class VersioningService(BaseService, VersioningEventPublisher):
                 **kwargs,
             )
         except Exception:
-            # Don't fail promotion if event publishing fails
-            pass
+            logger.exception(
+                "Failed to publish version.promoted event for dataset %s",
+                dataset.id,
+            )
 
         return dataset
 

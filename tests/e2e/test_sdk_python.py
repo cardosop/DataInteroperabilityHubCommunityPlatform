@@ -731,7 +731,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
             kyc_status=KYCStatus.VERIFIED,
         )
         User.objects.create_user(
-            email="other@example.com",
+            email=f"other-{uuid.uuid4().hex[:8]}@example.com",
             password="testpass123",
             tenant=other_tenant,
             status=UserStatus.ACTIVE,
@@ -755,7 +755,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
 
     # Advanced Features Tests
 
-@pytest.mark.skip(reason="Presigned upload URL host not reachable from test runner (e.g. localhost/port not exposed when tests run in Docker)")
+    @pytest.mark.skip(reason="Presigned upload URL host not reachable from test runner (e.g. localhost/port not exposed when tests run in Docker)")
     def test_sdk_file_upload_flow(self):
         """Test SDK file upload flow with MinIO health check"""
         # Check MinIO availability first
@@ -812,6 +812,7 @@ class SDKPythonE2ETest(LiveServerTestCase):
                         )
                     upload_response.raise_for_status()
             except httpx.ConnectError:
+                pytest.skip(
                     "Presigned upload URL host not reachable from test runner "
                     "(e.g. localhost/port not exposed when tests run in Docker)"
                 )

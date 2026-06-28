@@ -143,6 +143,8 @@ class DataMeshDomainMigrationTest(TestCase):
                     continue
                 for col_name in column_names:
                     col = col_name.lower()
+                    # Substring matching is intentional — index column names
+                    # may include type suffixes (e.g. "tenant_id", "owner_id").
                     if "tenant" in col:
                         found_tenant = True
                     if "owner" in col:
@@ -168,6 +170,7 @@ class DataMeshDomainMigrationTest(TestCase):
                 ORDER BY constraint_name;
             """)
             constraints = {row[0]: row[1] for row in cursor.fetchall()}
+            # Substring match — exact constraint name varies with DB engine
             unique_found = any("unique_domain_name_per_tenant" in n.lower() for n in constraints)
             self.assertTrue(
                 unique_found,
@@ -327,7 +330,6 @@ class PolicyApplicationComplianceReportMigrationTest(TestCase):
             key=f"test-asset-{uid}",
             name="Test Asset",
             status=AssetStatus.ACTIVE,
-            visibility=AssetVisibility.INTERNAL,
             created_by=self.user,
         )
 

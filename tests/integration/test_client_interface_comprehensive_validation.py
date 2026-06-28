@@ -502,14 +502,15 @@ class CLIComprehensiveTest(TransactionTestCase):
 
         result = self.runner.invoke(cli, ["contracts", "list"])
 
-        # Should fail with auth error
-        if result.exit_code != 0:
-            self.assertTrue(
-                "error" in result.output.lower()
-                or "auth" in result.output.lower()
-                or "unauthorized" in result.output.lower(),
-                "CLI should provide clear error message for authentication failure",
-            )
+        # CLI MUST fail with an invalid API key
+        self.assertNotEqual(result.exit_code, 0,
+                            "CLI must fail with non-zero exit code when using an invalid API key")
+        self.assertTrue(
+            "error" in result.output.lower()
+            or "auth" in result.output.lower()
+            or "unauthorized" in result.output.lower(),
+            f"CLI should provide clear error message for authentication failure, got: {result.output}",
+        )
 
     def test_cli_link_odps_command(self):
         """Test CLI link-odps command works correctly."""
@@ -837,7 +838,12 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
             from datahub_interoperability import DataHubClient, DataHubClientConfig
 
             api_base_url = self._get_sdk_base_url()
-            config = DataHubClientConfig(base_url=api_base_url, api_token=self.api_key_plaintext)
+            # Use a longer timeout (300s, matching jobs/compliance operations)
+            # because ODPS creation triggers parsing, normalization, and
+            # semantic mapping which can take >30s on a loaded server.
+            config = DataHubClientConfig(
+                base_url=api_base_url, api_token=self.api_key_plaintext, timeout=300.0
+            )
             return DataHubClient(config)
         except ImportError:
             return None
@@ -987,10 +993,10 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
             asyncio.run(run_test())
         except ImportError:
             self.skipTest("SDK not installed")
-        except Exception as e:
+        except OSError as e:
             if "Connection" in str(e) or "Network" in str(e):
                 self.skipTest(f"API not available: {e}")
-            # If NotFoundError is not raised, verify error is handled gracefully
+            raise
 
     def test_sdk_error_handling_validation_error(self):
         """Test SDK error handling for validation errors."""
@@ -1020,10 +1026,10 @@ class PythonSDKComprehensiveTest(TransactionTestCase):
             asyncio.run(run_test())
         except ImportError:
             self.skipTest("SDK not installed")
-        except Exception as e:
+        except OSError as e:
             if "Connection" in str(e) or "Network" in str(e):
                 self.skipTest(f"API not available: {e}")
-            # If ValidationError is not raised, verify error is handled gracefully
+            raise
 
     def test_sdk_authentication_works(self):
         """Test SDK authentication works correctly."""
@@ -2101,9 +2107,11 @@ class WebhookComprehensiveTest(TransactionTestCase):
                 created_by=self.user,
             )
 
-            # Verify webhook has secret
+            # Verify webhook has secret (encrypted at rest; access via decrypted_secret)
             self.assertEqual(
-                webhook.secret, "test-secret-123", "Webhook should store secret correctly"
+                webhook.decrypted_secret,
+                "test-secret-123",
+                "Webhook should store secret correctly",
             )
 
             # Create ODPS contract
@@ -2128,9 +2136,9 @@ class WebhookComprehensiveTest(TransactionTestCase):
             delivery = WebhookDelivery.objects.filter(webhook=webhook).first()
             self.assertIsNotNone(delivery, "Webhook delivery should be created")
 
-            # Verify secret is accessible from webhook
+            # Verify secret is accessible from webhook (encrypted at rest; access via decrypted_secret)
             self.assertEqual(
-                delivery.webhook.secret,
+                delivery.webhook.decrypted_secret,
                 "test-secret-123",
                 "Webhook delivery should have access to webhook secret for authentication",
             )

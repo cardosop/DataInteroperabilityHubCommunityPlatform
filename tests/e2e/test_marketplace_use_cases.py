@@ -473,21 +473,26 @@ class MarketplacePurchaseUseCasesTest(E2ETestBase):
             self.assertEqual(entitlement_data["status"], EntitlementStatus.ACTIVE)
 
     def test_purchase_own_listing_fails(self):
-        """Test that provider cannot purchase their own listing"""
+        """Test that provider purchasing their own listing creates a same-tenant governance request.
+
+        Same-tenant orders are intentionally allowed as internal data governance
+        requests — they are created with same_tenant_request=True metadata and
+        always require manual approval (even FREE_AUTO_APPROVE listings).
+        """
         # Provider tries to purchase their own listing
         order_response = self.provider_client.post(
             "/api/v1/marketplace/orders/", {"listing_id": str(self.listing.id)}, format="json"
         )
 
-        # Should fail with appropriate error
-        self.assertIn(
-            order_response.status_code, [status.HTTP_400_BAD_REQUEST, status.HTTP_403_FORBIDDEN]
+        # Same-tenant orders return 201 (internal governance request, not an error)
+        self.assertEqual(order_response.status_code, status.HTTP_201_CREATED)
+        order_data = get_response_data(order_response) or {}
+        # Verify it's marked as a same-tenant request
+        metadata = order_data.get("metadata_json", {})
+        self.assertTrue(
+            metadata.get("same_tenant_request", False),
+            "Same-tenant order should have same_tenant_request=True",
         )
-        if order_response.status_code != status.HTTP_201_CREATED:
-            error_message = str(get_response_data(order_response) or {}).lower()
-            self.assertTrue(
-                "own" in error_message or "provider" in error_message or "cannot" in error_message
-            )
 
 
 class MarketplaceEntitlementUseCasesTest(E2ETestBase):

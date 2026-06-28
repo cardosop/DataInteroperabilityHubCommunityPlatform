@@ -247,8 +247,14 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
             "name": "<script>alert(1)</script>",
         }
         response = self.client.post("/api/v1/assets/", data=payload, format="json")
-        # Either rejected (400) or created with escaped/sanitized value (201)
-        self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
+        # Security acceptance: rejection (400) == safe; creation (201) == safe if
+        # stored as literal without execution (verified below via ORM read-back).
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST),
+            f"Expected XSS payload to be rejected (400) or stored literally (201), "
+            f"got {response.status_code}",
+        )
         if response.status_code == status.HTTP_201_CREATED:
             data = get_response_data(response) or {}
             asset_id = data.get("id")
@@ -266,8 +272,14 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
             "asset_id": str(self.create_asset(key="sql-test", name="SQL Test")),
         }
         response = self.client.post("/api/v1/contracts/", data=payload, format="json")
-        # Invalid JSON/structure → 400; or if accepted, stored as string only (no execution)
-        self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
+        # Security acceptance: SQL injection payload must be rejected (400) or stored
+        # as literal string (201) — Django ORM parameterisation prevents execution.
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST),
+            f"Expected SQL injection payload to be rejected (400) or stored literally (201), "
+            f"got {response.status_code}",
+        )
         if response.status_code == status.HTTP_201_CREATED:
             data = get_response_data(response) or {}
             c = Contract.objects.get(id=data["id"])
@@ -283,7 +295,14 @@ class TestWorkflowSecurityInputValidationE2E(E2ETestBase):
             "name": "../../../etc/passwd",
         }
         response = self.client.post("/api/v1/assets/", data=payload, format="json")
-        self.assertIn(response.status_code, (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST))
+        # Security acceptance: path traversal payload must be rejected (400) or
+        # stored as literal string (201) without filesystem access (verified below).
+        self.assertIn(
+            response.status_code,
+            (status.HTTP_201_CREATED, status.HTTP_400_BAD_REQUEST),
+            f"Expected path traversal payload to be rejected (400) or stored literally (201), "
+            f"got {response.status_code}",
+        )
         if response.status_code == status.HTTP_201_CREATED:
             data = get_response_data(response) or {}
             asset = Asset.objects.get(id=data["id"])

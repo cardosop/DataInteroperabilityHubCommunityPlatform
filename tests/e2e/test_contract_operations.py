@@ -246,7 +246,8 @@ schema:
         )
 
     def test_validate_contract_async_success(self):
-        """Test asynchronous contract validation"""
+        """Test asynchronous contract validation (requires RQ worker)."""
+        self.require_service("Worker", self.worker_service_url)
         asset_id = self.create_asset(key="validate-async-test", name="Validate Async Test")
         contract_id = self.create_contract(
             asset_id,

@@ -40,7 +40,6 @@ class MonitoringInfrastructureTest(TestCase):
         except (requests.exceptions.RequestException, requests.exceptions.Timeout):
             return False
 
-@pytest.mark.skip(reason="Prometheus not accessible")
     def test_prometheus_available(self):
         """Test that Prometheus is available"""
         if not self._check_service_available(self.prometheus_url):  # noqa: skip-in-body — runtime service dependency
@@ -51,6 +50,7 @@ class MonitoringInfrastructureTest(TestCase):
             response = requests.get(f"{self.prometheus_url}/-/healthy", timeout=self.timeout)
             self.assertEqual(response.status_code, 200)
         except requests.exceptions.RequestException:
+            pytest.skip("Prometheus not accessible")
 
     def test_prometheus_configuration(self):
         """Test that Prometheus configuration is valid (paths from project_root)."""
@@ -60,7 +60,6 @@ class MonitoringInfrastructureTest(TestCase):
         alerts_path = self.project_root / "monitoring" / "prometheus" / "alerts.yml"
         self.assertTrue(alerts_path.exists(), "Alerts config should exist")
 
-@pytest.mark.skip(reason="Grafana not accessible")
     def test_grafana_available(self):
         """Test that Grafana is available"""
         if not self._check_service_available(self.grafana_url):  # noqa: skip-in-body — runtime service dependency
@@ -71,6 +70,7 @@ class MonitoringInfrastructureTest(TestCase):
             response = requests.get(f"{self.grafana_url}/api/health", timeout=self.timeout)
             self.assertLess(response.status_code, 500)
         except requests.exceptions.RequestException:
+            pytest.skip("Grafana not accessible")
 
     def test_grafana_dashboards_exist(self):
         """Test that Grafana dashboards are created (paths from project_root)."""
@@ -88,7 +88,6 @@ class MonitoringInfrastructureTest(TestCase):
         )
         self.assertTrue(datasource_path.exists(), "Grafana datasource config should exist")
 
-@pytest.mark.skip(reason="Jaeger not accessible")
     def test_jaeger_available(self):
         """Test that Jaeger is available"""
         if not self._check_service_available(self.jaeger_url):  # noqa: skip-in-body — runtime service dependency
@@ -99,6 +98,7 @@ class MonitoringInfrastructureTest(TestCase):
             response = requests.get(self.jaeger_url, timeout=self.timeout)
             self.assertLess(response.status_code, 500)
         except requests.exceptions.RequestException:
+            pytest.skip("Jaeger not accessible")
 
     def test_alertmanager_configuration(self):
         """Test that Alertmanager is configured (path from project_root)."""

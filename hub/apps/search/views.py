@@ -18,6 +18,7 @@ from rest_framework.views import APIView
 
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.auth.permissions import HasRole
+from hub.apps.core.services.base import ValidationError as ServiceValidationError
 from hub.apps.observability.cross_tenant_metrics import cross_tenant_denied
 from hub.apps.search.throttles import SearchUserThrottle
 from hub.apps.tenants.request_tenant import get_request_tenant_id
@@ -194,22 +195,28 @@ class SearchViewSet(viewsets.ViewSet):
                 tenant_id=str(tenant.id),
                 user_id=str(request.user.id) if request.user.is_authenticated else None,
             )
-            results, total = search_service.search(
-                tenant_id=str(tenant.id),
-                query=query,
-                resource_type=resource_type,
-                classification=classification,
-                owner_id=owner_id,
-                tags=tags,
-                domain=domain,
-                quality_status=quality_status,
-                compliance_status=compliance_status,
-                limit=limit,
-                offset=offset,
-                sort_by=sort_by,
-                sort_order=sort_order,
-                user_id=str(request.user.id) if request.user.is_authenticated else None,
-            )
+            try:
+                results, total = search_service.search(
+                    tenant_id=str(tenant.id),
+                    query=query,
+                    resource_type=resource_type,
+                    classification=classification,
+                    owner_id=owner_id,
+                    tags=tags,
+                    domain=domain,
+                    quality_status=quality_status,
+                    compliance_status=compliance_status,
+                    limit=limit,
+                    offset=offset,
+                    sort_by=sort_by,
+                    sort_order=sort_order,
+                    user_id=str(request.user.id) if request.user.is_authenticated else None,
+                )
+            except ServiceValidationError as e:
+                return Response(
+                    {"error": e.message, "code": e.code},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
             # Phase 230.11 (REQ-SEM-SEARCH-EXPAND-001) — when the
             # request opts into semantic expansion AND the tenant has

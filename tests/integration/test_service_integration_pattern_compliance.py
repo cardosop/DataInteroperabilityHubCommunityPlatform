@@ -456,32 +456,25 @@ class ServiceIntegrationRealServiceTest(TestCase):
     def test_service_clients_can_connect_to_services(self):
         """Test that service clients can connect to Docker Compose services"""
         # Test DQ service health check
-        try:
-            is_healthy, service_name = self.dq_client.health_check()
-            self.assertIsInstance(is_healthy, bool)
-            self.assertIsInstance(service_name, str)
-            logger.info(f"DQ service health: {is_healthy}, name: {service_name}")
-        except Exception as e:
-            logger.warning(f"DQ service health check failed: {e}")
-            # Don't fail test if service is not available
+        is_healthy, service_name = self.dq_client.health_check()
+        self.assertIsInstance(is_healthy, bool)
+        self.assertIsInstance(service_name, str)
+        self.assertTrue(is_healthy, f"DQ service should be healthy, got: is_healthy={is_healthy}, name={service_name}")
+        logger.info(f"DQ service health: {is_healthy}, name: {service_name}")
 
         # Test Compliance service health check
-        try:
-            is_healthy, service_name = self.compliance_client.health_check()
-            self.assertIsInstance(is_healthy, bool)
-            self.assertIsInstance(service_name, str)
-            logger.info(f"Compliance service health: {is_healthy}, name: {service_name}")
-        except Exception as e:
-            logger.warning(f"Compliance service health check failed: {e}")
+        is_healthy, service_name = self.compliance_client.health_check()
+        self.assertIsInstance(is_healthy, bool)
+        self.assertIsInstance(service_name, str)
+        self.assertTrue(is_healthy, f"Compliance service should be healthy, got: is_healthy={is_healthy}, name={service_name}")
+        logger.info(f"Compliance service health: {is_healthy}, name: {service_name}")
 
         # Test Semantic service health check
-        try:
-            is_healthy, service_name = self.semantic_client.health_check()
-            self.assertIsInstance(is_healthy, bool)
-            self.assertIsInstance(service_name, str)
-            logger.info(f"Semantic service health: {is_healthy}, name: {service_name}")
-        except Exception as e:
-            logger.warning(f"Semantic service health check failed: {e}")
+        is_healthy, service_name = self.semantic_client.health_check()
+        self.assertIsInstance(is_healthy, bool)
+        self.assertIsInstance(service_name, str)
+        self.assertTrue(is_healthy, f"Semantic service should be healthy, got: is_healthy={is_healthy}, name={service_name}")
+        logger.info(f"Semantic service health: {is_healthy}, name: {service_name}")
 
     def test_circuit_breaker_protection_works(self):
         """Test that circuit breaker protection works with real services"""

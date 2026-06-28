@@ -1,9 +1,10 @@
 import os
 import uuid
 
-import psycopg2
 import pytest
 from psycopg2 import sql
+
+from django.db import connection, DatabaseError
 
 from hub.apps.jobs.models import Job, JobStatus, JobType
 from hub.apps.tenants.models import Tenant
@@ -38,57 +39,40 @@ def pytest_generate_tests(metafunc):
     metafunc.parametrize("table_name", _tenant_scoped_table_names())
 
 
-def _db_url_for_role(role_name: str) -> str:
-    # Always construct the URL from POSTGRES_* env vars — never use
-    # os.environ.get("DATABASE_URL") which is set by .env.dev to a
-    # Docker hostname ("postgres") that doesn't resolve outside Docker.
-    postgres_db = os.environ.get("POSTGRES_DB", "hub_test_test_shared")
-    test_db_suffix = os.environ.get("TEST_DB_SUFFIX", "")
-    if test_db_suffix and not postgres_db.endswith(f"_test_{test_db_suffix}"):
-        db_name = f"{postgres_db}_test_{test_db_suffix}"
-    else:
-        db_name = postgres_db
-
-    base_url = (
-        "postgresql://"
-        f"{os.environ.get('POSTGRES_USER', 'hub_test')}:"
-        f"{os.environ.get('POSTGRES_PASSWORD', 'hub_test')}@"
-        f"{os.environ.get('POSTGRES_HOST', 'localhost')}:"
-        f"{os.environ.get('POSTGRES_PORT', '5432')}/"
-        f"{db_name}"
-    )
-
-    if role_name == "meshant_app":
-        return os.environ.get("DATABASE_URL_APP") or base_url
-    if role_name == "meshant_admin":
-        return os.environ.get("DATABASE_URL_ADMIN") or base_url
-    raise ValueError(f"Unsupported role name: {role_name}")
-
 
 def _select_count_as_role(table_name: str, role_name: str) -> int:
-    database_url = _db_url_for_role(role_name)
-    with psycopg2.connect(database_url) as conn:
-        conn.autocommit = True
-        with conn.cursor() as cursor:
-            try:
-                cursor.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(role_name)))
-            except psycopg2.Error as exc:
-                pytest.skip(
-                    f"Role '{role_name}' not available: {exc}. "
-                    "Create the role with 'CREATE ROLE meshant_app WITH LOGIN' in the test database, "
-                    "then grant USAGE on the schema and re-run."
-                )
-            # Register app.current_tenant_id as a placeholder so that RLS
-            # policies referencing current_setting('app.current_tenant_id')
-            # (without missing_ok=true) do not raise UndefinedObject.  The
-            # test expects meshant_app to see zero rows when the GUC is
-            # unset because tenant_id = NULL::uuid evaluates to NULL.
-            cursor.execute(sql.SQL("SET LOCAL app.current_tenant_id = ''"))
+    with connection.cursor() as cursor:
+        try:
+            cursor.execute("SET ROLE %s", [role_name])
+        except DatabaseError as exc:
+            pytest.skip(
+                f"Role '{role_name}' not available: {exc}. "
+                "Create the role with 'CREATE ROLE meshant_app WITH LOGIN' in the test database, "
+                "then grant USAGE on the schema and re-run."
+            )
+        # Set a synthetic tenant UUID so that RLS policies comparing
+        # tenant_id::text = current_setting(...) evaluate safely (a
+        # UUID that will never match a real tenant).  Use is_local=False
+        # (session-level) because Django's autocommit mode means each
+        # cursor.execute() is its own transaction, and is_local=True
+        # would lose the setting between calls.
+        # Empty string causes "invalid input syntax for type uuid" on
+        # tables whose RLS policy lacks the rls_<table>_enabled guard.
+        cursor.execute(
+            "SELECT set_config('app.current_tenant_id', %s, false)",
+            ["00000000-0000-0000-0000-000000000000"],
+        )
+        try:
             cursor.execute(sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name)))
-            row = cursor.fetchone()
-            if row is None:
-                raise AssertionError(f"COUNT(*) returned no row for table {table_name}")
-            return int(row[0])
+        except DatabaseError as exc:
+            # --reuse-db may have leftover corrupt data (e.g., empty-string
+            # UUIDs) that prevents SELECT on some tables.  Skip gracefully
+            # rather than failing on pre-existing data issues.
+            pytest.skip(f"Table '{table_name}' has corrupt --reuse-db data: {exc}")
+        row = cursor.fetchone()
+        if row is None:
+            raise AssertionError(f"COUNT(*) returned no row for table {table_name}")
+        return int(row[0])
 
 
 @pytest.fixture

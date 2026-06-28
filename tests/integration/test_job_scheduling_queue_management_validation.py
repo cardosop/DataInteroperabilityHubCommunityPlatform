@@ -533,7 +533,7 @@ class JobSchedulingTest(TestCase):
         # Create a job
         job = Job.objects.create(
             tenant=self.tenant,
-            job_type=JobType.CONTRACT_VALIDATION.value,
+            type=JobType.CONTRACT_VALIDATION.value,
             status=JobStatus.PENDING.value,
             priority=JobPriority.LOW.value,
             resource_type="CONTRACT",
@@ -860,8 +860,11 @@ class JobQueueManagementTest(TestCase):
                 process_job, str(job.id), job_type=JobType.DQ_RUN.value, timeout=1800
             )
 
-        # Verify queue has jobs again (resumed)
-        self.assertEqual(critical_queue.count, 2)
+        # With ASYNC=False, enqueue() runs jobs inline — verify DB status changed
+        for job in [job1, job2]:
+            job.refresh_from_db()
+            self.assertIn(job.status, [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
+                f"Job {job.id} should have been processed after re-enqueue")
 
     def test_queue_clearing_and_purging(self):
         """Test queue clearing and purging"""
@@ -908,7 +911,11 @@ class JobQueueManagementTest(TestCase):
                 process_job, str(job.id), job_type=JobType.CONTRACT_VALIDATION.value, timeout=300
             )
 
-        self.assertEqual(low_queue.count, 2)
+        # With ASYNC=False, enqueue() runs jobs inline — verify DB status changed
+        for job in jobs[:2]:
+            job.refresh_from_db()
+            self.assertIn(job.status, [JobStatus.COMPLETED.value, JobStatus.FAILED.value],
+                f"Job {job.id} should have been processed after re-enqueue")
 
     def test_queue_status_monitoring(self):
         """Test queue status monitoring"""
@@ -1074,7 +1081,7 @@ class JobQueueManagementTest(TestCase):
 
         # Re-enqueue jobs from database
         pending_jobs = Job.objects.filter(
-            tenant=self.tenant, status=JobStatus.PENDING.value, job_type=JobType.DQ_RUN.value
+            tenant=self.tenant, status=JobStatus.PENDING.value, type=JobType.DQ_RUN.value
         )
 
         self.assertEqual(pending_jobs.count(), 3, "All 3 jobs should be in database")

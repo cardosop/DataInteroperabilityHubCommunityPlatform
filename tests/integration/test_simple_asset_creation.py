@@ -1,7 +1,5 @@
 """
-
-import uuid
-Simple test to verify infrastructure works without file operations
+Simple test to verify infrastructure works without file operations.
 """
 
 import os

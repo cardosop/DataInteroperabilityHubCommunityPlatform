@@ -18,6 +18,7 @@ Features:
 - Rule dependency resolution
 """
 
+from hub.apps.core.business_rules import utils
 from hub.apps.core.business_rules.base import (
     BusinessRules,
     RuleExecutionContext,
@@ -35,6 +36,7 @@ __all__ = [
     "BusinessRulesRegistry",
     "RuleExecutionContext",
     "RuleMetadata",
+    "utils",
     "ValidationResult",
     "get_registry",
     "register_rule",

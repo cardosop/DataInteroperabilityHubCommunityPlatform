@@ -319,7 +319,14 @@ class DatasetService(BaseService, DatasetEventPublisher):
         try:
             sample_data_json = extract_sample_data(file_content, file_format)
         except (ValueError, TypeError):
-            # Sample extraction failure is not critical
+            # Sample extraction failure is not critical — log so operators
+            # can detect systematic extraction failures for specific formats.
+            logger.warning(
+                "Sample data extraction failed for file_id=%s format=%s",
+                file_id,
+                file_format,
+                exc_info=True,
+            )
             sample_data_json = []
 
         # Get row count from schema or estimate

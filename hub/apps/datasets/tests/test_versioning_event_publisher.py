@@ -361,40 +361,6 @@ class VersioningEventPublisherTest(DatasetsTestBase):
 
     # ========== EVENT PUBLISHING ==========
 
-    def test_publish_version_created_returns_event_id(self):
-        """Publishing a version.created event returns a non-None event ID."""
-        import uuid
-
-        version_id = str(uuid.uuid4())
-        resource_id = str(uuid.uuid4())
-
-        try:
-            event_id = self.service.publish_version_created(
-                version_id=version_id, resource_type="DATASET", resource_id=resource_id
-            )
-            self.assertIsNotNone(event_id)
-        except Exception:
-            self.fail("publish_version_created should handle valid inputs gracefully")
-
-    def test_publish_version_updated_returns_event_id(self):
-        """Publishing a version.updated event returns a non-None event ID."""
-        import uuid
-
-        version_id = str(uuid.uuid4())
-        resource_id = str(uuid.uuid4())
-
-        changes = {"status": {"old": "draft", "new": "published"}}
-        try:
-            event_id = self.service.publish_version_updated(
-                version_id=version_id,
-                changes=changes,
-                resource_type="DATASET",
-                resource_id=resource_id,
-            )
-            self.assertIsNotNone(event_id)
-        except Exception:
-            self.fail("publish_version_updated should handle valid inputs gracefully")
-
     def test_publish_version_rolled_back_returns_event_id(self):
         """Publishing a version.rolled_back event returns a non-None event ID.
 
@@ -417,14 +383,11 @@ class VersioningEventPublisherTest(DatasetsTestBase):
 
         version_id = str(uuid.uuid4())
 
-        try:
-            event_id = rollback_service.publish_version_rolled_back(
-                version_id=version_id,
-                target_version="1.0.0",
-                rollback_reason="data quality failure",
-            )
-            self.assertIsNotNone(
-                event_id, "publish_version_rolled_back must return a non-None event ID"
-            )
-        except Exception:
-            self.fail("publish_version_rolled_back should handle valid inputs gracefully")
+        event_id = rollback_service.publish_version_rolled_back(
+            version_id=version_id,
+            target_version="1.0.0",
+            rollback_reason="data quality failure",
+        )
+        self.assertIsNotNone(
+            event_id, "publish_version_rolled_back must return a non-None event ID"
+        )

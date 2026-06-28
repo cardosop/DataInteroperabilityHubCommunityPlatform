@@ -20,7 +20,6 @@ from typing import Any
 
 import pytest
 
-pytestmark = pytest.mark.slow
 import requests
 from django.conf import settings
 from django.db import connection
@@ -777,7 +776,7 @@ def get_all_service_configs(base_host: str = "localhost") -> list[ServiceConfig]
     return configs
 
 
-pytestmark = [pytest.mark.django_db(transaction=True), pytest.mark.integration]
+pytestmark = [pytest.mark.slow, pytest.mark.django_db(transaction=True), pytest.mark.integration]
 
 
 class ComprehensiveServiceAvailabilityTest(DjangoTestCase):

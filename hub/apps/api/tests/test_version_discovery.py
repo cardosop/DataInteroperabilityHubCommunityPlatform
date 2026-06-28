@@ -110,11 +110,6 @@ class VersionDiscoveryResponseShapeTest(TestCase):
         ):
             self.assertIn(key, eps, f"Missing endpoint: {key}")
 
-    @pytest.mark.integration
-    def test_no_auth_required(self):
-        """Public endpoint — no authentication needed."""
-        resp = self.client.get("/api/v1/")
-        self.assertEqual(resp.status_code, status.HTTP_200_OK)
 
 
 class VersionDiscoveryDeprecatedEndpointsTest(TestCase):
@@ -133,11 +128,9 @@ class VersionDiscoveryDeprecatedEndpointsTest(TestCase):
             migration_guide="Test migration guide",
         )
         APIVersionManager.register_deprecated_endpoint(self.test_dep)
-
-    def tearDown(self):
-        # Clean up the registered endpoint to avoid polluting other tests
         key = "GET:/api/v1/test-deprecated/"
-        APIVersionManager.DEPRECATED_ENDPOINTS.pop(key, None)
+        # addCleanup guarantees cleanup even on test failure, unlike tearDown
+        self.addCleanup(lambda k=key: APIVersionManager.DEPRECATED_ENDPOINTS.pop(k, None))
 
     @pytest.mark.integration
     def test_registered_deprecated_endpoint_appears(self):
@@ -192,8 +185,10 @@ class VersionDiscoveryRateLimitTest(TestCase):
 
         self._saved_throttle_rates = dict(SimpleRateThrottle.THROTTLE_RATES)
         SimpleRateThrottle.THROTTLE_RATES["version_discovery"] = "3/minute"
+        # addCleanup guarantees restoration even on test failure, unlike tearDown
+        self.addCleanup(self._restore_throttle_rates)
 
-    def tearDown(self):
+    def _restore_throttle_rates(self):
         from rest_framework.throttling import SimpleRateThrottle
 
         SimpleRateThrottle.THROTTLE_RATES.clear()

@@ -51,17 +51,27 @@ class ServiceInteractionsIntegrationTest(TestCase):
                 status.HTTP_201_CREATED,
                 status.HTTP_400_BAD_REQUEST,
                 status.HTTP_403_FORBIDDEN,
-                status.HTTP_404_NOT_FOUND,
                 status.HTTP_503_SERVICE_UNAVAILABLE,
             ],
+            f"Unexpected status from DQ runs endpoint: {response.status_code}",
         )
 
     def test_contracts_list_uses_real_backend(self):
-        """GET /api/v1/contracts/ returns from real service."""
+        """GET /api/v1/contracts/ returns from real service (no mock)."""
         response = self.client.get("/api/v1/contracts/")
-        self.assertIn(response.status_code, [200, 404])
+        self.assertEqual(
+            response.status_code,
+            200,
+            f"GET /api/v1/contracts/ returned {response.status_code}; "
+            "real backend should respond with 200",
+        )
 
     def test_assets_list_uses_real_backend(self):
-        """GET /api/v1/assets/ returns from real service."""
+        """GET /api/v1/assets/ returns from real service (no mock)."""
         response = self.client.get("/api/v1/assets/")
-        self.assertIn(response.status_code, [200, 404])
+        self.assertEqual(
+            response.status_code,
+            200,
+            f"GET /api/v1/assets/ returned {response.status_code}; "
+            "real backend should respond with 200",
+        )

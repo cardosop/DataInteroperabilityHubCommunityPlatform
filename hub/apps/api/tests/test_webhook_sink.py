@@ -154,6 +154,16 @@ class TestWebhookSinkRead:
         assert resp.json()["count"] == 0
 
     @override_settings(**_E2E_SETTINGS)
+    def test_get_with_header_token_returns_200(self, client: APIClient, sink_id: str) -> None:
+        """Verify the X-E2E-Token header auth path works (not just ?token= query param)."""
+        resp = client.get(
+            f"/api/v1/test/webhook-sink/{sink_id}/",
+            HTTP_X_E2E_TOKEN="e2e-secret",
+        )
+        assert resp.status_code == 200
+        assert resp.json()["count"] == 0
+
+    @override_settings(**_E2E_SETTINGS)
     def test_delete_clears_deliveries(self, client: APIClient, sink_id: str) -> None:
         client.post(
             f"/api/v1/test/webhook-sink/{sink_id}/",

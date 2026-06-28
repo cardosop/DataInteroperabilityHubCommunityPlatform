@@ -327,6 +327,8 @@ class TransformationE2ETest(TestCase):
                 )
                 self.assertIsNotNone(retry_execution.id)
                 self.assertNotEqual(retry_execution.id, execution.id)
+            # execution.status may be PENDING if async execution hasn't completed.
+            # The error-handling path is only testable when execution fails.
         except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test
             if any(keyword in str(e).lower() for keyword in ["workflow", "quality", "compliance"]):
@@ -605,12 +607,8 @@ class TransformationE2ETest(TestCase):
                 execution_mode=ExecutionMode.ASYNC,
             )
 
-            # Verify audit event was created for execution
-            AuditEvent.objects.filter(
-                resource_type="TRANSFORMATION_PIPELINE", action="EXECUTED", resource_id=pipeline.id
-            )
-            # May or may not have execution audit events depending on implementation
-            # At minimum, creation audit event should exist
+            # Verify at minimum creation audit event exists
+            # (execution audit events may or may not be created depending on implementation)
             self.assertGreaterEqual(audit_events.count(), 1)
         except (TransformationExecutionError, ConnectionError, OSError, NotFoundError) as e:
             # If services are not available, skip this test

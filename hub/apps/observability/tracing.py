@@ -21,7 +21,7 @@ def setup_opentelemetry():
 
     try:
         from opentelemetry import trace
-        from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
         from opentelemetry.instrumentation.django import DjangoInstrumentor
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
         from opentelemetry.instrumentation.requests import RequestsInstrumentor
@@ -49,17 +49,16 @@ def setup_opentelemetry():
         trace.set_tracer_provider(tracer_provider)
         tracer = trace.get_tracer(__name__)
 
-        # Configure Jaeger exporter
-        jaeger_agent_host = os.getenv("JAEGER_AGENT_HOST", "jaeger")
-        jaeger_agent_port = int(os.getenv("JAEGER_AGENT_PORT", "6831"))
-
-        jaeger_exporter = JaegerExporter(
-            agent_host_name=jaeger_agent_host,
-            agent_port=jaeger_agent_port,
+        # Configure OTLP exporter (Jaeger supports OTLP natively since v1.35;
+        # the Jaeger-specific exporter package is not required).
+        otlp_endpoint = os.getenv(
+            "OTEL_EXPORTER_OTLP_ENDPOINT",
+            f"http://{os.getenv('JAEGER_AGENT_HOST', 'jaeger')}:4317",
         )
+        otlp_exporter = OTLPSpanExporter(endpoint=otlp_endpoint)
 
         # Add span processor
-        span_processor = BatchSpanProcessor(jaeger_exporter)
+        span_processor = BatchSpanProcessor(otlp_exporter)
         tracer_provider.add_span_processor(span_processor)
 
         # Instrument Django
@@ -74,17 +73,14 @@ def setup_opentelemetry():
 
         return tracer
 
-    except ImportError as e:
+    except ImportError:
         import logging
 
         logger = logging.getLogger(__name__)
-        logger.warning(f"OpenTelemetry not available: {e}")
-        return None
-    except Exception as e:
-        import logging
-
-        logger = logging.getLogger(__name__)
-        logger.error(f"Failed to setup OpenTelemetry: {e}")
+        logger.warning(
+            "OpenTelemetry SDK not available — tracing disabled. "
+            "Install opentelemetry-exporter-otlp to enable."
+        )
         return None
 
 
@@ -115,8 +111,8 @@ def _add_trace_context_to_logs():
         # The processor will be added via the logging configuration
         # Processor will be added in logging.py
 
-    except Exception:
-        # If OpenTelemetry is not available, skip trace context
+    except ImportError:
+        # OpenTelemetry SDK not available — skip trace context injection
         pass
 
 

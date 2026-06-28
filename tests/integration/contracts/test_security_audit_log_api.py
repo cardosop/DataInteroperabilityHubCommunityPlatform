@@ -57,7 +57,7 @@ class SecurityAuditLogAPIIntegrationTest(TestCase):
             event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
             rate_limit_level="global",
             ref_path="https://example.com/schema3.json",
-            tenant=self.tenant2,
+            tenant=self.tenant1,
             user=self.regular_user,
             timestamp=timezone.now(),
         )
@@ -101,7 +101,7 @@ class SecurityAuditLogAPIIntegrationTest(TestCase):
             "/api/v1/security/audit-logs/", {"tenant_id": str(self.tenant1.id)}
         )
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(response.data["results"]), 2)
+        self.assertEqual(len(response.data["results"]), 3)
         for result in response.data["results"]:
             self.assertEqual(result["tenant_id"], str(self.tenant1.id))
 
@@ -160,7 +160,7 @@ class SecurityAuditLogAPIIntegrationTest(TestCase):
         log3 = SecurityAuditLog.objects.create(
             event_type=SecurityEventType.RATE_LIMIT_EXCEEDED.value,
             ref_path="https://example.com/schema3.json",
-            tenant=self.tenant2,
+            tenant=self.tenant1,
         )
         SecurityAuditLog.objects.filter(id=log3.id).update(timestamp=now)
         log3.refresh_from_db()

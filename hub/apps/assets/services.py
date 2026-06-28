@@ -406,17 +406,6 @@ class AssetService(BaseService, AssetEventPublisher):
                     details={"errors": e.message_dict if hasattr(e, "message_dict") else {"__all__": e.messages}},
                 )
 
-            # Phase 70.1: Audit event for asset creation (service layer)
-            run_side_effect(
-                create_audit_event,
-                resource_type="ASSET",
-                action="ASSET_CREATED",
-                resource_id=str(asset.id),
-                tenant=asset.tenant,
-                actor_user=created_by,
-                details={"name": name, "key": key, "status": "DRAFT"},
-            )
-
             # Phase 250.1.G review-pass — fire ``asset.created``
             # webhook event on commit. Without this the simple
             # ``POST /assets/`` API path (which bypasses the
@@ -760,16 +749,6 @@ class AssetService(BaseService, AssetEventPublisher):
                 )
             asset.save()
 
-            # Phase 70.1: Audit event for asset update
-            run_side_effect(
-                create_audit_event,
-                resource_type="ASSET",
-                action="ASSET_UPDATED",
-                resource_id=str(asset.id),
-                tenant=asset.tenant,
-                details={"changed_fields": list(kwargs.keys()), "version": asset.version},
-            )
-
             # Phase 250.1.G review-pass — fire ``asset.updated``
             # (or ``asset.activated`` when status moved to ACTIVE)
             # webhook event on commit. ``previous_status`` and
@@ -878,16 +857,6 @@ class AssetService(BaseService, AssetEventPublisher):
 
             asset.status = AssetStatus.RETIRED
             asset.save()
-
-            # Phase 70.1: Audit event for asset deletion (retirement)
-            run_side_effect(
-                create_audit_event,
-                resource_type="ASSET",
-                action="ASSET_DELETED",
-                resource_id=str(asset.id),
-                tenant=asset.tenant,
-                details={"status": "RETIRED"},
-            )
 
             # Phase 250.1.G review-pass — fire ``asset.retired``
             # webhook event on commit. The retirement reason is

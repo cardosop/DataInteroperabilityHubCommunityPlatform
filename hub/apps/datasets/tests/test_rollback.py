@@ -358,7 +358,7 @@ class VersionRollbackManagerTest(DatasetsTestBase):
         self.assertFalse(result.get("success"))
 
     def test_check_rollback_conditions_error_handling(self):
-        """Test error handling when checking rollback conditions fails"""
+        """check_rollback_conditions returns structured result for a valid dataset."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -370,15 +370,11 @@ class VersionRollbackManagerTest(DatasetsTestBase):
         )
         VersionHistoryManager.create_version(dataset, is_current=True)
 
-        # Should handle errors gracefully
-        try:
-            config = RollbackConfig(enable_auto_rollback=True)
-            result = VersionRollbackManager.check_rollback_conditions(dataset, config=config)
-            self.assertIsNotNone(result)
-            self.assertIn("should_rollback", result)
-            self.assertIn("triggers", result)
-        except Exception:
-            self.fail("check_rollback_conditions should handle errors gracefully")
+        config = RollbackConfig(enable_auto_rollback=True)
+        result = VersionRollbackManager.check_rollback_conditions(dataset, config=config)
+        self.assertIsNotNone(result)
+        self.assertIn("should_rollback", result)
+        self.assertIn("triggers", result)
 
     # ── Rollback history (gap: previously untested) ──────────────────
 

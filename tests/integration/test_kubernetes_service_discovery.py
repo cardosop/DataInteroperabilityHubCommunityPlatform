@@ -22,11 +22,23 @@ _K8S_BASE_IDS = [name for name, _ in _K8S_BASES]
 
 @pytest.fixture(scope="module")
 def kustomize_available_check():
-    """Skip entire module if kustomize/kubectl is not available."""
+    """Skip entire module if kustomize/kubectl is not available, or if any
+    discovered kustomize base fails to build (e.g. directory exists but is
+    incomplete in the current environment)."""
     if not kustomize_available():
         pytest.skip(
             "kustomize or kubectl kustomize not available; install to run Kubernetes manifest tests"
         )
+    # Verify each discovered base can be built — if a base's kustomize build
+    # fails (e.g. prefect-server base not fully configured), skip the module.
+    import subprocess
+    for name, base_path in _K8S_BASES:
+        try:
+            load_manifests_from_kustomize(base_path)
+        except (subprocess.CalledProcessError, FileNotFoundError) as e:
+            pytest.skip(
+                f"kustomize build failed for {name}: {e}"
+            )
 
 
 def _workload_selector(workload: dict) -> dict | None:

@@ -24,7 +24,13 @@ class ExternalServicesIntegrationTest(TestCase):
 
     def test_external_service_urls_configurable(self):
         """External service URLs can be read from settings (no mock)."""
-        # At least one of these may be set in env
-        _ = getattr(settings, "SEMANTIC_SERVICE_URL", None)
-        _ = getattr(settings, "DQ_SERVICE_URL", None)
-        _ = getattr(settings, "COMPLIANCE_SERVICE_URL", None)
+        semantic_url = getattr(settings, "SEMANTIC_SERVICE_URL", None)
+        dq_url = getattr(settings, "DQ_SERVICE_URL", None)
+        compliance_url = getattr(settings, "COMPLIANCE_SERVICE_URL", None)
+        # At least one external service URL must be configured in any
+        # real deployment; in test environments, all three may be set.
+        configured = [u for u in (semantic_url, dq_url, compliance_url) if u is not None]
+        self.assertGreaterEqual(
+            len(configured), 1,
+            "Expected at least one external service URL to be configured"
+        )

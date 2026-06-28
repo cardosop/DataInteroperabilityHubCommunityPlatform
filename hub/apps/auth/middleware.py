@@ -13,7 +13,7 @@ REST Framework authentication will run later and can override/validate.
 import structlog
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
-from django.db import DatabaseError, OperationalError
+from django.db import DatabaseError, InterfaceError, OperationalError
 from django.http import HttpResponse
 from rest_framework.response import Response
 
@@ -359,7 +359,7 @@ class TenantScopingMiddleware:
                     request.tenant = Tenant.objects.get(id=request.tenant_id)
             except Tenant.DoesNotExist:
                 return Response({"error": "TENANT_NOT_FOUND"}, status=403)
-            except (OperationalError, DatabaseError):
+            except (InterfaceError, OperationalError, DatabaseError):
                 return Response({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
 
@@ -383,7 +383,7 @@ class TenantScopingMiddleware:
                 request.tenant = Tenant.objects.get(id=tenant_id)
             except Tenant.DoesNotExist:
                 return Response({"error": "TENANT_NOT_FOUND"}, status=403)
-            except (OperationalError, DatabaseError):
+            except (InterfaceError, OperationalError, DatabaseError):
                 return Response({"error": "SERVICE_UNAVAILABLE"}, status=503)
             return None
 
@@ -450,7 +450,7 @@ class TenantScopingMiddleware:
                 except User.DoesNotExist:
                     # User doesn't exist in DB - try fallback
                     pass
-                except (OperationalError, DatabaseError):
+                except (InterfaceError, OperationalError, DatabaseError):
                     # DB connectivity issue — try fallback from user object
                     pass
 

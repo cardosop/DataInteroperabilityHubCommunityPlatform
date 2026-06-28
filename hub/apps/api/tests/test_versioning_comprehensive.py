@@ -129,7 +129,6 @@ class APIVersionTest(TestCase):
 
         self.assertLessEqual(v1, v1_copy)
         self.assertLessEqual(v1, v2)
-        self.assertLessEqual(v1, v1_copy)
 
     def test_version_greater_than(self):
         """Test version greater than comparison"""
@@ -148,7 +147,16 @@ class APIVersionTest(TestCase):
 
         self.assertGreaterEqual(v1, v1_copy)
         self.assertGreaterEqual(v2, v1)
-        self.assertGreaterEqual(v1, v1_copy)
+
+    def test_version_comparison_with_non_version_returns_false(self):
+        """Test that comparing with non-APIVersion objects returns False consistently"""
+        v1 = APIVersion(1, 0, 0)
+        # __eq__ and __lt__ already handle this via isinstance guards;
+        # __gt__ and __ge__ must also reject non-APIVersion objects.
+        self.assertFalse(v1 > "not a version")
+        self.assertFalse(v1 >= "not a version")
+        self.assertFalse(v1 > None)
+        self.assertFalse(v1 >= None)
 
     def test_version_compatibility_same_major(self):
         """Test version compatibility with same major version"""

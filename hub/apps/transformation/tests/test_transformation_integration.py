@@ -28,6 +28,7 @@ from hub.apps.governance.models import AccessPolicy
 from hub.apps.jobs.models import JobStatus, JobType
 from hub.apps.tenants.models import Tenant
 from hub.apps.transformation.business_rules import TransformationBusinessRules
+from hub.apps.core.services.base import ValidationError as CoreValidationError
 from hub.apps.transformation.exceptions import (
     TransformationValidationError,
 )
@@ -147,7 +148,7 @@ class TransformationServiceIntegrationTest(TestCase):
             self.file.status = FileStatus.ACTIVE
             self.file.save()
             self.storage_available = True
-        except Exception as e:
+        except (OSError, ImportError, ConnectionError) as e:
             # Storage might not be available, tests will skip
             self.storage_available = False
             self.storage_error = str(e)
@@ -534,7 +535,7 @@ class TransformationServiceIntegrationTest(TestCase):
         }
 
         # Should raise ValidationError
-        with self.assertRaises((TransformationValidationError, Exception)):
+        with self.assertRaises((TransformationValidationError, CoreValidationError)):
             self.service.create_pipeline(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),
@@ -554,7 +555,7 @@ class TransformationServiceIntegrationTest(TestCase):
         }
 
         # Should raise exception and rollback transaction
-        with self.assertRaises((TransformationValidationError, Exception)):
+        with self.assertRaises((TransformationValidationError, CoreValidationError)):
             self.service.create_pipeline(
                 tenant_id=str(self.tenant.id),
                 user_id=str(self.user.id),

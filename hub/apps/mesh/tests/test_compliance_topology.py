@@ -31,7 +31,6 @@ from hub.apps.tenants.models import Tenant
 from hub.apps.users.models import Role, User, UserRole, UserStatus
 
 pytestmark = pytest.mark.django_db(transaction=True)
-UserModel = get_user_model()
 
 
 class DataMeshComplianceCheckTest(TestCase):

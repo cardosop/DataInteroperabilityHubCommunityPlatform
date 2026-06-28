@@ -42,7 +42,7 @@ try:
         ["tenant_id", "reason"],
     )
 
-except Exception:  # pragma: no cover
+except ImportError:  # pragma: no cover
     dsar_submitted_total = _MetricStub()
     dsar_completed_total = _MetricStub()
     dsar_overdue_total = _MetricStub()

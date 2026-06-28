@@ -70,8 +70,8 @@ class GatewayRoutingTest:
         try:
             content = routes_file.read_text(encoding="utf-8")
 
-            # Architecture: Traefik routes /api/v1 to api-gateway; API Gateway does internal routing.
-            # Verify api-gateway route exists with PathPrefix /api/v1
+            # Architecture: Traefik routes /api/v1 directly to api-service
+            # (no separate gateway). Verify the route exists with PathPrefix /api/v1.
             assert "api-gateway" in content, "API gateway route should exist"
             assert "PathPrefix(`/api/v1`)" in content, (
                 "API gateway should use PathPrefix /api/v1 for all API requests"

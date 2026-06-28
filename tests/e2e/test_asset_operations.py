@@ -191,19 +191,21 @@ class AssetOperationsE2ETest(E2ETestBase):
         # This must happen after contract is attached to asset
         self.prepare_contract_for_activation(contract_id)
 
-        # Ensure contract is properly set up after preparation
+        # Ensure contract is properly set up after preparation.
         contract.refresh_from_db()
-        # If validation/normalization failed, force them for test
+        # Verify the real contract validation/normalization services produced
+        # results.  Only override when the service is known to be async and
+        # the result hasn't arrived yet.
         if contract.validation_status != ValidationStatus.VALID:
-            contract.validation_status = ValidationStatus.VALID
-        if contract.normalization_status not in [
-            NormalizationStatus.NORMALIZED_OK,
-            NormalizationStatus.NORMALIZED_WITH_WARNINGS,
-        ]:
-            contract.normalization_status = NormalizationStatus.NORMALIZED_OK
-            if not contract.hub_contract_json:
-                contract.hub_contract_json = {"hub_contract_version": 1, "id": "test", "schema": {}}
-        contract.save()
+            self.fail(
+                f"Real contract validation did not produce VALID status: "
+                f"got {contract.validation_status}, errors={contract.validation_errors}"
+            )
+        self.assertIn(
+            contract.normalization_status,
+            [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
+            f"Real contract normalization failed: {contract.normalization_status}",
+        )
 
         # Create dataset and prepare asset
         test_content = b"col1,col2\nval1,val2"
@@ -231,16 +233,20 @@ class AssetOperationsE2ETest(E2ETestBase):
             [NormalizationStatus.NORMALIZED_OK, NormalizationStatus.NORMALIZED_WITH_WARNINGS],
         )
 
-        # Ensure DQ and compliance statuses are set (prepare_asset_for_activation should do this)
-        # But if async services are slow, we may need to set them manually
+        # Verify the real DQ and compliance services produced results.
+        # UNKNOWN means the async services haven't completed — the test
+        # should fail so the underlying issue is investigated rather than
+        # silently overridden.
         from hub.apps.assets.models import ComplianceStatus, DQStatus
 
-        if asset.dq_status == DQStatus.UNKNOWN:
-            asset.dq_status = DQStatus.PASS
-            asset.save(update_fields=["dq_status"])
-        if asset.compliance_status == ComplianceStatus.UNKNOWN:
-            asset.compliance_status = ComplianceStatus.PASS
-            asset.save(update_fields=["compliance_status"])
+        self.assertNotEqual(
+            asset.dq_status, DQStatus.UNKNOWN,
+            f"Real DQ service did not set dq_status (still UNKNOWN) for asset {asset_id}"
+        )
+        self.assertNotEqual(
+            asset.compliance_status, ComplianceStatus.UNKNOWN,
+            f"Real compliance service did not set compliance_status (still UNKNOWN) for asset {asset_id}"
+        )
 
         # Refresh asset again to get updated statuses
         asset.refresh_from_db()

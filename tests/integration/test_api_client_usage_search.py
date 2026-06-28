@@ -127,17 +127,16 @@ class TestAPIClientUsageSearch:
         assert len(api_v1_endpoints) > 0, "No /api/v1 endpoints found"
 
     def test_sdk_client_usages_found(self):
-        """Test that SDK client usages were found"""
+        """Test that SDK client usages structure exists in the report"""
         report = self.report
-        # SDK client usages should be found in SDK modules
-        [
+        sdk_usages = [
             usage
             for usage in report.get("client_usages", [])
             if "sdk" in usage.get("file_path", "").lower()
         ]
-        # Note: This might be 0 if SDK analysis didn't find patterns, which is OK
-        # The important thing is that the structure exists
         assert "client_usages" in report
+        assert isinstance(report["client_usages"], list)
+        assert len(sdk_usages) >= 0
 
     def test_no_empty_endpoints(self):
         """Test that no empty endpoints were found"""

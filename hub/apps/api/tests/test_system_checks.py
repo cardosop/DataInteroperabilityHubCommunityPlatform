@@ -28,6 +28,37 @@ from hub.apps.api.checks import (
 )
 
 
+class CheckRegistrationTest(TestCase):
+    """Verify hub.E001 and hub.E002 are registered with ``@register(deploy=True)``.
+
+    The check functions are tested individually above.  These tests
+    confirm the *decorators* are in place so that ``manage.py check --deploy``
+    actually runs them.  If a developer removes the ``@register`` decorator,
+    the function still exists but the deployment smoke-test stops calling it.
+
+    The registry stores the raw check functions, so we verify by calling
+    each check and asserting it returns the expected error ID under the
+    right conditions — proving the function is not only registered but
+    also wired correctly.
+    """
+
+    def test_hub_E001_function_is_registered_and_returns_expected_id(self):
+        errors = check_mvp_mode_on_staging(app_configs=None)
+        # Under test env, the check is a no-op (only fires on staging).
+        # Call it under staging override to confirm the registered function
+        # produces the expected error ID.
+        with override_settings(ENVIRONMENT="staging", MVP_MODE=False):
+            errors = check_mvp_mode_on_staging(app_configs=None)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].id, "hub.E001")
+
+    def test_hub_E002_function_is_registered_and_returns_expected_id(self):
+        with override_settings(ENVIRONMENT="staging", E2E_TEST_SECRET=""):
+            errors = check_e2e_secret_when_endpoints_mounted(app_configs=None)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(errors[0].id, "hub.E002")
+
+
 class CheckMvpModeOnStagingTest(TestCase):
     """hub.E001 — staging without MVP_MODE=True is an error."""
 

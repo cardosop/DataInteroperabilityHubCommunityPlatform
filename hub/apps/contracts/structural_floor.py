@@ -53,7 +53,7 @@ from typing import Any
 import logging
 
 from django.conf import settings
-from django.db import DatabaseError, OperationalError
+from django.db import DatabaseError, InterfaceError, OperationalError
 
 from hub.apps.core.services.base import ValidationError
 
@@ -327,7 +327,7 @@ def _emit_floor_violation_observability(
         if tenant_id:
             try:
                 tenant_obj = Tenant.objects.filter(id=tenant_id).first()
-            except (DatabaseError, OperationalError):
+            except (InterfaceError, DatabaseError, OperationalError):
                 tenant_obj = None
 
         create_audit_event(

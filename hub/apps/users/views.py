@@ -386,13 +386,18 @@ class UserViewSet(viewsets.ModelViewSet):
         except (ServiceValidationError, NotFoundError) as e:
             return handle_service_exception(e)
 
-        if created_new:
-            # Generate invitation token and send email only for new users (11.3: store hash)
-            _plaintext = str(uuid.uuid4())
-            user.invitation_token = sha256_hex(_plaintext)
-            user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
-            user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
-            self._send_invitation_email(user, plaintext_token=_plaintext)
+        if not created_new:
+            return Response(
+                {"error": "User already exists in this tenant", "code": "USER_ALREADY_EXISTS"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # Generate invitation token and send email only for new users (11.3: store hash)
+        _plaintext = str(uuid.uuid4())
+        user.invitation_token = sha256_hex(_plaintext)
+        user.invitation_token_expires_at = timezone.now() + timedelta(days=7)
+        user.save(update_fields=["invitation_token", "invitation_token_expires_at"])
+        self._send_invitation_email(user, plaintext_token=_plaintext)
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 

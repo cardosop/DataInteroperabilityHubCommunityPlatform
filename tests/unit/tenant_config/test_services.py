@@ -163,17 +163,17 @@ class GetTenantConfigTest(TestCase):
             config_dict["max_file_size_bytes"], self.platform_defaults["max_file_size_bytes"]
         )
 
-    def test_empty_lists_are_preserved(self):
-        """Test empty lists are preserved (not replaced with platform defaults)"""
+    def test_empty_lists_are_replaced_with_platform_defaults(self):
+        """Empty lists fall through to platform defaults (current `or` behavior)."""
         TenantConfig.objects.create(
             tenant=self.tenant, allowed_compliance_regimes=[], default_compliance_regimes=[]
         )
 
         config_dict = get_tenant_config(self.tenant)
 
-        # Empty lists should be preserved (not replaced)
-        # Actually, the service uses `or` operator, so empty list is falsy and will use platform defaults
-        # This is the current behavior - empty list means "use platform default"
+        # The service uses `or` — an empty list is falsy, so the platform
+        # default is used instead.  If preservation behaviour is desired
+        # the service should use `if value is None` instead of `or`.
         self.assertEqual(
             config_dict["allowed_compliance_regimes"],
             self.platform_defaults["allowed_compliance_regimes"],

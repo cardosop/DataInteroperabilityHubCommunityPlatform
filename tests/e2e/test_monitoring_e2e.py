@@ -246,7 +246,7 @@ class GrafanaDashboardsE2ETest(TestCase):
                 time.sleep(delay_seconds)
         return False
 
-@pytest.mark.skip(reason="Grafana not accessible")
+    @pytest.mark.skip(reason="Grafana not accessible")
     def test_grafana_accessible(self):
         """Test that Grafana is accessible"""
         if not self._check_grafana_with_retry():  # noqa: skip-in-body — runtime service dependency
@@ -276,6 +276,7 @@ class GrafanaDashboardsE2ETest(TestCase):
                     500,
                 )
             except requests.exceptions.RequestException:
+                pass
 
     def test_grafana_dashboards_exist(self):
         """Test that Grafana dashboards exist"""
@@ -350,7 +351,7 @@ class AlertingRulesE2ETest(TestCase):
             # Config might be in different location
             pass
 
-@pytest.mark.skip(reason="Prometheus not accessible")
+    @pytest.mark.skip(reason="Prometheus not accessible")
     def test_prometheus_alerts_endpoint(self):
         """Test that Prometheus alerts endpoint is accessible"""
         if not self._check_prometheus_available():
@@ -379,6 +380,7 @@ class AlertingRulesE2ETest(TestCase):
                     500,
                 )
             except requests.exceptions.RequestException:
+                pass
 
 
 class DistributedTracingE2ETest(TestCase):
@@ -389,7 +391,7 @@ class DistributedTracingE2ETest(TestCase):
         self.client = Client()
         self.tenant = TenantFactory.create_tenant()
 
-@pytest.mark.skip(reason="OpenTelemetry not installed")
+    @pytest.mark.skip(reason="OpenTelemetry not installed")
     def test_tracing_setup_complete(self):
         """Test that tracing setup is complete"""
         try:
@@ -409,6 +411,7 @@ class DistributedTracingE2ETest(TestCase):
                     span.get_span_context(),
                 )
         except ImportError:
+            pass
 
     def test_trace_context_in_logs(self):
         """Test that trace context is added to logs via API"""
@@ -462,7 +465,7 @@ class DistributedTracingE2ETest(TestCase):
                 all(c in "0123456789abcdef" for c in tid),
             )
 
-@pytest.mark.skip(reason="Jaeger not accessible")
+    @pytest.mark.skip(reason="Jaeger not accessible")
     def test_jaeger_trace_export(self):
         """Test that traces are exported to Jaeger"""
         jaeger_url = get_jaeger_service_url()
@@ -475,6 +478,7 @@ class DistributedTracingE2ETest(TestCase):
                 500,
             )
         except requests.exceptions.RequestException:
+            pass
 
 
 class LogCorrelationE2ETest(TestCase):
@@ -911,7 +915,7 @@ class MonitoringEdgeCasesE2ETest(TestCase):
         else:
             self.assertEqual(expected_rate, 0.10)
 
-@pytest.mark.skip(reason="OpenTelemetry not installed")
+    @pytest.mark.skip(reason="OpenTelemetry not installed")
     def test_log_correlation_with_nested_spans(self):
         """Test log correlation with nested spans"""
         try:
@@ -934,6 +938,7 @@ class MonitoringEdgeCasesE2ETest(TestCase):
                         c_ctx.trace_id,
                     )
         except ImportError:
+            pass
 
     def test_metrics_endpoint_cors_headers(self):
         """Test metrics endpoint has appropriate headers"""

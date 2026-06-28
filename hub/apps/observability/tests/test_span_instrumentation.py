@@ -51,12 +51,15 @@ class SpanInstrumentationTest(TestCase):
 
         tracer = get_tracer("test_tracer")
 
-        # May be None if OpenTelemetry not available
+        # May be None if OpenTelemetry not available or no tracer provider set
         if not OPENTELEMETRY_AVAILABLE:
             self.assertIsNone(tracer)
         else:
-            # If available, should return tracer or None
-            self.assertIsInstance(tracer, (type(None), object))
+            # When OTEL is available, get_tracer may return a Tracer or None
+            self.assertTrue(
+                tracer is None or hasattr(tracer, "start_span"),
+                f"Expected tracer or None, got {type(tracer).__name__}",
+            )
 
     @override_settings(OPENTELEMETRY_ENABLED=False)
     def test_get_tracer_disabled(self):
@@ -80,8 +83,10 @@ class SpanInstrumentationTest(TestCase):
         if not OPENTELEMETRY_AVAILABLE:
             self.assertIsNone(span)
         else:
-            # If available, should return span or None (if no active span)
-            self.assertIsInstance(span, (type(None), object))
+            # When OTEL is available, get_current_span may return a Span or None
+            # (None when no active span context exists)
+            self.assertTrue(span is None or hasattr(span, "get_span_context"),
+                          f"Expected span or None, got {type(span).__name__}")
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_add_span_attributes(self):
@@ -98,41 +103,25 @@ class SpanInstrumentationTest(TestCase):
             "key4": True,
         }
 
-        # Should not raise exception even if no active span
-        # Function handles None span gracefully
+        # add_span_attributes handles None span gracefully by early-return.
+        # It must never raise, regardless of OTEL availability or span state.
         try:
             add_span_attributes(attributes)
-            # If successful, attributes were added (if span exists)
-            # No exception raised — operation succeeded
-        except Exception as e:
-            # Should not raise exception - function handles None gracefully
-            if not OPENTELEMETRY_AVAILABLE:
-                # OK if OpenTelemetry not available
-                pass
-            else:
-                # Should not raise exception even if no active span
-                self.fail(f"add_span_attributes should handle None span gracefully: {e}")
+        except Exception as exc:
+            self.fail(f"add_span_attributes raised unexpectedly: {exc}")
 
     @override_settings(OPENTELEMETRY_ENABLED=True)
     def test_create_span_context_manager(self):
         """Test span context manager with real implementation."""
         from hub.apps.observability.span_instrumentation import OPENTELEMETRY_AVAILABLE, create_span
 
-        # Use real create_span - should handle gracefully if OpenTelemetry not available
+        # create_span handles OTEL unavailability by yielding None.
+        # It must never raise, regardless of OTEL availability.
         try:
             with create_span("test_span", {"attr1": "value1"}):
-                # Should execute without exception
                 pass
-            # If successful, span was created (if OpenTelemetry available)
-            # No exception raised — operation succeeded
-        except Exception as e:
-            # Should handle gracefully if OpenTelemetry not available
-            if not OPENTELEMETRY_AVAILABLE:
-                # OK if OpenTelemetry not available
-                pass
-            else:
-                # Should not raise exception - function handles unavailability gracefully
-                self.fail(f"create_span should handle unavailability gracefully: {e}")
+        except Exception as exc:
+            self.fail(f"create_span raised unexpectedly: {exc}")
 
 
 class SpanMiddlewareTest(TestCase):

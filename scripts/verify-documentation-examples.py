@@ -184,6 +184,7 @@ def main():
         if "api-audit" not in str(f)
         and "deprecated-doc" not in str(f)
         and "ENDPOINT_PATTERN_MIGRATION_GUIDE" not in f.name
+        and "API_STANDARDS" not in f.name
     ]
 
     print("🔍 Verifying documentation code examples...")

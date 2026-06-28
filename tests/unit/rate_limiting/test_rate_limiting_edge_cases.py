@@ -62,22 +62,36 @@ class RateLimitingEdgeCaseTest(TestCase):
         self.assertIsInstance(allowed2, bool)
 
     def test_rate_limit_redis_failure(self):
-        """Test rate limiting when Redis is unavailable"""
+        """Test rate limiting when Redis is unavailable
+
+        The sliding_window_check code tries two Redis paths before
+        failing open: (1) get_redis_cache_pool() which reads
+        REDIS_CACHE_URL, and (2) a direct redis.from_url() which reads
+        REDIS_URL.  We must poison BOTH and also clear the cached pool
+        so the invalid URLs actually take effect.
+        """
+        import hub.apps.core.redis_pools as rp
+
         key = generate_rate_limit_key(
             tenant_id=str(self.tenant.id),
             endpoint_category="catalog_reads",
             window=TimeWindow.BURST,
         )
 
-        # Test Redis failure by using an invalid Redis URL
-        # This tests the actual failure handling without mocks
         from django.test import override_settings
 
-        with override_settings(REDIS_URL="redis://invalid-host:6379/0"):
-            # Should fail open (allow request) when Redis is unavailable
-            allowed, count, _reset = sliding_window_check(key, 10, TimeWindow.BURST)
-            self.assertTrue(allowed)  # Fail open
-            self.assertEqual(count, 0)  # Count should be 0 when Redis fails
+        saved_pool = rp._redis_cache_pool
+        rp._redis_cache_pool = None
+        try:
+            with override_settings(
+                REDIS_CACHE_URL="redis://invalid-host:6379/0",
+                REDIS_URL="redis://invalid-host:6379/0",
+            ):
+                allowed, count, _reset = sliding_window_check(key, 10, TimeWindow.BURST)
+                self.assertTrue(allowed, "Must fail open when Redis is down")
+                self.assertEqual(count, 0, "Count must be 0 when Redis fails")
+        finally:
+            rp._redis_cache_pool = saved_pool
 
     def test_rate_limit_concurrent_requests(self):
         """Test rate limiting with concurrent requests"""
@@ -127,11 +141,12 @@ class RateLimitingEdgeCaseTest(TestCase):
         self.assertIsInstance(allowed, bool)
         self.assertIsInstance(results, list)
 
-        if results:
-            result = results[0]
-            self.assertIn("limit", result.__dict__ if hasattr(result, "__dict__") else {})
-            self.assertIn("remaining", result.__dict__ if hasattr(result, "__dict__") else {})
-            self.assertIn("reset_time", result.__dict__ if hasattr(result, "__dict__") else {})
+        self.assertGreater(len(results), 0, "check_rate_limit must return results")
+        result = results[0]
+        # RateLimitResult is a plain class; access attributes directly.
+        self.assertTrue(hasattr(result, "limit"), "Result missing 'limit' attribute")
+        self.assertTrue(hasattr(result, "remaining"), "Result missing 'remaining' attribute")
+        self.assertTrue(hasattr(result, "reset_time"), "Result missing 'reset_time' attribute")
 
     def test_rate_limit_multiple_windows(self):
         """Test rate limiting across multiple time windows"""

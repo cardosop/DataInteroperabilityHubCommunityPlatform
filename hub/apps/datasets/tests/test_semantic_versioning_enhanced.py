@@ -576,6 +576,28 @@ class VersionTaggingTest(TestCase):
         )
         self.assertEqual(result, [])
 
+    def test_set_version_tags_empty_string_raises(self):
+        """set_version_tags with an empty string in the list raises ValueError."""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "type": "string"}]},
+            format="CSV", version=1, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(dataset, is_current=True)
+        with self.assertRaises(ValueError):
+            VersionHistoryManager.set_version_tags(dataset, ["valid", ""])
+
+    def test_set_version_tags_non_string_raises(self):
+        """set_version_tags with a non-string element raises ValueError."""
+        dataset = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "type": "string"}]},
+            format="CSV", version=1, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(dataset, is_current=True)
+        with self.assertRaises(ValueError):
+            VersionHistoryManager.set_version_tags(dataset, [123])  # type: ignore
+
 
 class VersionDiffVisualizationTest(TestCase):
     """Test enhanced version diff visualization"""
@@ -850,7 +872,12 @@ class VersionDiffVisualizationTest(TestCase):
     # ========== FAILURE SCENARIOS ==========
 
     def test_semantic_versioning_failure_invalid_version_format(self):
-        """Test semantic versioning with invalid version format (failure scenario)"""
+        """create_version accepts any semantic version string as-is (no format validation).
+
+        The service stores the string verbatim — callers bear responsibility for
+        supplying well-formed semver strings. This test pins the permissive contract:
+        ``semantic_version="invalid"`` is stored, not rejected.
+        """
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -861,16 +888,10 @@ class VersionDiffVisualizationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle invalid version format gracefully
-        try:
-            VersionHistoryManager.create_version(
-                dataset, semantic_version="invalid", is_current=True
-            )
-            # If succeeds, verify it was created
-            self.assertIsNotNone(dataset)
-        except (ValueError, ValidationError):
-            # If fails, that's acceptable for invalid version format
-            pass
+        updated = VersionHistoryManager.create_version(
+            dataset, semantic_version="invalid", is_current=True
+        )
+        self.assertEqual(updated.semantic_version, "invalid")
 
     def test_semantic_versioning_failure_nonexistent_parent(self):
         """Test semantic versioning with non-existent parent (failure scenario)"""
@@ -893,19 +914,21 @@ class VersionDiffVisualizationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle non-existent parent gracefully - FK constraint should be raised
+        # Force immediate FK constraint check BEFORE the INSERT so the
+        # Statement raises IntegrityError eagerly rather than relying on
+        # deferred-constraint-commit semantics.
+        with connection.cursor() as cursor:
+            cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
         with self.assertRaises(IntegrityError):
             VersionHistoryManager.create_version(
                 dataset, parent_version=fake_parent, semantic_version="1.0.0", is_current=True
             )
-            # Force FK constraint check immediately (PostgreSQL specific)
-            with connection.cursor() as cursor:
-                cursor.execute("SET CONSTRAINTS ALL IMMEDIATE")
 
     # ========== ERROR HANDLING ==========
 
     def test_semantic_versioning_create_succeeds(self):
-        """Test error handling when database operations fail"""
+        """create_version succeeds for a valid, persisted dataset with all required fields."""
         dataset = Dataset.objects.create(
             tenant=self.tenant,
             asset=self.asset,
@@ -916,30 +939,80 @@ class VersionDiffVisualizationTest(TestCase):
             created_by=self.user,
         )
 
-        # Should handle errors gracefully
-        try:
-            VersionHistoryManager.create_version(dataset, semantic_version="1.0.0", is_current=True)
-            # Should succeed
-            self.assertIsNotNone(dataset)
-        except Exception:
-            # If raises exception, that's a problem
-            self.fail("create_version should handle database errors gracefully")
+        updated = VersionHistoryManager.create_version(
+            dataset, semantic_version="1.0.0", is_current=True
+        )
+        self.assertIsNotNone(updated)
+        self.assertEqual(updated.semantic_version, "1.0.0")
+        self.assertTrue(updated.is_current)
 
     def test_semantic_versioning_error_handling_invalid_dataset(self):
-        """Test error handling with invalid dataset"""
+        """create_version on a non-persisted Dataset saves it and populates version fields.
+
+        A Dataset instance constructed in-memory (not yet saved) carries enough
+        defaults that ``create_version`` can persist it. This test verifies the
+        dataset is saved with the expected fields populated.
+        """
         import uuid
 
         fake_dataset = Dataset(
             id=uuid.uuid4(), tenant=self.tenant, asset=self.asset, file=self.file
         )
 
-        # Should handle invalid dataset gracefully
-        try:
-            VersionHistoryManager.create_version(
-                fake_dataset, semantic_version="1.0.0", is_current=True
-            )
-            # If succeeds, verify it was created
-            self.assertIsNotNone(fake_dataset.id)
-        except Exception:
-            # If fails, that's acceptable for invalid dataset
-            pass
+        updated = VersionHistoryManager.create_version(
+            fake_dataset, semantic_version="1.0.0", is_current=True
+        )
+        self.assertIsNotNone(updated.id)
+        self.assertTrue(Dataset.objects.filter(id=updated.id).exists())
+        self.assertEqual(updated.semantic_version, "1.0.0")
+        self.assertTrue(updated.is_current)
+
+    def test_compare_versions_without_data_diff(self):
+        """compare_versions with include_data_diff=False omits data_diff."""
+        v1 = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
+            row_count=0, format="CSV", version=1, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(v1, semantic_version="1.0.0", is_current=False)
+
+        file2 = File.objects.create(
+            tenant=self.tenant, name="test2.csv", content_type="text/csv", size=2000,
+            status=FileStatus.ACTIVE, storage_path="test/test2.csv",
+            content_sha256="def456", created_by=self.user,
+        )
+        v2 = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=file2,
+            schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
+            row_count=100, format="CSV", version=2, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(v2, parent_version=v1)
+
+        comparison = VersionComparisonService.compare_versions(v1, v2, include_data_diff=False)
+        self.assertIsNone(comparison.data_diff)
+        viz = VersionComparisonService.visualize_version_diff(comparison, format="json")
+        self.assertNotIn("data_diff", viz)
+
+    def test_data_diff_zero_row_count_guard(self):
+        """data diff with zero old row_count does not divide by zero."""
+        v1 = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=self.file,
+            schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
+            row_count=0, format="CSV", version=1, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(v1, semantic_version="1.0.0", is_current=False)
+
+        file2 = File.objects.create(
+            tenant=self.tenant, name="test2.csv", content_type="text/csv", size=2000,
+            status=FileStatus.ACTIVE, storage_path="test/test2.csv",
+            content_sha256="def456", created_by=self.user,
+        )
+        v2 = Dataset.objects.create(
+            tenant=self.tenant, asset=self.asset, file=file2,
+            schema_json={"fields": [{"name": "col1", "data_type": "string", "nullable": True}]},
+            row_count=100, format="CSV", version=2, created_by=self.user,
+        )
+        VersionHistoryManager.create_version(v2, parent_version=v1)
+
+        comparison = VersionComparisonService.compare_versions(v1, v2, include_data_diff=True)
+        self.assertEqual(comparison.data_diff.row_count_percent_change, 0.0)

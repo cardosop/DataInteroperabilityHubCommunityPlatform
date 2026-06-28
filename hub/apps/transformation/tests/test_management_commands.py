@@ -30,22 +30,42 @@ class MigrateLegacyPipelinesTest(TestCase):
         self.err = StringIO()
 
     def _create_legacy_pipeline(self, name="legacy_pipe", mode="SQL"):
-        """Helper to create a legacy pipeline with the legacy mode flag."""
+        """Helper to create a legacy pipeline with the legacy mode flag.
+
+        Includes ``version`` and ``steps`` fields required by
+        TransformationPipeline.clean() (Phase 285.9 model hardening).
+        The ``mode`` key is what the management command uses to
+        detect legacy pipelines (line 63: mode in ("SQL", "VISUAL")).
+        """
         return TransformationPipeline.objects.create(
             name=name,
             tenant=self.tenant,
             status=PipelineStatus.ACTIVE,
-            pipeline_definition={"mode": mode, "query": "SELECT 1"},
+            pipeline_definition={
+                "mode": mode,
+                "query": "SELECT 1",
+                "version": "1.0.0",
+                "steps": [{"name": "legacy_step", "type": "sql", "query": "SELECT 1"}],
+            },
             metadata={},
         )
 
     def _create_dbt_pipeline(self, name="dbt_pipe"):
-        """Helper to create a modern dbt pipeline."""
+        """Helper to create a modern dbt-native pipeline.
+
+        Includes ``version`` and ``steps`` required by clean().
+        Omits the ``mode`` key so the command does NOT treat it as legacy.
+        """
         return TransformationPipeline.objects.create(
             name=name,
             tenant=self.tenant,
             status=PipelineStatus.ACTIVE,
-            pipeline_definition={"engine": "dbt", "project": "analytics"},
+            pipeline_definition={
+                "engine": "dbt",
+                "project": "analytics",
+                "version": "1.0.0",
+                "steps": [{"name": "dbt_run", "type": "dbt", "command": "dbt run"}],
+            },
             metadata={},
         )
 
@@ -64,9 +84,10 @@ class MigrateLegacyPipelinesTest(TestCase):
         self.assertIn("Found 1 legacy pipeline", output)
         self.assertIn("old_sql", output)
         self.assertIn("DRY RUN", output)
-        # Verify pipeline was NOT modified
+        # Verify pipeline was NOT modified (use get_pipeline_definition()
+        # which transparently decrypts; the raw field is encrypted on save).
         p1.refresh_from_db()
-        self.assertEqual(p1.pipeline_definition.get("mode"), "SQL")
+        self.assertEqual(p1.get_pipeline_definition().get("mode"), "SQL")
 
     def test_dry_run_no_legacy(self):
         """Dry run reports no legacy pipelines when all are modern"""
@@ -87,9 +108,9 @@ class MigrateLegacyPipelinesTest(TestCase):
         call_command("migrate_legacy_transformation_pipelines", stdout=self.out, stderr=self.err)
 
         p1.refresh_from_db()
-        self.assertEqual(p1.pipeline_definition.get("engine"), "dbt")
-        self.assertNotIn("mode", p1.pipeline_definition)
-        self.assertIn("migrated_from", p1.pipeline_definition)
+        self.assertEqual(p1.get_pipeline_definition().get("engine"), "dbt")
+        self.assertNotIn("mode", p1.get_pipeline_definition())
+        self.assertIn("migrated_from", p1.get_pipeline_definition())
 
     def test_migrate_converts_visual_mode(self):
         """Migration handles VISUAL mode pipelines"""
@@ -98,7 +119,7 @@ class MigrateLegacyPipelinesTest(TestCase):
         call_command("migrate_legacy_transformation_pipelines", stdout=self.out, stderr=self.err)
 
         p1.refresh_from_db()
-        self.assertEqual(p1.pipeline_definition.get("engine"), "dbt")
+        self.assertEqual(p1.get_pipeline_definition().get("engine"), "dbt")
 
     def test_migrate_single_pipeline(self):
         """--pipeline-id migrates only the specified pipeline"""
@@ -115,7 +136,7 @@ class MigrateLegacyPipelinesTest(TestCase):
 
         # Only p2 should be migrated
         p2.refresh_from_db()
-        self.assertEqual(p2.pipeline_definition.get("engine"), "dbt")
+        self.assertEqual(p2.get_pipeline_definition().get("engine"), "dbt")
 
     def test_migrate_skips_archived(self):
         """Migration skips ARCHIVED pipelines"""

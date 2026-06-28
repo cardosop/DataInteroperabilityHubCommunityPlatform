@@ -1582,8 +1582,6 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
             # Check policy expiration (if applicable)
             if hasattr(policy_app, "expires_at") and policy_app.expires_at:
-                from django.utils import timezone
-
                 if policy_app.expires_at < timezone.now():
                     violations.append(
                         {
@@ -1738,7 +1736,6 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 10. Publish compliance.checked event
         try:
-            from django.utils import timezone
 
             # Publish both mesh.compliance.checked events
             self.publish_mesh_compliance_checked(
@@ -1969,7 +1966,6 @@ class DataMeshService(BaseService, DataMeshEventPublisher):
 
         # 7. Publish topology.updated event
         try:
-            from django.utils import timezone
 
             self.publish_topology_updated(
                 tenant_id=effective_tenant_id,

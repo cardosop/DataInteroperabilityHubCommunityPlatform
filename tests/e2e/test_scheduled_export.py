@@ -54,7 +54,7 @@ def _prefect_integration_reachable(max_attempts=10, delay_seconds=5) -> bool:
             r = requests.get(f"{base}/health", timeout=5)
             if r.ok:
                 return True
-        except Exception:
+        except requests.exceptions.RequestException:
             pass
         if attempt < max_attempts - 1:
             time.sleep(delay_seconds)  # INTENTIONAL: e2e/integration test polling real services
@@ -119,7 +119,6 @@ class ScheduledExportE2ETest(TestCase):
             created_by=self.user,
         )
 
-@pytest.mark.skip(reason="Prefect service not available or deployment sync failed - skipping trigger test")
     def test_complete_export_lifecycle(self):
         """Test complete export lifecycle from creation to completion
 
@@ -178,18 +177,11 @@ class ScheduledExportE2ETest(TestCase):
         # Step 3: Manually trigger export
         # Note: Trigger may return 503 if Prefect deployment doesn't exist
         # (sync failed during creation) or if Prefect is not available
-        try:
-            response = self.client.post(
-                f"/api/v1/scheduled-exports/{export_id}/trigger/",
-                {},
-                format="json",
-                timeout=30,
-            )
-        except Exception:
-            # Request timeout or connection error - Prefect may not be available
-                "Prefect service not available or deployment sync failed - skipping trigger test"
-            )
-            return
+        response = self.client.post(
+            f"/api/v1/scheduled-exports/{export_id}/trigger/",
+            {},
+            format="json",
+        )
 
         # May return 503 if Prefect unavailable or deployment doesn't exist,
         # or 200 if successful

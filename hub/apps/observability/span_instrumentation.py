@@ -153,6 +153,7 @@ def create_span(name: str, attributes: dict[str, Any] | None = None, kind: int |
         yield None
         return
 
+    span = None
     try:
         if kind:
             span = tracer.start_as_current_span(name, kind=kind)
@@ -167,11 +168,9 @@ def create_span(name: str, attributes: dict[str, Any] | None = None, kind: int |
         logger.debug(f"Failed to create span {name}: {e}")
         yield None
     finally:
-        try:
-            if span:
+        if span is not None:
+            with suppress(Exception):
                 span.end()
-        except Exception:
-            pass
 
 
 def instrument_view(view_func: Callable | None = None, span_name: str | None = None):

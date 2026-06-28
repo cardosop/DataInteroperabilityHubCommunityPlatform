@@ -181,24 +181,26 @@ class EventBusReliabilityTest(TestCase):
             "metadata": {},
         }
 
-        # Verify job can be queued (async mechanism)
+        # Verify job can be queued (async mechanism).
+        # In test mode ASYNC=False so .delay() runs synchronously and
+        # persists the event immediately.
         rq_job = persist_event_async.delay(event_data)
         self.assertIsNotNone(rq_job)
         self.assertEqual(
             rq_job.func_name, "hub.apps.core.events.persistence_tasks.persist_event_async"
         )
 
-        # Execute the task function directly to test persistence logic
-        # (In production, RQ workers execute this asynchronously)
-        # This tests the persistence functionality without requiring RQ worker setup
-        # The @job decorator wraps the function, so we call it directly
-        event_id = persist_event_async(event_data)
-
-        # Check event was persisted
+        # Verify the event was actually persisted by .delay()
         event = Event.objects.get(event_id=event_data["event_id"])
         self.assertIsNotNone(event)
         self.assertEqual(event.event_type, "contract.created")
-        self.assertEqual(str(event.event_id), event_id)
+
+        # Direct function call with a FRESH event_id so we don't hit the
+        # unique constraint (the .delay() call already inserted this ID).
+        fresh_event_id = str(uuid.uuid4())
+        fresh_data = {**event_data, "event_id": fresh_event_id}
+        returned_id = persist_event_async(fresh_data)
+        self.assertEqual(returned_id, fresh_event_id)
 
     def test_message_deduplication(self):
         """Test message deduplication."""

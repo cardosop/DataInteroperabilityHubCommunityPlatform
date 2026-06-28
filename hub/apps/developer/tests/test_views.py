@@ -229,6 +229,14 @@ class SDKDocumentationViewSetTest(TestCase):
         response = self.client.get("/api/v1/developer/sdk/")
 
         self.assertEqual(response.status_code, status.HTTP_200_OK)
+        # Verify the response contains the expected SDK listing structure.
+        # The endpoint returns {sdks: [...]}.
+        self.assertIn("sdks", response.data,
+                      "SDK list response must contain a 'sdks' key")
+        self.assertIsInstance(response.data["sdks"], list,
+                              "'sdks' value must be a list")
+        self.assertGreater(len(response.data["sdks"]), 0,
+                           "SDK list must not be empty")
 
     def test_retrieve_sdk(self):
         """Test retrieving SDK documentation by ID"""
@@ -237,3 +245,62 @@ class SDKDocumentationViewSetTest(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.assertEqual(response.data["language"], "python")
         self.assertEqual(response.data["version"], "1.0.0")
+
+
+class DeveloperFeatureFlagTests(TestCase):
+    """Gate checks Tenant.developer_enabled for authenticated users.
+
+    The "developer_enabled" gate is enforced on PluginViewSet (and
+    soon other developer endpoints).  Unauthenticated users pass
+    through (public docs); authenticated users from a non-developer
+    tenant must receive 403.
+    """
+
+    def setUp(self):
+        super().setUp()
+        from hub.apps.tenants.models import KYCStatus, Tenant, TenantStatus
+        from hub.apps.users.models import User, UserStatus
+
+        # Tenant with developer features DISABLED
+        self.no_dev_tenant = Tenant.objects.create(
+            name="no-dev-tenant",
+            slug="no-dev-tenant",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.VERIFIED,
+            developer_enabled=False,
+        )
+        self.no_dev_user = User.objects.create_user(
+            email="nodev@example.com",
+            password="testpass123",
+            tenant=self.no_dev_tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+        # Tenant with developer features ENABLED
+        self.dev_tenant = Tenant.objects.create(
+            name="dev-tenant",
+            slug="dev-tenant",
+            status=TenantStatus.ACTIVE,
+            kyc_status=KYCStatus.VERIFIED,
+            developer_enabled=True,
+        )
+        self.dev_user = User.objects.create_user(
+            email="dev@example.com",
+            password="testpass123",
+            tenant=self.dev_tenant,
+            status=UserStatus.ACTIVE,
+        )
+
+    def test_plugins_endpoint_blocked_when_developer_disabled(self):
+        """Authenticated user on tenant with developer_enabled=False gets 403."""
+        client = APIClient()
+        client.force_authenticate(user=self.no_dev_user)
+        response = client.get("/api/v1/developer/plugins/")
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_plugins_endpoint_allowed_when_developer_enabled(self):
+        """Authenticated user on tenant with developer_enabled=True gets 200."""
+        client = APIClient()
+        client.force_authenticate(user=self.dev_user)
+        response = client.get("/api/v1/developer/plugins/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)

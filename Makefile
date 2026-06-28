@@ -1,4 +1,4 @@
-.PHONY: help setup install test test-ci test-ci-backend test-ci-frontend test-ci-lint lint format clean docker-up docker-down docker-logs migrate createsuperuser runserver dev-env test-helm test-helm-lint test-helm-unit test-infra-secrets test-staging-post-deploy test-verify-k8s-rollouts test-infra-staging-pipeline test-stack-up test-stack-down test-batch-1 test-batch-1-1 test-batch-1-2 test-batch-1-3 test-batch-1-4 test-batch-1-5 test-batch-1-6 test-batch-1-7 test-batch-1-8 test-batch-1-9 test-batch-2 test-batch-2-1 test-batch-2-2 test-batch-2-3 test-batch-2-4 test-batch-2-5 test-batch-2-6 test-batch-2-7 test-batch-2-8 test-batch-2-9 test-batch-2-10 test-batch-3 test-batch-3-1 test-batch-3-2 test-batch-3-3 test-batch-3-4 test-batch-3-5 test-batch-3-6 test-batch-3-7 test-batch-3-8 test-batch-3-9 test-batch-3-10 test-batch-3-11 test-batch-4 test-batch-4-1 test-batch-4-2 test-batch-4-3 test-batch-4-4 test-batch-4-5 test-batch-4-6 test-batch-5 test-batch-5-1 test-batch-5-2 test-batch-5-3 test-batch-5-4 test-batch-5-5 test-batch-6-1 test-batch-6-1a test-batch-6-1b test-batch-6-1c test-batch-6-1-all test-batch-6-2 test-batch-6-3 test-batch-6-4 test-batch-6-5 test-batch-6-6 test-batch-7-1 test-batch-7-2 test-batch-7-3 test-batch-7-4 test-batch-7-5 test-batch-7-6 test-batch-7 test-batch-8 test-batch-8-1 test-batch-8-2 test-batch-8-3 test-batch-9-1 test-batch-9-2 test-batch-9-2-a test-batch-9-2-b test-batch-9-2-c test-batch-9-2-d test-batch-9-2-e test-batch-9-2-f test-batch-9-3 test-batch-9-3a test-batch-9-3b test-batch-9-3c test-batch-9-3d test-batch-9-3e test-batch-9-3f test-batch-9 test-batch-10-1 test-batch-10-2 test-batch-10-3 test-batch-10-4 test-batch-10-5 test-batch-10-6 test-batch-10 test-batch-12-1 test-batch-12-2 test-batch-12-3 test-batch-12-4 test-batch-12-5 test-batch-all test-frontend-e2e-batch1 test-frontend-e2e-batch1a test-frontend-e2e-batch1b test-frontend-e2e-batch1c test-frontend-e2e-batch2 test-frontend-e2e-batch3 test-frontend-e2e-batch4 test-frontend-e2e-batch5 test-frontend-e2e-batch6 test-frontend-e2e-batch7 test-frontend-e2e-batch8 docker-up-services docker-up-all mvp-up docker-ps makemigrations test-api-client-usage test-api-client-usage-generate test-webhook-payloads test-webhook-payloads-generate test-inter-service-communication test-inter-service-communication-generate test-integration test-integration-with-services test-with-services test-e2e-with-services test-connectors-e2e test-unit test-cov test-odps-validation validate-odps-schemas ci-odps-validation validate-odcs-schemas test-odcs-validation test-odcs-backward-compatibility test-odcs-normalizers ci-odcs-validation test-backward-compatibility ci-backward-compatibility verify-deps wait-for-services check-docs-sync audit-docs _seed-e2e-data quality-gates
+.PHONY: help setup install test test-ci test-ci-backend test-ci-frontend test-ci-lint lint format clean docker-up docker-down docker-logs migrate createsuperuser runserver dev-env test-helm test-helm-lint test-helm-unit test-infra-secrets test-staging-post-deploy test-verify-k8s-rollouts test-infra-staging-pipeline test-stack-up test-stack-down test-batch-1 test-batch-1-1 test-batch-1-2 test-batch-1-3 test-batch-1-4 test-batch-1-5 test-batch-1-6 test-batch-1-7 test-batch-1-8 test-batch-1-9 test-batch-2 test-batch-2-1 test-batch-2-2 test-batch-2-3 test-batch-2-4 test-batch-2-5 test-batch-2-6 test-batch-2-7 test-batch-2-8 test-batch-2-9 test-batch-2-10 test-batch-3 test-batch-3-1 test-batch-3-2 test-batch-3-3 test-batch-3-4 test-batch-3-5 test-batch-3-6 test-batch-3-7 test-batch-3-8 test-batch-3-9 test-batch-3-10 test-batch-3-11 test-batch-4 test-batch-4-1 test-batch-4-2 test-batch-4-3 test-batch-4-4 test-batch-4-5 test-batch-4-6 test-batch-5 test-batch-5-1 test-batch-5-2 test-batch-5-3 test-batch-5-4 test-batch-5-5 test-batch-6-1 test-batch-6-1a test-batch-6-1b test-batch-6-1c test-batch-6-1-all test-batch-6-2 test-batch-6-3 test-batch-6-4 test-batch-6-5 test-batch-6-6 test-batch-7-1 test-batch-7-2 test-batch-7-3 test-batch-7-4 test-batch-7-5 test-batch-7-6 test-batch-7 test-batch-8 test-batch-8-1 test-batch-8-2 test-batch-8-3 test-batch-9-1 test-batch-9-2 test-batch-9-2-a test-batch-9-2-b test-batch-9-2-c test-batch-9-2-d test-batch-9-2-e test-batch-9-2-f test-batch-9-3 test-batch-9-3a test-batch-9-3b test-batch-9-3c test-batch-9-3d test-batch-9-3e test-batch-9-3f test-batch-9 test-batch-10-1a test-batch-10-1b test-batch-10-1c test-batch-10-2a test-batch-10-2b test-batch-10-2c test-batch-10-2d test-batch-10-2e test-docker-compose-runtime test-batch-10-2f test-batch-10-2f-poc test-batch-10-2g test-batch-10-2h test-batch-10-2i test-batch-10-3a test-batch-10-3b test-batch-10-3c test-batch-10-3d test-batch-10-3e test-batch-10-4a test-batch-10-4b test-batch-10-5a test-batch-10-5b test-batch-10-5c test-batch-10-6a test-batch-10-6b test-batch-10-6c test-batch-10 test-batch-12-1 test-batch-12-2 test-batch-12-3 test-batch-12-4 test-batch-12-5 test-batch-all test-frontend-e2e-batch1 test-frontend-e2e-batch1a test-frontend-e2e-batch1b test-frontend-e2e-batch1c test-frontend-e2e-batch2 test-frontend-e2e-batch3 test-frontend-e2e-batch4 test-frontend-e2e-batch5 test-frontend-e2e-batch6 test-frontend-e2e-batch7 test-frontend-e2e-batch8 docker-up-services docker-up-all mvp-up docker-ps makemigrations test-api-client-usage test-api-client-usage-generate test-webhook-payloads test-webhook-payloads-generate test-inter-service-communication test-inter-service-communication-generate test-integration test-integration-with-services test-with-services test-e2e-with-services test-connectors-e2e test-unit test-cov test-odps-validation validate-odps-schemas ci-odps-validation validate-odcs-schemas test-odcs-validation test-odcs-backward-compatibility test-odcs-normalizers ci-odcs-validation test-backward-compatibility ci-backward-compatibility verify-deps wait-for-services check-docs-sync audit-docs _seed-e2e-data quality-gates
 
 # ── CI-Makefile parity note ──────────────────────────────────────────
 # CI has 57 jobs (ci.yml + e2e.yml + 7 reusable workflows). The Makefile
@@ -1737,36 +1737,105 @@ test-batch-7: ## Run all batch 7 sub-batches sequentially
 	-$(MAKE) test-batch-7-11
 	-$(MAKE) test-batch-7-12
 
-test-batch-8-1: ## Run test batch 8-1: GraphQL + Developer + Health + Platform + Versioning + Security (~362 tests)
+test-batch-8-1: ## Run test batch 8-1: GraphQL + GraphQL Graphene + GraphQL LD + Developer + Versioning + Security (~316 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
 		hub/apps/graphql/ \
 		hub/apps/graphql_graphene/ \
 		hub/apps/graphql_ld/ \
 		hub/apps/developer/ \
-		hub/apps/health/ \
-		hub/apps/platform/ \
 		hub/apps/versioning/ \
 		hub/apps/security/ \
 		--reuse-db -q --timeout=300
 
-test-batch-8-2: ## Run test batch 8-2: Datasets + Data Movement (~840 tests)
+test-batch-8-2: ## Run test batch 8-2: Datasets D1 — business rules, schema inference, views, validation, inference limits (~289 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
-		hub/apps/datasets/ \
-		hub/data_movement/ \
+		hub/apps/datasets/tests/test_business_rules.py \
+		hub/apps/datasets/tests/test_schema_inference.py \
+		hub/apps/datasets/tests/test_views.py \
+		hub/apps/datasets/tests/test_datasets_service_comprehensive_validation.py \
+		hub/apps/datasets/tests/test_business_rules_access_validation.py \
+		hub/apps/datasets/tests/test_inference_limits.py \
 		--reuse-db -q --timeout=300
 
-test-batch-8-3: ## Run test batch 8-3: Breach + RoPA + Warehouses + GDPR + DSAR + DPIA + Consent + Processor Agreements + Regulation Policies (~373 tests)
+test-batch-8-3: ## Run test batch 8-3: Datasets D2 — encoding, version history, semantic versioning, caching, lifecycle (~261 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
-		hub/apps/breach/ \
-		hub/apps/ropa/ \
-		hub/apps/warehouses/ \
+		hub/apps/datasets/tests/test_encoding_detection.py \
+		hub/apps/datasets/tests/test_version_history.py \
+		hub/apps/datasets/tests/test_semantic_versioning_enhanced.py \
+		hub/apps/datasets/tests/test_caching.py \
+		hub/apps/datasets/tests/test_file_active_precondition.py \
+		hub/apps/datasets/tests/test_refresh_from_file.py \
+		hub/apps/datasets/tests/test_versioning.py \
+		hub/apps/datasets/tests/test_sample_pii_redaction.py \
+		hub/apps/datasets/tests/test_retire_lifecycle.py \
+		hub/apps/datasets/tests/test_snapshot_type_enum.py \
+		hub/apps/datasets/tests/test_manual_refresh.py \
+		hub/apps/datasets/tests/test_models.py \
+		--reuse-db -q --timeout=300
+
+test-batch-8-4: ## Run test batch 8-4: Datasets D3 — event publishing, storage, sampling, time travel, rollback, RLS (~287 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		hub/apps/datasets/tests/test_versioning_event_publisher.py \
+		hub/apps/datasets/tests/test_storage_fetch_retries.py \
+		hub/apps/datasets/tests/test_sample_data_extraction.py \
+		hub/apps/datasets/tests/test_csv_long_tail_formats.py \
+		hub/apps/datasets/tests/test_versioning_service_event_publishing.py \
+		hub/apps/datasets/tests/test_time_travel.py \
+		hub/apps/datasets/tests/test_versioning_service.py \
+		hub/apps/datasets/tests/test_version_comparison.py \
+		hub/apps/datasets/tests/test_schema_evolution.py \
+		hub/apps/datasets/tests/test_version_impact.py \
+		hub/apps/datasets/tests/test_dataset_kind.py \
+		hub/apps/datasets/tests/test_semantic_versioning_integration.py \
+		hub/apps/datasets/tests/test_rollback.py \
+		hub/apps/datasets/tests/test_cursor_backward_compat.py \
+		hub/apps/datasets/tests/test_services.py \
+		hub/apps/datasets/tests/test_file_handle_purpose.py \
+		hub/apps/datasets/tests/test_version_integration.py \
+		hub/apps/datasets/tests/test_versioning_event_publishing_e2e.py \
+		hub/apps/datasets/tests/test_version_sample_refresh.py \
+		hub/apps/datasets/tests/test_schema_evolution_integration.py \
+		hub/apps/datasets/tests/test_orphan_file_cascade.py \
+		hub/apps/datasets/tests/test_dataset_encoding_gate.py \
+		hub/apps/datasets/tests/test_version_impact_integration.py \
+		hub/apps/datasets/tests/test_sample_endpoint.py \
+		hub/apps/datasets/tests/test_dataset_inference_limits_integration.py \
+		hub/apps/datasets/tests/test_dataset_malware_gate.py \
+		hub/apps/datasets/tests/test_orphan_dataset_lifecycle.py \
+		hub/apps/datasets/tests/test_mock_fallback.py \
+		hub/apps/datasets/tests/test_cache_invalidation.py \
+		hub/apps/datasets/tests/test_rls_policies.py \
+		hub/apps/datasets/tests/test_orphan_dataset_backfill.py \
+		hub/apps/datasets/tests/test_file_hard_delete_retires_datasets.py \
+		--reuse-db -q --timeout=300
+
+test-batch-8-5: ## Run test batch 8-5: GDPR + DSAR (~267 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
 		hub/apps/gdpr/ \
 		hub/apps/dsar/ \
-		hub/apps/dpia/ \
+		--reuse-db -q --timeout=300
+
+test-batch-8-6: ## Run test batch 8-6: Health + Data Movement + Consent + Platform + Breach (~218 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		hub/apps/health/ \
+		hub/data_movement/ \
 		hub/apps/consent/ \
+		hub/apps/platform/ \
+		hub/apps/breach/ \
+		--reuse-db -q --timeout=300
+
+test-batch-8-7: ## Run test batch 8-7: RoPA + Warehouses + DPIA + Processor Agreements + Regulation Policies (~128 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		hub/apps/ropa/ \
+		hub/apps/warehouses/ \
+		hub/apps/dpia/ \
 		hub/apps/processor_agreements/ \
 		hub/apps/regulation_policies/ \
 		--reuse-db -q --timeout=300
@@ -1775,6 +1844,10 @@ test-batch-8: ## Run all batch 8 sub-batches sequentially
 	-$(MAKE) test-batch-8-1
 	-$(MAKE) test-batch-8-2
 	-$(MAKE) test-batch-8-3
+	-$(MAKE) test-batch-8-4
+	-$(MAKE) test-batch-8-5
+	-$(MAKE) test-batch-8-6
+	-$(MAKE) test-batch-8-7
 
 # ── Batch 9: hub/tests + SDK + CLI (~813 tests) ─────────────────────
 
@@ -1950,38 +2023,452 @@ test-batch-9: ## Run all batch 9 sub-batches sequentially
 	-$(MAKE) test-batch-9-2
 	-$(MAKE) test-batch-9-3
 
-# ── Batch 10: tests/ root — subdivided for CI timeouts (~6,853 tests) ─
+# ── Batch 10: tests/ root — restructured into 26 sub-batches for CI timeouts (~6,853 tests) ─
 
-test-batch-10-1: ## Run test batch 10-1: tests/unit/ + tests/integration/ (~244 files, ~2,500 tests)
+# ── 10-1: unit/ tests (969 tests → 3 sub-batches) ──
+
+test-batch-10-1a: ## unit/ – contracts, semantic, ODPS, business rules, DPO (~321 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
-		tests/unit/ \
-		tests/integration/ \
+		tests/unit/contracts/ \
+		tests/unit/semantic/ \
+		tests/unit/test_odps_fixtures_structure.py \
+		tests/unit/test_odps_malicious_samples.py \
+		tests/unit/test_odps_valid_samples.py \
+		tests/unit/test_business_rules_framework_completeness.py \
+		tests/unit/test_business_rules_framework_documentation.py \
+		tests/unit/test_dpo_workflows.py \
 		--reuse-db -q --timeout=600
 
-test-batch-10-2: ## Run test batch 10-2: tests/e2e/ (~122 files, ~800 tests)
+test-batch-10-1b: ## unit/ – monitoring, rate limiting, notifications, redis, virtualization, jobs (~320 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
-		tests/e2e/ \
+		tests/unit/monitoring/ \
+		tests/unit/rate_limiting/ \
+		tests/unit/notifications/ \
+		tests/unit/test_redis_monitoring.py \
+		tests/unit/test_redis_url_resolution.py \
+		tests/unit/test_redis_url_resolution_standalone.py \
+		tests/unit/virtualization/ \
+		tests/unit/jobs/ \
 		--reuse-db -q --timeout=600
 
-test-batch-10-3: ## Run test batch 10-3: tests/security/ + tests/performance/ (~104 files, ~600 tests)
+test-batch-10-1c: ## unit/ – worker, tenant config, CLI, event bus (~328 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/unit/worker/ \
+		tests/unit/tenant_config/ \
+		tests/unit/cli/ \
+		tests/unit/test_event_publishing_documentation.py \
+		tests/unit/test_event_bus_metrics_collection.py \
+		tests/unit/test_event_bus_metrics_accuracy.py \
+		--reuse-db -q --timeout=600
+
+# ── 10-2: integration/ tests (2,764 tests → 9 sub-batches) ──
+
+test-batch-10-2a: ## integration/ – asset APIs, event bus, docker compose, services (~308 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_asset_apis_comprehensive.py \
+		tests/integration/test_event_bus_architecture_decision_documentation.py \
+		tests/integration/test_services_django6.py \
+		tests/integration/test_services_architecture_documentation.py \
+		tests/integration/test_docker_compose.py \
+		tests/integration/test_data_engineer_api_endpoints.py \
+		tests/integration/test_dpo_api_endpoints.py \
+		tests/integration/test_email_integration.py \
+		tests/integration/test_scheduled_export_apis_comprehensive.py \
+		tests/integration/test_redis_backward_compatibility.py \
+		tests/integration/test_tracing.py \
+		tests/integration/test_redis_alerts.py \
+		tests/integration/test_health_integration.py \
+		tests/integration/test_redis_service_configuration_standalone.py \
+		tests/integration/test_database_integration.py \
+		tests/integration/test_marketplace_integration.py \
+		tests/integration/profile_contract_creation.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2b: ## integration/ – contract APIs, job monitoring, redis separation, rate limiting (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_contract_apis_comprehensive.py \
+		tests/integration/test_job_monitoring_observability_validation.py \
+		tests/integration/test_api_endpoints_comprehensive.py \
+		tests/integration/test_job_scheduling_queue_management_validation.py \
+		tests/integration/test_redis_separation_design_documentation.py \
+		tests/integration/test_cli_integration.py \
+		tests/integration/test_rate_limiting_endpoints.py \
+		tests/integration/test_proposal_success_criteria.py \
+		tests/integration/test_billing_apis_comprehensive.py \
+		tests/integration/test_redis_separation.py \
+		tests/integration/test_cross_service_integration.py \
+		tests/integration/test_event_bus_metrics_exposure.py \
+		tests/integration/test_tenant_onboarding_service_comprehensive_validation.py \
+		tests/integration/test_request_correlation.py \
+		tests/integration/test_api_error_handling.py \
+		tests/integration/test_workflow_integration.py \
+		tests/integration/test_contract_health_admin_api.py \
+		tests/integration/test_minimal_timeout_debug.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2c: ## integration/ – compliance APIs, API edge cases, endpoint discovery, tenant config (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_compliance_apis_comprehensive.py \
+		tests/integration/test_api_edge_cases.py \
+		tests/integration/test_asset_management_original_use_cases_comprehensive.py \
+		tests/integration/test_api_endpoint_discovery.py \
+		tests/integration/test_tenant_config_api.py \
+		tests/integration/test_service_availability_comprehensive.py \
+		tests/integration/test_developer_experience_new_use_cases_comprehensive.py \
+		tests/integration/test_docker_compose_staging.py \
+		tests/integration/test_event_bus_reliability.py \
+		tests/integration/test_event_bus_performance.py \
+		tests/integration/test_virtualization_new_use_cases_comprehensive.py \
+		tests/integration/test_redis_monitoring_setup.py \
+		tests/integration/test_data_mesh_new_use_cases_comprehensive.py \
+		tests/integration/test_uri_resolution_enhanced.py \
+		tests/integration/test_kubernetes_service_discovery.py \
+		tests/integration/test_stripe_connect.py \
+		tests/integration/test_api_info_endpoints.py \
+		tests/integration/test_data_first_asset_flow.py \
+		tests/integration/test_file_virus_scan_api.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2d: ## integration/ – auth APIs, transformation, test env, services, docker compose (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_auth_apis_comprehensive.py \
+		tests/integration/test_transformation_new_use_cases_comprehensive.py \
+		tests/integration/test_test_environment_setup.py \
+		tests/integration/test_updated_service_integrations.py \
+		tests/integration/test_documentation_guides.py \
+		tests/integration/test_inter_service_communication_search.py \
+		tests/integration/test_advanced_governance_new_use_cases_comprehensive.py \
+		tests/integration/test_advanced_marketplace_new_use_cases_comprehensive.py \
+		tests/integration/test_dual_write_optimization.py \
+		tests/integration/test_docker_compose_production.py \
+		tests/integration/cross_service_test.py \
+		tests/integration/test_file_storage_operations_comprehensive.py \
+		tests/integration/test_erasure_workflow_integration.py \
+		tests/integration/test_phase17_observability_validation.py \
+		tests/integration/test_grafana_dashboards.py \
+		tests/integration/test_marketplace_sync_e2e.py \
+		tests/integration/test_jsonld_context.py \
+		tests/integration/test_service_interactions.py \
+		tests/integration/test_scheduled_ingestion_api.py \
+		tests/integration/test_scheduled_export_api.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2e: ## integration/ – DQ APIs, AI/ML, contracts/, service-to-service, business rules (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_dq_apis_comprehensive.py \
+		tests/integration/test_ai_ml_new_use_cases_comprehensive.py \
+		tests/integration/contracts/ \
+		tests/integration/test_service_to_service_comprehensive.py \
+		tests/integration/test_business_logic_integration_documentation.py \
+		tests/integration/test_rate_limiting_integration.py \
+		tests/integration/test_social_features_new_use_cases_comprehensive.py \
+		tests/integration/test_api_inventory_verification.py \
+		tests/integration/test_consumer_impact_report.py \
+		tests/integration/test_otel_metrics_integration.py \
+		tests/integration/test_odps_performance_validation.py \
+		tests/integration/test_inmemory_scan_contract.py \
+		tests/integration/test_service_redis_connections.py \
+		tests/integration/test_documentation_examples_integration.py \
+		tests/integration/test_users_apis_comprehensive.py \
+		tests/integration/test_api_versioning.py \
+		tests/integration/test_normalization_rdf_flow.py \
+		tests/integration/test_tenant_switch_integration.py \
+		tests/integration/test_multipart_abort_resume_api.py \
+		tests/integration/test_file_upload_resume_api.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2f: ## integration/ — search APIs, job APIs, ODPS, prefect, docker deploy (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_search_apis_comprehensive.py \
+		tests/integration/test_job_apis_comprehensive.py \
+		tests/integration/test_all_services_odps_integration_comprehensive.py \
+		tests/integration/test_prefect_observability.py \
+		tests/integration/test_docker_compose_deployment.py \
+		tests/integration/test_tenant_isolation.py \
+		tests/integration/test_monitoring_configurations.py \
+		tests/integration/test_api_inventory_verification_comprehensive.py \
+		tests/integration/test_gateway_configurations.py \
+		tests/integration/test_compliance_original_use_cases_comprehensive.py \
+		tests/integration/test_cross_service_integration_comprehensive.py \
+		tests/integration/test_kubernetes_deployment.py \
+		tests/integration/jobs/ \
+		tests/integration/test_kubernetes_config.py \
+		tests/integration/test_platform_apis_integration.py \
+		tests/integration/test_jaeger_tracing.py \
+		tests/integration/test_admin_health_api.py \
+		tests/integration/test_scheduled_semantic_webhooks_api.py \
+		tests/integration/test_simple_asset_creation.py \
+		-k "not (TestDockerComposeServiceStartup or TestDockerComposeHealthChecks or TestDockerComposeServiceCommunication or TestDockerComposeServiceDependencies)" \
+		--reuse-db -q --timeout=600
+	# Docker Compose runtime tests (TestDockerComposeServiceStartup,
+	# TestDockerComposeHealthChecks, TestDockerComposeServiceCommunication,
+	# TestDockerComposeServiceDependencies) are host-only — they manage
+	# Docker Compose services and must run on the host, not inside a
+	# container.  Run them via:
+	#     make test-docker-compose-runtime
+
+test-docker-compose-runtime: ## integration/ — Docker Compose runtime tests (host-side, requires Docker)
+	./scripts/run_docker_compose_integration_tests.sh
+
+test-batch-10-2f-poc: ## integration/ — Kafka/RabbitMQ POC (requires brokers)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_kafka_rabbitmq_poc.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2g: ## integration/ – file APIs, client interface, service patterns, lineage, docker compose (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_file_apis_comprehensive.py \
+		tests/integration/test_files_service_comprehensive_validation.py \
+		tests/integration/test_client_interface_comprehensive_validation.py \
+		tests/integration/test_service_integration_pattern_compliance.py \
+		tests/integration/test_lineage_service_comprehensive_validation.py \
+		tests/integration/test_webhook_payloads_and_events_search.py \
+		tests/integration/test_database_operations_comprehensive.py \
+		tests/integration/test_docker_compose_dev.py \
+		tests/integration/test_proposal_implementation_overview.py \
+		tests/integration/test_integration_ecosystem_new_use_cases_comprehensive.py \
+		tests/integration/test_sparql_standard_vocabularies.py \
+		tests/integration/test_prometheus_metrics.py \
+		tests/integration/test_service_availability.py \
+		tests/integration/test_middleware_integration.py \
+		tests/integration/test_alertmanager.py \
+		tests/integration/test_odps_cross_integration.py \
+		tests/integration/test_marketplace_mapping_e2e.py \
+		tests/integration/test_rls_assets_pilot.py \
+		tests/integration/test_dq_compliance_runs_api.py \
+		tests/integration/test_auth_sessions_keys_api.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2h: ## integration/ – business rules, marketplace, virtualization, redis config (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_rest_business_rules_alignment.py \
+		tests/integration/test_marketplace_apis_comprehensive.py \
+		tests/integration/test_virtualization_service_comprehensive_validation.py \
+		tests/integration/test_redis_service_configuration.py \
+		tests/integration/test_marketplace_original_use_cases_comprehensive.py \
+		tests/integration/test_trust_signals_config_api_comprehensive.py \
+		tests/integration/test_contract_management_original_use_cases_comprehensive.py \
+		tests/integration/test_notification_service_comprehensive_validation.py \
+		tests/integration/test_docker_compose_standalone.py \
+		tests/integration/test_worker_service.py \
+		tests/integration/test_openapi_completeness.py \
+		tests/integration/test_docker_compose_test.py \
+		tests/integration/test_monitoring_infrastructure.py \
+		tests/integration/test_runbook_accuracy.py \
+		tests/integration/test_audit_apis_comprehensive.py \
+		tests/integration/test_kubernetes_scaling.py \
+		tests/integration/test_rls_baseline.py \
+		tests/integration/tabletop_rehearsal/ \
+		tests/integration/test_event_bus_integration.py \
+		tests/integration/test_dataset_versions_compare_api.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-2i: ## integration/ – datasets, monitoring obs, job lifecycle, ODPS semantic, monitoring (~307 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/integration/test_dataset_apis_comprehensive.py \
+		tests/integration/test_monitoring_observability_comprehensive_validation.py \
+		tests/integration/test_job_lifecycle_state_management_validation.py \
+		tests/integration/test_odps_semantic_layer_validation.py \
+		tests/integration/test_monitoring_integration.py \
+		tests/integration/test_api_client_usage_search.py \
+		tests/integration/test_advanced_observability_new_use_cases_comprehensive.py \
+		tests/integration/test_backward_compatibility.py \
+		tests/integration/test_job_queue_operations_comprehensive.py \
+		tests/integration/test_job_queue_dashboards.py \
+		tests/integration/test_data_quality_original_use_cases_comprehensive.py \
+		tests/integration/test_redis_streams_comparison.py \
+		tests/integration/test_metrics_export.py \
+		tests/integration/test_inter_service_timeout.py \
+		tests/integration/test_dcs_removal_integration.py \
+		tests/integration/test_personal_tenant_registration.py \
+		tests/integration/test_redis_configuration_runner.py \
+		tests/integration/test_external_services.py \
+		tests/integration/test_traefik_routing.py \
+		--reuse-db -q --timeout=600
+
+# ── 10-3: e2e/ tests (1,696 tests → 5 sub-batches) ──
+
+test-batch-10-3a: ## e2e/ – user journeys, marketplace, asset ops, workflow obs, personas (~340 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/e2e/test_new_user_journeys_comprehensive.py \
+		tests/e2e/test_marketplace_comprehensive.py \
+		tests/e2e/test_asset_operations.py \
+		tests/e2e/test_workflow_observability_business_rules_e2e.py \
+		tests/e2e/test_persona_data_consumer.py \
+		tests/e2e/test_rest_api.py \
+		tests/e2e/test_business_rules_validation_real_scenarios_e2e.py \
+		tests/e2e/test_persona_workflows_odps_enhanced.py \
+		tests/e2e/test_workflow_business_rules_e2e.py \
+		tests/e2e/test_marketplace_listings.py \
+		tests/e2e/test_observability_event_publishing_e2e.py \
+		tests/e2e/test_entitlements.py \
+		tests/e2e/test_graphql_odps_mutations.py \
+		tests/e2e/test_contract_normalization_enhanced_e2e.py \
+		tests/e2e/test_observability_e2e.py \
+		tests/e2e/test_semantic_versioning_e2e.py \
+		tests/e2e/test_phase25_gdpr_erasure_e2e.py \
+		tests/e2e/test_data_first_flow.py \
+		tests/e2e/test_marketplace_purchase_flow.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-3b: ## e2e/ – personas (PA, dev, tenant admin, auditor), docker compose, lineage (~339 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/e2e/test_persona_pa_comprehensive.py \
+		tests/e2e/test_persona_dev_comprehensive.py \
+		tests/e2e/test_persona_tenant_admin.py \
+		tests/e2e/test_docker_compose_e2e.py \
+		tests/e2e/test_openapi_spec_comprehensive.py \
+		tests/e2e/test_lineage_use_cases_e2e.py \
+		tests/e2e/test_contract_operations.py \
+		tests/e2e/test_marketplace_use_cases.py \
+		tests/e2e/test_email_service_e2e.py \
+		tests/e2e/test_workflow_user_journey_integration_e2e.py \
+		tests/e2e/test_persona_auditor.py \
+		tests/e2e/test_user_management.py \
+		tests/e2e/test_tenant_management.py \
+		tests/e2e/test_workflow_use_case_integration_e2e.py \
+		tests/e2e/test_audit_logging.py \
+		tests/e2e/test_dq_service.py \
+		tests/e2e/test_persona_dc_comprehensive.py \
+		tests/e2e/test_worker_service.py \
+		tests/e2e/test_asset_recommendations_popularity_health_e2e.py \
+		tests/e2e/test_consent_journey.py \
+		tests/e2e/test_phase25_tenant_onboarding_e2e.py \
+		tests/e2e/test_dataset_version_history.py \
+		tests/e2e/test_scheduled_export.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-3c: ## e2e/ – personas (TA, DPO, CPO, failure paths), CLI, versioning, workflows (~339 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/e2e/test_persona_ta_comprehensive.py \
+		tests/e2e/test_persona_dpo_comprehensive.py \
+		tests/e2e/test_persona_failure_paths_comprehensive.py \
+		tests/e2e/test_cli_e2e.py \
+		tests/e2e/test_persona_aud_comprehensive.py \
+		tests/e2e/test_persona_cpo_comprehensive.py \
+		tests/e2e/test_data_first_comprehensive.py \
+		tests/e2e/test_performance_comprehensive.py \
+		tests/e2e/test_marketplace_integration.py \
+		tests/e2e/test_enhanced_use_cases_with_odps.py \
+		tests/e2e/test_versioning_use_cases.py \
+		tests/e2e/test_django6_upgrade_critical_workflows.py \
+		tests/e2e/test_workflow_security_business_rules_e2e.py \
+		tests/e2e/test_compliance_service.py \
+		tests/e2e/test_contract_migration.py \
+		tests/e2e/test_graphql_odps_fields.py \
+		tests/e2e/test_rate_limiting.py \
+		tests/e2e/test_api_documentation.py \
+		tests/e2e/test_ropa_journey.py \
+		tests/e2e/test_phase25_billing_e2e.py \
+		tests/e2e/test_complete_user_journeys.py \
+		tests/e2e/test_dq_anomaly_trend_e2e.py \
+		tests/e2e/test_scheduled_ingestion.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-3d: ## e2e/ – user journeys comprehensive, API usability, error handling, SDK, jobs (~339 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/e2e/test_user_journeys_comprehensive.py \
+		tests/e2e/test_api_usability_comprehensive.py \
+		tests/e2e/test_error_handling_comprehensive.py \
+		tests/e2e/test_tenant_config_e2e.py \
+		tests/e2e/test_persona_data_engineer_comprehensive.py \
+		tests/e2e/test_sdk_python.py \
+		tests/e2e/test_custom_actions_error_handling.py \
+		tests/e2e/test_persona_platform_admin.py \
+		tests/e2e/test_odh_cli_sdk_e2e.py \
+		tests/e2e/test_file_operations.py \
+		tests/e2e/test_job_orchestration.py \
+		tests/e2e/test_workflow_error_recovery_compensation_e2e.py \
+		tests/e2e/test_contract_first_comprehensive.py \
+		tests/e2e/test_error_handling.py \
+		tests/e2e/test_cross_capability_e2e.py \
+		tests/e2e/test_marketplace_orders.py \
+		tests/e2e/test_contract_only_comprehensive.py \
+		tests/e2e/test_health_checks.py \
+		tests/e2e/test_complete_journeys_enhanced.py \
+		tests/e2e/test_dq_alerting_scorecards_root_cause_e2e.py \
+		tests/e2e/test_schema_evolution_e2e.py \
+		tests/e2e/test_governance_e2e.py \
+		tests/e2e/test_version_impact_rollback_e2e.py \
+		--reuse-db -q --timeout=600
+
+test-batch-10-3e: ## e2e/ – auth, monitoring, authentication, security, rate limiting, scheduled (~339 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/e2e/test_auth_authorization_comprehensive.py \
+		tests/e2e/test_monitoring_e2e.py \
+		tests/e2e/test_authentication.py \
+		tests/e2e/test_security_comprehensive.py \
+		tests/e2e/test_rate_limiting_e2e.py \
+		tests/e2e/test_persona_data_provider.py \
+		tests/e2e/test_graphql_api.py \
+		tests/e2e/test_scheduled_ingestion_use_cases.py \
+		tests/e2e/test_worker_service_e2e.py \
+		tests/e2e/test_odps_journeys_comprehensive.py \
+		tests/e2e/test_audit_compliance_journeys.py \
+		tests/e2e/test_semantic_layer.py \
+		tests/e2e/test_enhanced_journeys_with_odps.py \
+		tests/e2e/test_schema_inference.py \
+		tests/e2e/test_dataset_operations.py \
+		tests/e2e/test_model_serving_cli_sdk_e2e.py \
+		tests/e2e/test_multi_tenant_isolation.py \
+		tests/e2e/test_health_endpoints.py \
+		tests/e2e/test_workflow_performance_business_rules_e2e.py \
+		tests/e2e/test_impact_analysis_e2e.py \
+		tests/e2e/test_search_e2e.py \
+		tests/e2e/test_observability.py \
+		tests/e2e/test_contract_first_flow.py \
+		tests/e2e/test_external_resource_semantic_discovery.py \
+		--reuse-db -q --timeout=600
+
+# ── 10-4: security + performance tests (457 tests → 2 sub-batches) ──
+
+test-batch-10-4a: ## security/ tests (~273 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
 		tests/security/ \
+		--reuse-db -q --timeout=600
+
+test-batch-10-4b: ## performance/ tests (~184 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
 		tests/performance/ \
 		--reuse-db -q --timeout=600
 
-test-batch-10-4: ## Run test batch 10-4: tests/regression/ + tests/smoke/ + tests/resilience/ + tests/uat/ (~54 files, ~400 tests)
+# ── 10-5: regression + smoke + resilience + uat + concurrency + pact + contract + property + load + chaos + migrations (544 tests → 3 sub-batches) ──
+
+test-batch-10-5a: ## regression/ tests (~225 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
 		tests/regression/ \
+		--reuse-db -q --timeout=600
+
+test-batch-10-5b: ## smoke/ + resilience/ + uat/ tests (~163 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
 		tests/smoke/ \
 		tests/resilience/ \
 		tests/uat/ \
 		--reuse-db -q --timeout=600
 
-test-batch-10-5: ## Run test batch 10-5: tests/concurrency/ + tests/pact/ + tests/contract/ + tests/property/ + tests/load/ + tests/chaos/ + tests/migration/ (~49 files, ~500 tests)
+test-batch-10-5c: ## concurrency/ + pact/ + contract/ + property/ + load/ + chaos/ + migrations/ tests (~156 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
 		tests/concurrency/ \
@@ -1993,36 +2480,69 @@ test-batch-10-5: ## Run test batch 10-5: tests/concurrency/ + tests/pact/ + test
 		tests/migrations/ \
 		--reuse-db -q --timeout=600
 
-test-batch-10-6: ## Run test batch 10-6: tests/infrastructure/ + tests/observability/ + tests/benchmarks/ + tests/prefect/ + tests/chains/ + tests/ci/ + tests/dr/ + tests/disaster_recovery/ + tests/docs/ + tests/i18n/ + tests/isolation/ + tests/preprod01/ + tests/schema/ + tests/scripts/ + tests/sdk_python/ + tests/fixtures/ + tests/gdpr/ + tests/utils/ (~46 files, ~2,000 tests)
+# ── 10-6: infrastructure + observability + benchmarks + misc (869 tests → 3 sub-batches) ──
+
+test-batch-10-6a: ## scripts/ + docs/ + i18n/ + utils/ tests (~291 tests)
 	docker compose -f docker-compose.test.yml exec -T api-service-test \
 		python -u -m pytest \
-		tests/infrastructure/ \
-		tests/observability/ \
-		tests/benchmarks/ \
-		tests/prefect/ \
-		tests/chains/ \
-		tests/ci/ \
-		tests/dr/ \
-		tests/disaster_recovery/ \
+		tests/scripts/ \
 		tests/docs/ \
 		tests/i18n/ \
-		tests/isolation/ \
-		tests/preprod01/ \
-		tests/schema/ \
-		tests/scripts/ \
-		tests/sdk_python/ \
-		tests/fixtures/ \
-		tests/gdpr/ \
 		tests/utils/ \
 		--reuse-db -q --timeout=600
 
-test-batch-10: ## Run all batch 10 sub-batches sequentially
-	-$(MAKE) test-batch-10-1
-	-$(MAKE) test-batch-10-2
-	-$(MAKE) test-batch-10-3
-	-$(MAKE) test-batch-10-4
-	-$(MAKE) test-batch-10-5
-	-$(MAKE) test-batch-10-6
+test-batch-10-6b: ## infrastructure/ + ci/ + chains/ + prefect/ + benchmarks/ + dr/ + disaster_recovery/ tests (~284 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/infrastructure/ \
+		tests/ci/ \
+		tests/chains/ \
+		tests/prefect/ \
+		tests/benchmarks/ \
+		tests/dr/ \
+		tests/disaster_recovery/ \
+		--reuse-db -q --timeout=600
+
+test-batch-10-6c: ## sdk_python/ + isolation/ + preprod01/ + observability/ + schema/ + fixtures/ + gdpr/ tests (~294 tests)
+	docker compose -f docker-compose.test.yml exec -T api-service-test \
+		python -u -m pytest \
+		tests/sdk_python/ \
+		tests/isolation/ \
+		tests/preprod01/ \
+		tests/observability/ \
+		tests/schema/ \
+		tests/fixtures/ \
+		tests/gdpr/ \
+		--reuse-db -q --timeout=600
+
+# ── Batch 10 aggregate ──
+
+test-batch-10: ## Run all batch 10 sub-batches sequentially (26 targets)
+	-$(MAKE) test-batch-10-1a
+	-$(MAKE) test-batch-10-1b
+	-$(MAKE) test-batch-10-1c
+	-$(MAKE) test-batch-10-2a
+	-$(MAKE) test-batch-10-2b
+	-$(MAKE) test-batch-10-2c
+	-$(MAKE) test-batch-10-2d
+	-$(MAKE) test-batch-10-2e
+	-$(MAKE) test-batch-10-2f
+	-$(MAKE) test-batch-10-2g
+	-$(MAKE) test-batch-10-2h
+	-$(MAKE) test-batch-10-2i
+	-$(MAKE) test-batch-10-3a
+	-$(MAKE) test-batch-10-3b
+	-$(MAKE) test-batch-10-3c
+	-$(MAKE) test-batch-10-3d
+	-$(MAKE) test-batch-10-3e
+	-$(MAKE) test-batch-10-4a
+	-$(MAKE) test-batch-10-4b
+	-$(MAKE) test-batch-10-5a
+	-$(MAKE) test-batch-10-5b
+	-$(MAKE) test-batch-10-5c
+	-$(MAKE) test-batch-10-6a
+	-$(MAKE) test-batch-10-6b
+	-$(MAKE) test-batch-10-6c
 
 # ── Batch 12: Service-level tests (prefect, ODH, worker, shared) ──────
 # Small services with their own pytest.ini — run from the service
@@ -2099,15 +2619,14 @@ test-batch-all: ## Run all test batches sequentially (batches 1-10, 12) — cont
 	-$(MAKE) test-batch-8-1
 	-$(MAKE) test-batch-8-2
 	-$(MAKE) test-batch-8-3
+	-$(MAKE) test-batch-8-4
+	-$(MAKE) test-batch-8-5
+	-$(MAKE) test-batch-8-6
+	-$(MAKE) test-batch-8-7
 	-$(MAKE) test-batch-9-1
 	-$(MAKE) test-batch-9-2
 	-$(MAKE) test-batch-9-3
-	-$(MAKE) test-batch-10-1
-	-$(MAKE) test-batch-10-2
-	-$(MAKE) test-batch-10-3
-	-$(MAKE) test-batch-10-4
-	-$(MAKE) test-batch-10-5
-	-$(MAKE) test-batch-10-6
+	-$(MAKE) test-batch-10
 	-$(MAKE) test-batch-12-4
 	-$(MAKE) test-batch-12-5
 

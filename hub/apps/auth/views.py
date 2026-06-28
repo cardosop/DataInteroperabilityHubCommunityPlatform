@@ -1744,11 +1744,18 @@ def register(request):
         from hub.apps.notifications.models import EmailType
         from hub.apps.notifications.tasks import send_email_async
 
-        # Build welcome email context
+        # Build welcome email context — must include all variables that
+        # notifications/emails/user_welcome.html references: user_name,
+        # tenant_name, verification_url, login_url.
+        base_url = getattr(settings, "EMAIL_BASE_URL", "http://localhost:8000")
         context = {
             "user": user,
+            "user_name": getattr(user, "display_name", None) or user.email,
             "tenant": tenant,
-            "login_url": f"{getattr(settings, 'EMAIL_BASE_URL', 'http://localhost:8000')}/login",
+            "tenant_name": tenant.name if tenant else getattr(settings, "APP_NAME", "Meshant"),
+            "app_name": getattr(settings, "APP_NAME", "Meshant"),
+            "login_url": f"{base_url}/login",
+            "verification_url": None,  # Set only when email verification is required
         }
 
         # Use USER_INVITATION email type (or create USER_WELCOME if it exists)
