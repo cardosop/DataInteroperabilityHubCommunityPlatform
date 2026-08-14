@@ -80,7 +80,7 @@ pyarrow>=14.0.1,<15.0.0  # Required for Parquet file format support; <15.0 requi
 # dependency of requests, but pinned here as a direct top-level
 # dep so a future requests version that swaps it back to chardet
 # doesn't silently lose the platform's encoding-detection gate.
-charset-normalizer>=3.4.0,<4.0
+charset-normalizer>=3.4.9,<4.0
 
 # HTTP Client
 httpx==0.28.1
