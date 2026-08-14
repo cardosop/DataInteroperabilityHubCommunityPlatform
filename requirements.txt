@@ -114,7 +114,7 @@ pyyaml==6.0.3
 # (try/except + plain fallback); operators may self-install it if they
 # accept the GPL terms — that choice stays with the operator.
 click==8.3.1  # CLI framework
-croniter==6.0.0  # Cron expression parsing for scheduled ingestions
+croniter==6.2.4  # Cron expression parsing for scheduled ingestions
 
 # OpenAPI/Swagger
 drf-spectacular==0.29.0
