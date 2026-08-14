@@ -191,7 +191,7 @@ pyathena>=3.0,<4.0                        # MIT
 
 # Phase 275.D — dlt (data load tool) for outbound warehouse exports.
 # Handles schema management, idempotency, and normalisation for all 4 destinations.
-dlt>=1.0,<2.0                              # Apache 2.0
+dlt>=1.30.0,<2.0                              # Apache 2.0
 
 # Phase 275.D.3 — delta-sharing Python reference server.
 # Serves Delta Sharing 1.0 protocol with Hub auth + audit injection.
