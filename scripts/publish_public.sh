@@ -21,6 +21,12 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 PYTHON="${PYTHON:-python3}"
+# Resolve relative interpreters (venv/bin/python) against the PRIVATE repo
+# root — the post-commit verification runs inside the public checkout where
+# a relative path would not exist.
+if [[ "$PYTHON" != /* ]]; then
+  PYTHON="$(cd "$(dirname "$0")/.." && pwd)/$PYTHON"
+fi
 
 REPLACE_TEXT_FILE="$(mktemp /tmp/publish_replace_text.XXXXXX.txt)"
 
