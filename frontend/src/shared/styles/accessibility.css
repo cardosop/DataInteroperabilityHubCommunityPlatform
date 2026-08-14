@@ -1,0 +1,95 @@
+/* 278.L.3 — Reduced-motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Preserve loading indicators — they convey state, not decoration */
+  .progress-bar__fill--indeterminate {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+
+  /* Disable skeleton shimmer */
+  .skeleton-line,
+  .skeleton-block,
+  .skeleton-circle {
+    animation: none;
+    opacity: 0.3;
+  }
+}
+
+/* 278.L.4 — Dyslexia-friendly font option.
+   --font-family-sans and --font-family-mono are defined in index.css :root.
+   Do NOT redefine them here — this file loads after index.css and would
+   override the app's Inter font stack. */
+:root {
+  /* Explicit system font fallback — NOT var(--font-family-sans) because
+     [data-dyslexia-font="true"] sets --font-family-sans to this value,
+     creating a circular reference that resolves to invalid and strips
+     every font from the stack. */
+  --font-family-dyslexia: 'OpenDyslexic', 'Atkinson Hyperlegible', 'Lexend', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --letter-spacing-base: normal;
+  --word-spacing-base: normal;
+  --line-height-base: 1.5;
+
+  /* 278.B.3 — Focus ring color (light theme default). */
+  --color-focus-ring: #2563eb;
+}
+
+/* Dyslexia-friendly mode — activated via user preferences */
+[data-dyslexia-font="true"] {
+  --font-family-sans: var(--font-family-dyslexia);
+  --letter-spacing-base: 0.05em;
+  --word-spacing-base: 0.16em;
+  --line-height-base: 1.8;
+}
+
+[data-dyslexia-font="true"] body,
+[data-dyslexia-font="true"] p,
+[data-dyslexia-font="true"] li,
+[data-dyslexia-font="true"] td,
+[data-dyslexia-font="true"] th,
+[data-dyslexia-font="true"] label,
+[data-dyslexia-font="true"] input,
+[data-dyslexia-font="true"] textarea,
+[data-dyslexia-font="true"] select,
+[data-dyslexia-font="true"] button {
+  font-family: var(--font-family-dyslexia);
+  letter-spacing: var(--letter-spacing-base);
+  word-spacing: var(--word-spacing-base);
+  line-height: var(--line-height-base);
+}
+
+/* Keep monospace elements readable in dyslexia mode */
+[data-dyslexia-font="true"] code,
+[data-dyslexia-font="true"] pre,
+[data-dyslexia-font="true"] .monospace {
+  font-family: var(--font-family-mono);
+  letter-spacing: normal;
+  word-spacing: normal;
+}
+
+/* 278.L.2 — Route-change focus management */
+/* The main content area receives focus on route change for screen readers */
+#main-content:focus {
+  outline: none;
+}
+
+#main-content:focus-visible {
+  outline: 2px solid var(--color-focus-ring, #2563eb);
+  outline-offset: -2px;
+}
+
+/* Skip-link visible on focus (already implemented via SkipLink component) */
+
+/* Focus ring color — default (light) theme.
+   Dark-theme override lives in index.css under [data-theme='dark']
+   so it stays consistent with the app's data-theme toggle, not the
+   OS-level prefers-color-scheme media query. */

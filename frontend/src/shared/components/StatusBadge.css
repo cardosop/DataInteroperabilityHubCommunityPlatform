@@ -1,0 +1,55 @@
+/* 278.K.2 — Shared StatusBadge (278.C.P0.1 tokenized 2026-05-14) */
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  line-height: 1.4;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.status-badge__icon {
+  font-size: 0.7rem;
+  line-height: 1;
+}
+
+/* Color variants — design tokens (278.C.P0.1) */
+.status-badge--green {
+  background: var(--color-success-subtle);
+  color: var(--color-success-900);
+  border-color: var(--color-success-500);
+}
+
+.status-badge--red {
+  background: var(--color-error-subtle);
+  color: var(--color-error-900);
+  border-color: var(--color-error-500);
+}
+
+.status-badge--amber {
+  background: var(--color-warning-bg);
+  color: var(--color-warning-800);
+  border-color: var(--color-warning-500);
+}
+
+.status-badge--blue {
+  background: var(--color-info-subtle);
+  color: var(--color-primary-800);
+  border-color: var(--color-primary-200);
+}
+
+.status-badge--gray {
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  border-color: var(--color-neutral-300);
+}
+
+.status-badge--orange {
+  background: var(--color-warning-50);
+  color: var(--color-warning-700);
+  border-color: var(--color-warning-300);
+}

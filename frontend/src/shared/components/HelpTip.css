@@ -1,0 +1,79 @@
+/* 278.J.1 — HelpTip popover
+   278.C.P0.7 — Design-token migration: 5 hardcoded hex values → neutral/primary tokens */
+.helptip {
+  position: relative;
+  display: inline-flex;
+  vertical-align: middle;
+}
+
+.helptip__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--color-neutral-400);
+  background: transparent;
+  color: var(--color-neutral-500);
+  font-size: 0.65rem;
+  font-weight: 700;
+  cursor: help;
+  padding: 0;
+  line-height: 1;
+  transition: all 0.15s;
+  margin-left: 4px;
+}
+
+.helptip__trigger:hover,
+.helptip__trigger:focus-visible {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  outline: none;
+}
+
+.helptip__popover {
+  position: absolute;
+  z-index: 1100;
+  background: var(--color-surface-inverse);
+  color: var(--color-text-inverse);
+  padding: 10px 14px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  max-width: 280px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+}
+
+.helptip__popover--top {
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.helptip__popover--bottom {
+  top: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.helptip__popover--right {
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.helptip__text {
+  margin: 0 0 6px;
+}
+
+.helptip__link {
+  color: var(--color-primary-200);
+  font-size: 0.75rem;
+  text-decoration: none;
+  font-weight: 500;
+}
+
+.helptip__link:hover {
+  text-decoration: underline;
+}

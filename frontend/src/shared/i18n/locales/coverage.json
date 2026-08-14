@@ -1,0 +1,17 @@
+{
+  "generated": "2026-05-15",
+  "total_keys": 179,
+  "locales": {
+    "es": {
+      "translated": 112,
+      "untranslated": 67,
+      "coverage_pct": 62.6
+    },
+    "fr": {
+      "translated": 114,
+      "untranslated": 65,
+      "coverage_pct": 63.7
+    }
+  },
+  "threshold_90pct": false
+}
