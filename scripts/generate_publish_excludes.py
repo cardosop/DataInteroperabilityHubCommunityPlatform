@@ -4,6 +4,8 @@ Single source of truth: paid-app dirs come from hub/apps/manifest.py; the
 static EXTRA list covers ops/private/junk material. Semantics: the list is
 consumed by `git filter-repo --invert-paths` (history scrub) and by
 publish_public.sh (tree build) — new core files default to INCLUDED.
+A "!prefix" entry NEGATES a preceding exclusion in the publish tree filter
+(e.g. helm/ is excluded wholesale; "!helm/community/" ships the chart).
 
 Run: python scripts/generate_publish_excludes.py
 """
@@ -34,16 +36,16 @@ PAID_SERVICES = (
 )
 
 EXTRA = (
-    # Meshant-ops-specific (internal hostnames); community helm chart later
+    # Meshant-ops-specific (internal hostnames)
     "infrastructure/",
     "helm/",
+    # Community chart ships (negation re-includes it in the publish tree)
+    "!helm/community/",
     "k8s/",
     "monitoring/",
-    # All pre-split compose files reference paid services — EXCEPT the two
-    # bases the core overlays stack on (docker-compose.core.yml and
-    # docker-compose.test.core.yml are OVERLAYS, not standalones). The bases
-    # ship; their paid service definitions are profiled out by the overlays
-    # and are never built (their source dirs are excluded above).
+    # Pre-split compose files reference paid services — EXCEPT the two bases
+    # the core overlays stack on (the overlays are not standalones; the
+    # bases ship and their paid service definitions are profiled out).
     "docker-compose.dev.yml",
     "docker-compose.staging.yml",
     "docker-compose.production.yml",
@@ -59,11 +61,10 @@ EXTRA = (
     # Duplicated docs trees
     "docs/docs/",
     "docs/deprecated-doc/",
-    # Internal/private material — the private CI (50+ jobs referencing paid
-    # services + internal URLs) NEVER ships; the overlay provides the public
-    # workflows instead.
+    # Private CI (50+ jobs, paid services, internal URLs) never ships; the
+    # overlay provides the public workflows instead.
     ".github/workflows/",
-    # The overlay is publish machinery, not product content.
+    # Publish machinery, not product content.
     "scripts/publish_public_overlay/",
     "openspec/",
     "archive/",
@@ -94,6 +95,7 @@ def main() -> int:
         "# scripts/publish_paths_exclude.txt — GENERATED from hub/apps/manifest.py (313.3.2).",
         "# Regenerate with: python scripts/generate_publish_excludes.py",
         "# Semantics: git filter-repo --invert-paths; new core files default to INCLUDED.",
+        '# "!prefix" entries NEGATE a preceding exclusion (publish tree filter).',
     ]
     lines += paid_app_dirs + list(PAID_SERVICES) + list(EXTRA)
     Path("scripts/publish_paths_exclude.txt").write_text("\n".join(lines) + "\n")

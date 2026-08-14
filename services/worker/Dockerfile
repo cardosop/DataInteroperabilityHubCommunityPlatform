@@ -49,7 +49,9 @@ COPY . .
 #                            `from pii_detector import PIIDetector`, without
 #                            requiring any changes to the upstream source.
 # ---------------------------------------------------------------------------
-COPY services/compliance-service/ /app/compliance_engine/
+# Phase 313.3 — public build: the paid compliance engine is NOT shipped
+# in the OSS worker image (overlay replaces the private COPY line).
+# COPY services/compliance-service/ /app/compliance_engine/
 
 # Expose build metadata as runtime env vars for OpenTelemetry service version
 # and OCI image labels for traceability (matches services/api/Dockerfile)

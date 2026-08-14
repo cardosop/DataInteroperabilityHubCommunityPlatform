@@ -1,7 +1,0 @@
-# Override for E2E: use alternate MailHog container name to avoid conflict with
-# any existing hub-mailhog reference. Use:
-#   docker compose -f docker-compose.yml -f docker-compose.e2e-mailhog.yml up -d mailhog
-# For JOURNEY-AUTH-003 (password reset) also set SMTP_* for api-service.
-services:
-  mailhog:
-    container_name: hub-mailhog-e2e

@@ -1,0 +1,206 @@
+# requirements-core.txt — lean install profile for the OSS core (Phase 313.6.2).
+# Derivation: requirements.txt minus PAID-layer-only dependencies
+# (stripe — used by the tenant tax-ID submission path ONLY; that path
+# degrades gracefully with a TaxIdSubmissionError('Stripe SDK not available')
+# when the SDK is absent, so core installs work without it). Everything else is core runtime or
+# core-side integrations (warehouse connectors are CORE apps).
+# Keep this subset in sync with requirements.txt; the publish copyleft
+# gate runs against requirements.txt (superset).
+
+# WSGI/ASGI Production Server
+# gunicorn manages worker processes; uvicorn.workers.UvicornWorker handles ASGI (HTTP + WebSocket).
+# uvicorn[standard] includes uvloop + httptools for best async performance.
+gunicorn>=23.0.0,<24.0
+uvicorn[standard]>=0.34.0,<1.0
+
+# Core Django Framework
+Django>=6.0,<7.0
+djangorestframework==3.16.1
+django-cors-headers==4.9.0
+# Pin docutils: Django's admindocs (pulled in by DRF schema discovery) uses docutils.parsers.rst;
+# docutils 0.21+ reorganized the package and no longer exposes parsers.rst, causing AttributeError.
+docutils>=0.17,<0.21
+
+# Database
+psycopg2-binary==2.9.11
+
+# Job Queue
+django-rq==3.2.1
+rq==2.6.1
+redis==7.1.0
+# Phase 260 — deterministic distributed-lock tests need Lua (`lupa`): matches production `EVAL` release path.
+fakeredis[lua]>=2.28.0,<4.0
+# Shared Redis cache backend for Django default cache (rate limiting, ODPS ref cache, etc.).
+django-redis>=5.4.0,<6.0
+pyclamd>=0.4.0
+
+# GraphQL
+strawberry-graphql[django]==0.312.3
+graphene-django==3.2.3
+
+# Authentication & Security
+PyJWT==2.12.0  # CVE-2026-32597: accepts unknown crit header extensions
+cryptography==46.0.5  # CVE-2026-26007: subgroup attack due to missing validation
+pyOpenSSL==26.0.0  # CVE-2026-27459: DTLS cookie callback buffer overflow
+django-environ==0.12.0
+django-csp==4.0
+python-magic==0.4.27  # Magic-byte MIME validation (14.6); requires libmagic system lib
+
+# Secrets Management — AWS Secrets Manager + KMS (Phase 211)
+# boto3 (below) provides the AWS SDK for Secrets Manager and KMS.
+# hvac removed in Phase 211 (Vault → AWS Secrets Manager migration).
+
+# Object Storage (S3-compatible) and SES email
+boto3==1.42.7
+django-storages==1.14.6
+
+# Observability
+structlog==25.5.0
+django-structlog==10.0.0
+# prometheus-client>=0.20.0  # Replaced by OpenTelemetry metrics
+# django-prometheus>=2.4.0  # Removed: Not compatible with Django 6.0
+deprecated==1.3.1  # Required by OpenTelemetry packages
+opentelemetry-api==1.39.0
+opentelemetry-sdk==1.39.0
+opentelemetry-instrumentation-django==0.60b0
+opentelemetry-instrumentation-requests==0.60b0  # Required for HTTP request tracing
+opentelemetry-instrumentation-httpx==0.60b0  # Required for HTTPX client tracing
+# Jaeger exporter removed: conflicts with opentelemetry-proto (protobuf>=5) and googleapis-common-protos (protobuf<5). Use OTLP for tracing.
+opentelemetry-exporter-otlp>=1.20.0,<2.0
+opentelemetry-exporter-prometheus==0.60b0
+
+# Error Tracking
+sentry-sdk==2.55.0  # Optional: Error tracking with Sentry (set SENTRY_DSN to enable)
+
+# Typed models and validation
+# Prefect 3.x requires pydantic >=2.10.1,<3.0 (excludes 2.11.0–2.11.4 internally)
+pydantic>=2.10.1,<3.0
+
+# Data Quality Engines — in services/dq-service/requirements.txt only (Phase 55)
+
+# Data Processing
+pandas>=2.2.0,<2.3.0   # <2.3.0 required by databricks-sql-connector
+numpy==1.26.4
+pyarrow>=14.0.1,<15.0.0  # Required for Parquet file format support; <15.0 required by databricks-sql-connector
+
+# Phase 260.5.D — text-encoding detection with confidence floor.
+# charset-normalizer is MIT-licensed (license-clean alternative to
+# the LGPL chardet that the spec listed first). Already a transitive
+# dependency of requests, but pinned here as a direct top-level
+# dep so a future requests version that swaps it back to chardet
+# doesn't silently lose the platform's encoding-detection gate.
+charset-normalizer>=3.4.0,<4.0
+
+# HTTP Client
+httpx==0.28.1
+httpx2>=2.4.0  # Starlette TestClient transport (replaces deprecated httpx)
+requests==2.32.4
+urllib3>=2.6.3
+
+# Phase 260.0.8 — bounded retries for S3 reads on schema inference path
+tenacity>=9.0.0,<10.0
+
+# DNS — dnspython is BSD-licensed (verified per Phase 250.5.B.6
+# license-gate). Used by hub.apps.security.url_validators
+# .SSRFGuard.revalidate_resolved_ip for worker-time DNS-rebinding
+# protection (re-resolves the hostname independent of the OS
+# resolver cache, with explicit per-call timeout control).
+dnspython>=2.4,<3.0
+
+# Email Services
+sendgrid==6.12.5
+
+# RDF/Semantic
+rdflib==7.5.0
+SPARQLWrapper==2.0.0
+
+# Utilities
+python-dateutil==2.9.0.post0
+pytz==2025.2
+pyyaml==6.0.3
+# html2text REMOVED (Phase 313.3.4) — GPL-3.0 is incompatible with the
+# Apache-2.0 core. notifications.templates.py treats it as OPTIONAL
+# (try/except + plain fallback); operators may self-install it if they
+# accept the GPL terms — that choice stays with the operator.
+click==8.3.1  # CLI framework
+croniter==6.0.0  # Cron expression parsing for scheduled ingestions
+
+# OpenAPI/Swagger
+drf-spectacular==0.29.0
+
+# WebSocket Support
+channels==4.3.2
+channels-redis==4.3.0
+django-filter==25.2
+
+# Payment Processing
+
+# Snowflake Connector
+snowflake-connector-python>=3.12.0,<5.0
+
+# ODBC Connector (virtualization ODBC sources)
+pyodbc>=5.0.0,<6.0
+
+# Google Cloud Platform
+google-cloud-bigquery>=3.20.0,<4.0
+google-cloud-bigquery-analyticshub>=0.6.0,<1.0
+google-cloud-storage>=2.10.0,<3.0  # Required for Prefect integration S3/GCS connectors
+google-auth>=2.25.0,<3.0
+
+# PDF invoice generation (Phase 116B.2 — customer billing reports)
+reportlab>=4.4.0,<5.0
+
+# Phase 232.4 — RoPA exports (Article 30 register). WeasyPrint needs Cairo+Pango+gdk-pixbuf in Docker.
+WeasyPrint>=63.0,<70.0  # pydyf 0.12.1 compat; 62.3 uses deprecated transform()
+python-docx>=1.2.0,<2.0
+
+# Performance Testing
+psutil==7.1.3
+
+# Phase 228 F2 (228.F2.12 / REQ-LIN-F2-004) — Property-based tests
+# for the lineage validator (cycle detection over random DAGs).
+# Without this pin, ``test_lineage_validator.py`` skips the property
+# test silently — caught when the F2.DoD.2 closeout was test-executed
+# for the first time on 2026-05-01.
+hypothesis>=6.100,<7.0
+
+# Phase 228 F4 (228.F4.2) — OpenLineage standard integration. The
+# ``openlineage-python`` SDK provides the canonical RunEvent / Job /
+# Run / Dataset facets we translate into. Pinned to the 1.x major
+# (the F4 spec calls out ``^1.20``); 2.x will require an upgrade
+# audit per the Marquez quarterly upgrade runbook
+# (docs/runbooks/marquez-upgrade.md).
+openlineage-python>=1.20,<2.0
+# bcrypt: ingest-API-key password-equivalent hashing (228.F4.6.1).
+# Cost-factor 12 chosen per the security/encryption.py convention so
+# verify-time matches the existing password hash on the production
+# instance class (~50 ms / verify).
+bcrypt>=4.1,<5.0
+
+# Phase 228 X (228.X.9 / REQ-LIN-X-009) — zero-downtime migration
+# linter. The spec text references "django-strong-migrations" (the
+# Ruby/Rails package name); the canonical Python equivalent is
+# ``django-migration-linter`` (3YOURMIND), which catches the same
+# forbidden operations: DROP COLUMN, ALTER COLUMN TYPE, NOT NULL on
+# existing column without default, non-concurrent CREATE INDEX. Wired
+# into INSTALLED_APPS via settings.py + the strong-migrations CI job
+# in .github/workflows/lineage-x-ci-gates.yml runs
+# ``manage.py lintmigrations``.
+django-migration-linter>=5.1,<6.0
+
+# Phase 232 — time-travel tests for GDPR / SLA windows (fixtures also used in QA).
+freezegun>=1.4.0
+
+# Phase 275.C — Warehouse connectivity SDKs (Databricks + Athena).
+# Apache 2.0 / MIT licensed. Pinned to stable major versions.
+# License attribution in NOTICE.md per D275.28.
+databricks-sql-connector>=3.0,<4.0       # Apache 2.0
+pyathena>=3.0,<4.0                        # MIT
+
+# Phase 275.D — dlt (data load tool) for outbound warehouse exports.
+# Handles schema management, idempotency, and normalisation for all 4 destinations.
+dlt>=1.0,<2.0                              # Apache 2.0
+
+# Phase 275.D.3 — delta-sharing Python reference server.
+# Serves Delta Sharing 1.0 protocol with Hub auth + audit injection.
+delta-sharing>=1.0,<2.0                   # Apache 2.0

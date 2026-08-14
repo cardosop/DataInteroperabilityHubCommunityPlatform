@@ -75,9 +75,14 @@ out_path = sys.argv[1]
 excl = [l.strip() for l in open("scripts/publish_paths_exclude.txt") if l.strip() and not l.startswith("#")]
 import subprocess
 files = subprocess.run(["git", "ls-files"], capture_output=True, text=True).stdout.splitlines()
+# "!prefix" entries re-include paths otherwise excluded (e.g. helm/ is
+# excluded wholesale, "!helm/community/" ships the community chart).
+negations = [e[1:] for e in excl if e.startswith("!")]
+plain = [e for e in excl if not e.startswith("!")]
 keep = []
 for f in files:
-    if any(f == e or f.startswith(e) for e in excl if e.endswith("/")):
+    excluded = any(f == e or f.startswith(e) for e in plain if e.endswith("/")) or f in plain
+    if excluded and not any(f == e or f.startswith(e) for e in negations if e.endswith("/")):
         continue
     keep.append(f)
 open(out_path, "w").write("\n".join(keep) + "\n")

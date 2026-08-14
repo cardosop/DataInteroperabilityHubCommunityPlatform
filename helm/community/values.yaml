@@ -1,0 +1,43 @@
+# Community chart values — core-only deployment (HUB_CORE_ONLY=1).
+
+replicaCount: 1
+
+images:
+  api: ghcr.io/your-org/datahub-core/api-core:latest
+  worker: ghcr.io/your-org/datahub-core/worker-core:latest
+  frontend: ghcr.io/your-org/datahub-core/frontend:latest
+  pullPolicy: IfNotPresent
+
+# Secrets MUST be provided via a pre-created Secret (never in values).
+# Create with: kubectl create secret generic datahub-core-secrets \
+#   --from-literal=SECRET_KEY=... --from-literal=JWT_SECRET_KEY=...
+secretName: datahub-core-secrets
+
+postgres:
+  image: postgres:16-alpine
+  storage: 5Gi
+  user: hub
+  passwordFromSecret: true
+
+redis:
+  image: redis:7-alpine
+
+minio:
+  image: minio/minio:latest
+  storage: 5Gi
+
+service:
+  apiPort: 8000
+  frontendPort: 3000
+
+ingress:
+  enabled: true
+  host: datahub.example.com
+
+resources:
+  api:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }
+  worker:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits: { cpu: "1", memory: 1Gi }

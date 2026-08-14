@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "datahub-core.name" . }}-minio
+  labels: {{ include "datahub-core.labels" . | nindent 4 }}
+spec:
+  ports: [{ port: 9000 }]
+  selector: { app: {{ include "datahub-core.name" . }}-minio }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datahub-core.name" . }}-minio
+  labels: {{ include "datahub-core.labels" . | nindent 4 }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: {{ include "datahub-core.name" . }}-minio }
+  template:
+    metadata:
+      labels: { app: {{ include "datahub-core.name" . }}-minio }
+    spec:
+      containers:
+        - name: minio
+          image: "{{ .Values.minio.image }}"
+          args: ["server", "/data"]
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINIO_ROOT_PASSWORD
+          ports: [{ containerPort: 9000 }]
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "datahub-core.name" . }}-minio
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "datahub-core.name" . }}-minio
+  labels: {{ include "datahub-core.labels" . | nindent 4 }}
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: {{ .Values.minio.storage }}

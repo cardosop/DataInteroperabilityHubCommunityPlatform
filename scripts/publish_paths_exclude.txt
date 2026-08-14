@@ -1,6 +1,7 @@
 # scripts/publish_paths_exclude.txt — GENERATED from hub/apps/manifest.py (313.3.2).
 # Regenerate with: python scripts/generate_publish_excludes.py
 # Semantics: git filter-repo --invert-paths; new core files default to INCLUDED.
+# "!prefix" entries NEGATE a preceding exclusion (publish tree filter).
 hub/apps/billing/
 hub/apps/semantic/
 hub/apps/marketplace/
@@ -27,6 +28,7 @@ services/workflow_engine/
 services/tests/
 infrastructure/
 helm/
+!helm/community/
 k8s/
 monitoring/
 docker-compose.dev.yml

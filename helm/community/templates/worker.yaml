@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "datahub-core.name" . }}-worker
+  labels: {{ include "datahub-core.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels: { app: {{ include "datahub-core.name" . }}-worker }
+  template:
+    metadata:
+      labels: { app: {{ include "datahub-core.name" . }}-worker }
+    spec:
+      containers:
+        - name: worker
+          image: "{{ .Values.images.worker }}"
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          env:
+            - name: HUB_CORE_ONLY
+              value: "1"
+            - name: DATABASE_URL
+              value: postgres://{{ .Values.postgres.user }}:$(POSTGRES_PASSWORD)@{{ include "datahub-core.name" . }}-postgres:5432/hub
+            - name: REDIS_URL
+              value: redis://{{ include "datahub-core.name" . }}-redis:6379/0
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: POSTGRES_PASSWORD
+            - name: AWS_S3_ENDPOINT_URL
+              value: http://{{ include "datahub-core.name" . }}-minio:9000
+            - name: AWS_STORAGE_BUCKET_NAME
+              value: hub-files
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINIO_ROOT_USER
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: MINIO_ROOT_PASSWORD
+            - name: SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: SECRET_KEY
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secretName }}
+                  key: JWT_SECRET_KEY
+          resources: {{ toYaml .Values.resources.worker | nindent 12 }}
