@@ -1,0 +1,53 @@
+name: Frontend Core
+
+on:
+  push:
+    branches: [main]
+    paths: ["frontend/**", "shared/**"]
+  pull_request:
+    paths: ["frontend/**", "shared/**"]
+
+jobs:
+  frontend:
+    name: Unit + typecheck + build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: frontend
+      - run: npm run test:run:ci
+        working-directory: frontend
+      - run: npm run typecheck
+        working-directory: frontend
+      - run: npm run build
+        working-directory: frontend
+
+  e2e-core-personas:
+    name: E2E (core personas, weekly)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'schedule' || github.event_name == 'push'
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci
+        working-directory: frontend
+      - run: npx playwright install --with-deps chromium
+        working-directory: frontend
+      - name: Start core backend
+        run: docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml up -d --build --wait
+        timeout-minutes: 10
+      - name: Run core persona specs (frontend/e2e/core-only.txt)
+        run: |
+          if [ -f e2e/core-only.txt ]; then
+            npx playwright test --grep "$(tr '\n' '|' < e2e/core-only.txt | sed 's/|$//')"
+          else
+            npx playwright test --grep "@core"
+          fi
+        working-directory: frontend
+        timeout-minutes: 25

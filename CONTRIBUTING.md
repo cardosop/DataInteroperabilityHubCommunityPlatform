@@ -1,90 +1,51 @@
-# Contributing to Meshant
+# Contributing to DataInteroperabilityHub (core)
 
-**311.31 (G20)** — Sprint 5
+Thanks for contributing! This is the open-source core of the Meshant
+Data Interoperability Hub. Before opening a PR, please read the
+[open-core boundary](README.md#open-core-boundary-please-read-before-contributing):
+the semantic layer, marketplace, billing/BaaS, ML/AI, and social
+features are hosted-SaaS capabilities and are **not open to
+contribution** in this repository.
 
-## Prerequisites
+## Getting started
 
-- Docker 24+ & docker-compose v2
-- Python 3.12
-- Node 22 & npm 10+
-- AWS CLI (for DR drills and S3 operations)
-- jq (for JSON processing in scripts)
+1. Fork and clone the repo.
+2. `make quickstart` — brings up the core stack and seeds a demo tenant.
+3. `make test-core` — runs the core-only backend suite (<15 min).
 
-## Local Setup
+## Developer Certificate of Origin (DCO)
 
-```bash
-# Clone and enter repo
-git clone git@github.com:your-org/DataInteroperabilityHub.git
-cd DataInteroperabilityHub
+All commits must be signed off:
 
-# Start all services
-make dev-env
-docker compose up -d
-
-# Wait for health checks
-curl http://localhost:8000/api/v1/health/
+```
+Signed-off-by: Your Name <you@example.com>
 ```
 
-## Running Tests
+`git commit -s` adds this automatically. By signing off, you certify
+the [Developer Certificate of Origin](https://developercertificate.org)
+(DCO 1.1).
 
-```bash
-# Backend tests (reuse DB for speed)
-pytest hub/ -x --reuse-db
+## How to extend the platform
 
-# Single app tests
-pytest hub/apps/billing/tests/ -x --reuse-db
+The core is designed around extension points — prefer these over
+editing core code directly:
 
-# Frontend tests
-cd frontend && npm test
+- **Business-rules chains** — `hub/apps/core/business_rules/chain_registry.py`
+- **Job handlers** — `hub/apps/core/job_handlers.py`
+- **Event subscribers** — `hub/apps/core/events/subscriber.py`
+- **Commercial hooks** — `hub/apps/core/commercial_hooks.py`
+  (core-owned; the paid layer registers providers at runtime)
 
-# E2E tests (requires backend running)
-npx playwright test
+## Review process
 
-# Load tests
-k6 run tests/load/search_load.k6.js
-```
+- Open an issue first for anything non-trivial; maintainers triage
+  weekly.
+- PRs are reviewed within 2 weeks. CI must be green
+  (GATE-29 boundary check, core test suite, lint, docs build).
+- Keep the `scripts/core_boundary_allowlist.txt` ratchet from growing —
+  core code must never import paid apps.
 
-## Code Style
+## Code style
 
-| Language | Tool | Config |
-|----------|------|--------|
-| Python | Ruff | `pyproject.toml` |
-| TypeScript/TSX | Prettier + ESLint | `frontend/.prettierrc` |
-| CSS | Stylelint | `frontend/.stylelintrc` |
-| YAML/JSON | Prettier | `frontend/.prettierrc` |
-
-```bash
-# Lint all
-make lint
-
-# Auto-fix
-make lint-fix
-```
-
-## PR Process
-
-1. Branch naming: `feature/<ticket-id>-<short-desc>` or `fix/<ticket-id>-<short-desc>`
-2. Commit format: `type(scope): description` (e.g. `feat(billing): add sandbox plan tier`)
-3. Breaking changes: prefix with `BREAKING:` in commit message
-4. Minimum 1 approving review before merge to `main` or `staging`
-5. CI must pass: lint, type-check, tests, security scan
-6. Squash merge preferred
-
-## CI Pipeline
-
-| Stage | What runs |
-|-------|-----------|
-| Lint | Ruff, Prettier, ESLint, Stylelint |
-| Type-check | mypy (Python), tsc (TypeScript) |
-| Test | pytest, vitest, RLS migration check |
-| Security | gitleaks, pip-audit, trivy image scan |
-| Verify | validate_plan_config, check_throttle_coverage |
-| Deploy | Docker build → ECR push → Helm deploy |
-
-## Documentation
-
-- Architecture decisions: `docs/adr/`
-- Runbooks: `docs/runbooks/`
-- API docs: `GET /api/v1/openapi/` (auto-generated)
-- Product guide: `docs/PRODUCT_GUIDE.md`
-- Breaking changes: see `docs/BREAKING_CHANGE_POLICY.md`
+Python: ruff + black (line length 100). TypeScript: prettier + ESLint.
+Run `pre-commit install` — the repo's hooks run the pinned toolchain.

@@ -1,0 +1,79 @@
+# MVP-shaped stack overlay (Phase 200). Use with the main compose file:
+#   docker compose -f docker-compose.yml -f docker-compose.mvp.yml up -d <services>
+# Or: make mvp-up
+#
+# - Enables MVP_MODE on API/worker for runtime gating + OpenAPI trimming.
+# - Bakes VITE_MVP_MODE into the frontend image when you build (docker compose build frontend).
+# - Tags heavy optional services with profile "mvp-excluded" so they do not start unless
+#   explicitly requested: docker compose --profile mvp-excluded up …
+
+services:
+  api-service:
+    environment:
+      MVP_MODE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+
+  worker-service:
+    environment:
+      MVP_MODE: "true"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy
+      jaeger:
+        condition: service_healthy
+      clamav:
+        condition: service_healthy
+      compliance-service:
+        condition: service_healthy
+
+  frontend:
+    build:
+      args:
+        VITE_MVP_MODE: "true"
+
+  prefect-server:
+    profiles: [mvp-excluded]
+  prefect-db:
+    profiles: [mvp-excluded]
+  prefect-worker:
+    profiles: [mvp-excluded]
+  prefect-integration-service:
+    profiles: [mvp-excluded]
+  ckan-test-db:
+    profiles: [mvp-excluded]
+  ckan-test-solr:
+    profiles: [mvp-excluded]
+  ckan-test-redis:
+    profiles: [mvp-excluded]
+  ckan-test:
+    profiles: [mvp-excluded]
+  mock-server:
+    profiles: [mvp-excluded]
+  odh-training-operator:
+    profiles: [mvp-excluded]
+  odh-inference-scheduler:
+    profiles: [mvp-excluded]

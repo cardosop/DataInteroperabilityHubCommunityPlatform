@@ -1,0 +1,46 @@
+name: SDK + CLI
+
+on:
+  push:
+    branches: [main]
+    paths: ["sdk/**", "cli/**"]
+  pull_request:
+    paths: ["sdk/**", "cli/**"]
+
+jobs:
+  sdk-js:
+    name: SDK (JS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm ci && npm test
+        working-directory: sdk/js
+
+  sdk-python:
+    name: SDK (Python)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e . pytest
+        working-directory: sdk/python
+      - run: pytest -q
+        working-directory: sdk/python
+
+  cli:
+    name: CLI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+        working-directory: cli
+      - run: pytest -q
+        working-directory: cli

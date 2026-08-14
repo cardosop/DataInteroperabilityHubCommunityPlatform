@@ -1,6 +1,6 @@
 site_name: Meshant — Data Interoperability Hub
 site_description: MVP documentation for the Meshant platform
-site_url: https://meshant-internal.example.com/docs/
+site_url: https://meshant-internal.example.com/
 
 theme:
   name: material

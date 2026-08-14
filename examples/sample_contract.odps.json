@@ -1,0 +1,17 @@
+{
+  "odps_version": "1.0",
+  "product": {
+    "name": "Sample Orders Dataset",
+    "description": "Demo orders dataset for the quickstart walkthrough.",
+    "price": 0
+  },
+  "schema": {
+    "fields": [
+      {"name": "order_id", "type": "integer", "required": true},
+      {"name": "customer", "type": "string", "required": true},
+      {"name": "amount_brl", "type": "number", "required": true},
+      {"name": "region", "type": "string", "required": false},
+      {"name": "ordered_at", "type": "date", "required": false}
+    ]
+  }
+}

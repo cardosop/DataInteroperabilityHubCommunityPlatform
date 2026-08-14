@@ -1,0 +1,66 @@
+# Phase 216.X.1 — MVP / full backend split overlay.
+#
+# Provides two separate hub-test-api containers running side-by-side so
+# Phase 216 tests can target one or the other without restarting the
+# backend (slow) or flipping a runtime toggle (races):
+#
+#   * hub-test-api-mvp   (port 8001, MVP_MODE=true)   — used by ``-m mvp``
+#   * hub-test-api-full  (port 8002, MVP_MODE=false)  — used by the
+#                                                       full integration
+#                                                       suite
+#
+# Run alongside the main test compose:
+#
+#   docker compose \
+#       -f docker-compose.test.yml \
+#       -f docker-compose.test.mvp.yml \
+#       --env-file .env.test \
+#       up -d hub-test-api-mvp hub-test-api-full
+#
+# Test fixtures resolve the URLs from these env vars (defaults shown):
+#
+#   MESHANT_API_URL_MVP   = http://localhost:8001/api/v1
+#   MESHANT_API_URL_FULL  = http://localhost:8002/api/v1
+#
+# CI runs both containers in parallel so the ``mvp-test-suite`` job and
+# the full integration job do not contend for the same backend.
+#
+# This file is a strict overlay — it adds two new services and depends
+# on the existing ``postgres-test`` / ``redis-cache-test`` services
+# defined in docker-compose.test.yml. It does NOT redefine them.
+
+services:
+
+  hub-test-api-mvp:
+    extends:
+      file: docker-compose.test.yml
+      service: api-service-test
+    container_name: hub-test-api-mvp
+    environment:
+      MVP_MODE: "true"
+      DJANGO_SETTINGS_MODULE: hub.settings
+    ports:
+      - "8001:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
+
+  hub-test-api-full:
+    extends:
+      file: docker-compose.test.yml
+      service: api-service-test
+    container_name: hub-test-api-full
+    environment:
+      MVP_MODE: "false"
+      DJANGO_SETTINGS_MODULE: hub.settings
+    ports:
+      - "8002:8000"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health/"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
