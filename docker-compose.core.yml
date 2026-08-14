@@ -25,6 +25,8 @@ services:
     environment:
       HUB_CORE_ONLY: "1"
       POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — run make quickstart (bootstraps .env)}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-hub}
       REDIS_URL: redis://redis-cache:6379/0
       REDIS_HOST: redis-cache
       REDIS_PORT: "6379"
@@ -48,6 +50,8 @@ services:
     environment:
       HUB_CORE_ONLY: "1"
       POSTGRES_HOST: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required — run make quickstart (bootstraps .env)}
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hub}:${POSTGRES_PASSWORD:?}@postgres:5432/${POSTGRES_DB:-hub}
       REDIS_URL: redis://redis-cache:6379/0
       REDIS_HOST: redis-cache
       REDIS_PORT: "6379"
