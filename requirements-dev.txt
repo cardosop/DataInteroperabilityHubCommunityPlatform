@@ -16,7 +16,7 @@ pytest-xdist>=3.5.0  # -n auto for parallel test execution
 ruff>=0.1.0
 black>=26.3.1
 mypy>=1.7.0
-django-stubs>=5.0.0
+django-stubs>=5.2.9
 types-redis>=4.6.0
 types-requests>=2.31.0
 
@@ -49,7 +49,7 @@ responses>=0.24.0  # HTTP/HTTPS request mocking
 jsonschema>=4.20.0  # JSON Schema validation for API contract testing
 
 # Development Server
-django-debug-toolbar>=4.4.0
+django-debug-toolbar>=4.4.6
 django-extensions>=3.3.0
 
 # Documentation
