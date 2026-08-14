@@ -2,8 +2,6 @@
 URL configuration for hub project.
 """
 
-from importlib import import_module
-
 from django.conf import settings
 from django.conf.urls.static import static
 from django.contrib import admin
@@ -11,40 +9,6 @@ from django.urls import include, path
 
 from hub.apps.api.views import OpenAPISchemaView, ReDocView, SwaggerUIView
 from hub.apps.security.views import csp_report_view
-
-
-class _LazyURLConf:
-    """Defer importing a URLconf module until the first request to its prefix.
-
-    Using this wrapper with ``include()`` prevents eager imports of expensive
-    schemas (e.g. graphql-graphene) from blocking URL resolution for unrelated
-    routes during Django startup or test runs.
-    """
-
-    def __init__(self, module_path: str):
-        self._module_path = module_path
-        self._urlconf = None
-
-    @property
-    def urlpatterns(self):
-        if self._urlconf is None:
-            self._urlconf = import_module(self._module_path)
-        return self._urlconf.urlpatterns
-
-
-def _is_graphene_django_available() -> bool:
-    """
-    Check if graphene_django is available.
-
-    Returns:
-        True if graphene_django is installed and can be imported, False otherwise.
-    """
-    try:
-        import graphene_django  # noqa: F401
-
-        return True
-    except ImportError:
-        return False
 
 
 def _build_urlpatterns() -> list:
@@ -58,12 +22,23 @@ def _build_urlpatterns() -> list:
     Returns:
         Complete list of URL patterns for ROOT_URLCONF.
     """
-    patterns = [
-        path("api/v1/", include("hub.apps.api.urls")),
-        # Phase 18.3 — unified FTS endpoint querying Asset/Contract search_vector
-        path("api/search/", include("hub.apps.search.search_urls")),
-        path("graphql/", include("hub.apps.graphql.urls")),
-    ]
+    patterns = []
+
+    # Phase 313.1 — paid-layer prefixes (semantic, marketplace, billing, baas,
+    # ai, ml, social, graphql, graphql-graphene) register from their
+    # AppConfig.ready() into hub.apps.api.paid_urls. Absent in core-only mode.
+    # Mounted FIRST (before the api/v1 catch-all) so paid paths resolve before
+    # api_not_found in the core URLconf.
+    if not settings.HUB_CORE_ONLY:
+        patterns.append(path("", include("hub.apps.api.paid_urls")))
+
+    patterns.extend(
+        [
+            path("api/v1/", include("hub.apps.api.urls")),
+            # Phase 18.3 — unified FTS endpoint querying Asset/Contract search_vector
+            path("api/search/", include("hub.apps.search.search_urls")),
+        ]
+    )
 
     # Phase 221.2.1 + Track A PR 1 — Django admin is only available outside
     # production AND staging. Staging is publicly reachable, so exposing
@@ -73,17 +48,10 @@ def _build_urlpatterns() -> list:
     if settings.ENVIRONMENT not in ("production", "staging"):
         patterns.insert(0, path("admin/", admin.site.urls))
 
-    # Conditionally include graphql_graphene URLs if available.
-    # Uses _LazyURLConf to defer the expensive schema import until the
-    # first request to /graphql-graphene/ — avoids blocking unrelated
-    # URL resolution during startup and test runs (pytest-timeout).
-    if _is_graphene_django_available():
-        patterns.append(
-            path(
-                "graphql-graphene/",
-                include(_LazyURLConf("hub.apps.graphql_graphene.urls")),
-            )
-        )
+    # graphql_graphene (paid) registers "graphql-graphene/" itself in
+    # AppConfig.ready() via hub.apps.api.paid_urls — Phase 313.1. The
+    # LazyURLConf wrapper (also moved to paid_urls) keeps the deferred
+    # schema import behaviour.
 
     # Add remaining URL patterns
     patterns.extend(

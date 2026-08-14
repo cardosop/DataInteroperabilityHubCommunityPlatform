@@ -136,8 +136,7 @@ repos:
         types: [python]
         files: ^hub/apps/integrations/.*\.py$
         pass_filenames: true
-        additional_dependencies: [django-stubs, types-redis, types-requests]
-        description: "Type check marketplace integration code with mypy"
+        description: "Type check marketplace integration code with mypy (system language: mypy + stubs must be present on PATH)"
 
       # ── Documentation sync hooks (Phase 312.5) ─────────────────────
       - id: check-journey-doc-sync
@@ -155,4 +154,12 @@ repos:
         files: (docs/USE_CASES\.md|tests/.*\.py|frontend/e2e/use-cases/.*\.spec\.ts|hub/apps/.*/tests/.*\.py)
         pass_filenames: false
         description: "Verify bidirectional consistency between UC docs and test markers"
+
+      # ── Secret scanning backstop (Phase 313.0) ──────────────────────
+      - id: gitleaks
+        name: Gitleaks secret scan
+        entry: bash -c 'command -v gitleaks >/dev/null 2>&1 || { echo "gitleaks not installed — skipping secret scan"; exit 0; }; gitleaks detect --source . --config .gitleaks.toml --redact --no-banner'
+        language: system
+        pass_filenames: false
+        description: "Block commits that introduce secrets (CI runs gitleaks/gitleaks-action@v2 as the enforcement backstop)"
 

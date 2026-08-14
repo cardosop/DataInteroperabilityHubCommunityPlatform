@@ -28,7 +28,7 @@ from rest_framework.response import Response
 from hub.apps.auth.permissions import HasAnyRole, HasScope
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.request_tenant import get_request_tenant_id
 
 from .business_rules import DataMeshBusinessRules

@@ -84,7 +84,7 @@ from hub.apps.orchestration.workflow_engine import (
     WorkflowStepValueError,
 )
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.semantic.utils import map_asset_to_semantic
+from hub.apps.core.commercial_hooks import map_via_semantic
 from hub.apps.tenants.models import Tenant
 
 logger = structlog.get_logger(__name__)
@@ -3155,7 +3155,7 @@ class AssetCreationWorkflow:
         # inline degradation banner with a retry CTA.
         previous_semantic_status_for_map = asset.semantic_status
         try:
-            map_asset_to_semantic(asset, tenant=asset.tenant)
+            map_via_semantic("asset", asset=asset, tenant=asset.tenant)
         except Exception as e:
             logger.warning(
                 "Semantic mapping failed for asset",

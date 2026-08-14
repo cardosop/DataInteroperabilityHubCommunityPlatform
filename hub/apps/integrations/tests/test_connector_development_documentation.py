@@ -400,7 +400,7 @@ class TestReferencesCorrect(TestCase):
             "marketplace_sync.py", self.content,
             "DEVELOPMENT.md should reference marketplace_sync.py workflow file"
         )
-        workflow_path = find_file_path("hub/apps/orchestration/workflows/marketplace_sync.py")
+        workflow_path = find_file_path("hub/apps/marketplace/workflows/marketplace_sync.py")
         self.assertIsNotNone(
             workflow_path, "Workflow file should exist (referenced in documentation)"
         )

@@ -440,20 +440,26 @@ class AccessRequest(models.Model):
     access_granted_at = models.DateTimeField(
         null=True, blank=True, help_text="When access was granted"
     )
-    order = models.ForeignKey(
-        "marketplace.Order",
-        on_delete=models.SET_NULL,
-        related_name="governance_access_requests",
-        null=True,
-        blank=True,
-        help_text="Marketplace order that triggered this access request",
-    )
+    # Phase 313.1 — paid-layer FK: declared only when the marketplace app is
+    # installed. In core-only mode the attribute is absent and cascade code
+    # guards with getattr (core has no marketplace order to cascade to).
+    if not settings.HUB_CORE_ONLY:
+        order = models.ForeignKey(
+            "marketplace.Order",
+            on_delete=models.SET_NULL,
+            related_name="governance_access_requests",
+            null=True,
+            blank=True,
+            help_text="Marketplace order that triggered this access request",
+        )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "access_requests"
         ordering = ["-created_at"]
+        # Phase 313.1 — the "order" index exists only with the conditional
+        # marketplace FK (see field declaration above).
         indexes = [
             models.Index(fields=["tenant", "requested_by"]),
             models.Index(fields=["tenant", "asset"]),
@@ -461,8 +467,7 @@ class AccessRequest(models.Model):
             models.Index(fields=["tenant", "file"]),
             models.Index(fields=["tenant", "status"]),
             models.Index(fields=["expires_at"]),
-            models.Index(fields=["order"]),
-        ]
+        ] + ([models.Index(fields=["order"])] if not settings.HUB_CORE_ONLY else [])
 
     def __str__(self):
         resource = self.asset or self.dataset or self.file

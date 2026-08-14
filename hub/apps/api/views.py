@@ -950,7 +950,7 @@ def reset_e2e_auth_rate_limits(request):
         import redis
 
         from hub.apps.core.redis_pools import get_redis_cache_pool
-        from hub.apps.rate_limiting.utils import EndpointCategory
+        from hub.apps.core.rate_limiting.utils import EndpointCategory
 
         pool = get_redis_cache_pool()
         client = redis.Redis(connection_pool=pool, decode_responses=True)

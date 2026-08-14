@@ -241,7 +241,9 @@ class Command(BaseCommand):
         from hub.apps.dq.models import DQEngine, DQRun, DQRunStatus
         from hub.apps.files.models import File
         from hub.apps.jobs.models import Job, JobStatus, JobType
-        from hub.apps.marketplace.models import Entitlement, Listing, Order
+        from hub.apps.marketplace.models import (  # Phase 313.1 — paid layer
+            Entitlement, Listing, Order,
+        )
         from hub.apps.webhooks.models import Webhook
 
         # ── Resolve users ────────────────────────────────────────────
@@ -383,193 +385,201 @@ class Command(BaseCommand):
                 self.stderr.write(f"  Cannot activate {asset.key}: {blockers}")
         self.stdout.write(f"  Activated {activated} assets")
 
-        # ── Phase 5: Marketplace Listings (20) ───────────────────────
-        # Mix of pricing models: FREE_AUTO_APPROVE (free, instant access),
-        # REQUEST_APPROVAL with price (paid, provider must approve),
-        # FREE (free, provider must approve). Prices in metadata_json.
-        active_assets = list(
-            Asset.objects.filter(
-                key__startswith="demo-", tenant=dpo_tenant, status=AssetStatus.ACTIVE
-            ).order_by("key")[:20]
-        )
-        # Pricing configs: (model, price_amount, currency, description)
-        pricing_configs = [
-            ("FREE_AUTO_APPROVE", None, None, "Free instant access"),
-            ("REQUEST_APPROVAL", 49.99, "USD", "Monthly subscription"),
-            ("REQUEST_APPROVAL", 199.00, "USD", "Annual license"),
-            ("FREE_AUTO_APPROVE", None, None, "Free for evaluation"),
-            ("REQUEST_APPROVAL", 9.99, "USD", "Per-query pricing"),
-            ("REQUEST_APPROVAL", 499.00, "EUR", "Enterprise tier"),
-            ("FREE", None, None, "Free with manual approval"),
-            ("REQUEST_APPROVAL", 29.99, "USD", "Standard tier"),
-            ("REQUEST_APPROVAL", 149.00, "GBP", "Premium data feed"),
-            ("FREE_AUTO_APPROVE", None, None, "Open data — free access"),
-        ]
-        for i, asset in enumerate(active_assets):
-            existing = Listing.objects.filter(asset=asset, tenant=dpo_tenant).first()
-            config = pricing_configs[i % len(pricing_configs)]
-            pricing_model, price, currency, price_desc = config
-            publish = i < 15
-            metadata = {
-                "title": asset.name,
-                "short_description": asset.description or "",
-                "long_description": f"Marketplace listing for {asset.name}. {price_desc}.",
-                "domain": asset.domain or "",
-                "tags": ["demo", asset.domain or "general"],
-            }
-            if price is not None:
-                metadata["price_amount"] = price
-                metadata["currency"] = currency
-                metadata["pricing_description"] = price_desc
-                metadata["billing_cycle"] = "monthly" if price < 100 else "annual"
+        # Phase 313.1 — marketplace seed phases are paid-layer; skipped in
+        # core-only mode (HUB_CORE_ONLY=1).
+        from django.conf import settings as _django_settings
 
-            if existing:
-                # Update existing listing with pricing data (idempotent fix)
-                changed = False
-                if existing.pricing_model != pricing_model:
-                    existing.pricing_model = pricing_model
-                    changed = True
-                if existing.metadata_json != metadata:
-                    existing.metadata_json = metadata
-                    changed = True
-                if changed:
-                    existing.save(update_fields=["pricing_model", "metadata_json"])
-                    self.stdout.write(f"  Updated listing: {asset.name}")
-            else:
-                Listing.objects.create(
-                    asset=asset,
-                    tenant=dpo_tenant,
-                    pricing_model=pricing_model,
-                    metadata_json=metadata,
-                    status="PUBLISHED" if publish else "DRAFT",
-                    published_at=timezone.now() if publish else None,
+        if not _django_settings.HUB_CORE_ONLY:
+            # ── Phase 5: Marketplace Listings (20) ───────────────────────
+            # Mix of pricing models: FREE_AUTO_APPROVE (free, instant access),
+            # REQUEST_APPROVAL with price (paid, provider must approve),
+            # FREE (free, provider must approve). Prices in metadata_json.
+            active_assets = list(
+                Asset.objects.filter(
+                    key__startswith="demo-", tenant=dpo_tenant, status=AssetStatus.ACTIVE
+                ).order_by("key")[:20]
+            )
+            # Pricing configs: (model, price_amount, currency, description)
+            pricing_configs = [
+                ("FREE_AUTO_APPROVE", None, None, "Free instant access"),
+                ("REQUEST_APPROVAL", 49.99, "USD", "Monthly subscription"),
+                ("REQUEST_APPROVAL", 199.00, "USD", "Annual license"),
+                ("FREE_AUTO_APPROVE", None, None, "Free for evaluation"),
+                ("REQUEST_APPROVAL", 9.99, "USD", "Per-query pricing"),
+                ("REQUEST_APPROVAL", 499.00, "EUR", "Enterprise tier"),
+                ("FREE", None, None, "Free with manual approval"),
+                ("REQUEST_APPROVAL", 29.99, "USD", "Standard tier"),
+                ("REQUEST_APPROVAL", 149.00, "GBP", "Premium data feed"),
+                ("FREE_AUTO_APPROVE", None, None, "Open data — free access"),
+            ]
+            for i, asset in enumerate(active_assets):
+                existing = Listing.objects.filter(asset=asset, tenant=dpo_tenant).first()
+                config = pricing_configs[i % len(pricing_configs)]
+                pricing_model, price, currency, price_desc = config
+                publish = i < 15
+                metadata = {
+                    "title": asset.name,
+                    "short_description": asset.description or "",
+                    "long_description": f"Marketplace listing for {asset.name}. {price_desc}.",
+                    "domain": asset.domain or "",
+                    "tags": ["demo", asset.domain or "general"],
+                }
+                if price is not None:
+                    metadata["price_amount"] = price
+                    metadata["currency"] = currency
+                    metadata["pricing_description"] = price_desc
+                    metadata["billing_cycle"] = "monthly" if price < 100 else "annual"
+
+                if existing:
+                    # Update existing listing with pricing data (idempotent fix)
+                    changed = False
+                    if existing.pricing_model != pricing_model:
+                        existing.pricing_model = pricing_model
+                        changed = True
+                    if existing.metadata_json != metadata:
+                        existing.metadata_json = metadata
+                        changed = True
+                    if changed:
+                        existing.save(update_fields=["pricing_model", "metadata_json"])
+                        self.stdout.write(f"  Updated listing: {asset.name}")
+                else:
+                    Listing.objects.create(
+                        asset=asset,
+                        tenant=dpo_tenant,
+                        pricing_model=pricing_model,
+                        metadata_json=metadata,
+                        status="PUBLISHED" if publish else "DRAFT",
+                        published_at=timezone.now() if publish else None,
+                    )
+                    stats["listings"] += 1
+
+            # ── Phase 6: Consumer Orders + Entitlements (10) ─────────────
+            free_published = Listing.objects.filter(
+                tenant=dpo_tenant,
+                status="PUBLISHED",
+                pricing_model="FREE_AUTO_APPROVE",
+                asset__key__startswith="demo-",
+            ).order_by("created_at")[:10]
+            for listing in free_published:
+                if Order.objects.filter(listing=listing, tenant=consumer_tenant).exists():
+                    continue
+                order = Order.objects.create(
+                    listing=listing,
+                    tenant=consumer_tenant,
+                    status="APPROVED",
+                    created_by=consumer_user,
+                    approved_at=timezone.now(),
                 )
-                stats["listings"] += 1
+                Entitlement.objects.get_or_create(
+                    order=order,
+                    tenant=consumer_tenant,
+                    listing=listing,
+                    defaults=dict(
+                        asset=listing.asset,
+                        status="ACTIVE",
+                    ),
+                )
+                stats["orders"] += 1
 
-        # ── Phase 6: Consumer Orders + Entitlements (10) ─────────────
-        free_published = Listing.objects.filter(
-            tenant=dpo_tenant,
-            status="PUBLISHED",
-            pricing_model="FREE_AUTO_APPROVE",
-            asset__key__startswith="demo-",
-        ).order_by("created_at")[:10]
-        for listing in free_published:
-            if Order.objects.filter(listing=listing, tenant=consumer_tenant).exists():
-                continue
-            order = Order.objects.create(
-                listing=listing,
-                tenant=consumer_tenant,
-                status="APPROVED",
-                created_by=consumer_user,
-                approved_at=timezone.now(),
-            )
-            Entitlement.objects.get_or_create(
-                order=order,
-                tenant=consumer_tenant,
-                listing=listing,
-                defaults=dict(
-                    asset=listing.asset,
-                    status="ACTIVE",
-                ),
-            )
-            stats["orders"] += 1
-
-        # ── Phase 7: DQ Runs (10) ───────────────────────────────────
-        dq_assets = list(
-            Asset.objects.filter(
-                key__startswith="demo-",
-                tenant=dpo_tenant,
-                datasets__isnull=False,
-            ).distinct()[:10]
-        )
-        for idx, asset in enumerate(dq_assets):
-            if DQRun.objects.filter(asset=asset, tenant=dpo_tenant).exists():
-                continue
-            job = Job.objects.create(
-                tenant=dpo_tenant,
-                type=JobType.DQ_RUN,
-                status=JobStatus.COMPLETED,
-                created_by=dpo_user,
-                resource_type="ASSET",
-                resource_id=str(asset.id),
-            )
-            DQRun.objects.create(
-                tenant=dpo_tenant,
-                asset=asset,
-                job=job,
-                profile_key="intake_basic_gx",
-                engine=DQEngine.GREAT_EXPECTATIONS,
-                status=DQRunStatus.SUCCEEDED if idx < 5 else DQRunStatus.FAILED,
-                overall_status="PASS" if idx < 5 else "FAIL",
-                quality_score=95.0 if idx < 5 else 45.0,
-                started_at=timezone.now() - timedelta(hours=idx),
-                completed_at=timezone.now() - timedelta(hours=idx, minutes=-5),
-            )
-
-        # ── Phase 8: Compliance Runs (10) ────────────────────────────
-        for idx, asset in enumerate(dq_assets):
-            if ComplianceRun.objects.filter(asset=asset, tenant=dpo_tenant).exists():
-                continue
-            job = Job.objects.create(
-                tenant=dpo_tenant,
-                type=JobType.COMPLIANCE_RUN,
-                status=JobStatus.COMPLETED,
-                created_by=dpo_user,
-                resource_type="ASSET",
-                resource_id=str(asset.id),
-            )
-            ComplianceRun.objects.create(
-                tenant=dpo_tenant,
-                asset=asset,
-                job=job,
-                status=ComplianceRunStatus.SUCCEEDED if idx < 5 else ComplianceRunStatus.FAILED,
-                allowed_to_store=idx < 5,
-                started_at=timezone.now() - timedelta(hours=idx),
-                completed_at=timezone.now() - timedelta(hours=idx, minutes=-10),
-            )
-
-        # ── Phase 9: Webhooks (5) ────────────────────────────────────
-        # Webhook model validates event_types in save() → full_clean().
-        # Use filter + create pattern to avoid get_or_create validation issues.
-        event_configs = [
-            ("Demo Asset Events", ["asset.created", "asset.updated"]),
-            ("Demo Contract Events", ["contract.created", "contract.updated"]),
-            (
-                "Demo Marketplace Events",
-                ["marketplace.listing.published", "marketplace.order.created"],
-            ),
-            ("Demo DQ Events", ["dq.run.succeeded", "dq.run.failed"]),
-            ("Demo Compliance Events", ["compliance.run.succeeded"]),
-        ]
-        for wh_name, events in event_configs:
-            if Webhook.objects.filter(name=wh_name, tenant=dpo_tenant).exists():
-                continue
-            try:
-                Webhook.objects.create(
-                    name=wh_name,
+            # ── Phase 7: DQ Runs (10) ───────────────────────────────────
+            dq_assets = list(
+                Asset.objects.filter(
+                    key__startswith="demo-",
                     tenant=dpo_tenant,
-                    url=f"https://webhook.site/{uuid.uuid4().hex[:12]}",
-                    secret=uuid.uuid4().hex,
-                    event_types=events,
-                    status="ACTIVE",
-                    max_retries=3,
-                    retry_intervals=[1, 5, 30],
+                    datasets__isnull=False,
+                ).distinct()[:10]
+            )
+            for idx, asset in enumerate(dq_assets):
+                if DQRun.objects.filter(asset=asset, tenant=dpo_tenant).exists():
+                    continue
+                job = Job.objects.create(
+                    tenant=dpo_tenant,
+                    type=JobType.DQ_RUN,
+                    status=JobStatus.COMPLETED,
                     created_by=dpo_user,
+                    resource_type="ASSET",
+                    resource_id=str(asset.id),
                 )
-            except Exception as e:
-                self.stderr.write(f"  Webhook '{wh_name}' failed: {e}")
+                DQRun.objects.create(
+                    tenant=dpo_tenant,
+                    asset=asset,
+                    job=job,
+                    profile_key="intake_basic_gx",
+                    engine=DQEngine.GREAT_EXPECTATIONS,
+                    status=DQRunStatus.SUCCEEDED if idx < 5 else DQRunStatus.FAILED,
+                    overall_status="PASS" if idx < 5 else "FAIL",
+                    quality_score=95.0 if idx < 5 else 45.0,
+                    started_at=timezone.now() - timedelta(hours=idx),
+                    completed_at=timezone.now() - timedelta(hours=idx, minutes=-5),
+                )
 
+            # ── Phase 8: Compliance Runs (10) ────────────────────────────
+            for idx, asset in enumerate(dq_assets):
+                if ComplianceRun.objects.filter(asset=asset, tenant=dpo_tenant).exists():
+                    continue
+                job = Job.objects.create(
+                    tenant=dpo_tenant,
+                    type=JobType.COMPLIANCE_RUN,
+                    status=JobStatus.COMPLETED,
+                    created_by=dpo_user,
+                    resource_type="ASSET",
+                    resource_id=str(asset.id),
+                )
+                ComplianceRun.objects.create(
+                    tenant=dpo_tenant,
+                    asset=asset,
+                    job=job,
+                    status=ComplianceRunStatus.SUCCEEDED if idx < 5 else ComplianceRunStatus.FAILED,
+                    allowed_to_store=idx < 5,
+                    started_at=timezone.now() - timedelta(hours=idx),
+                    completed_at=timezone.now() - timedelta(hours=idx, minutes=-10),
+                )
+
+            # ── Phase 9: Webhooks (5) ────────────────────────────────────
+            # Webhook model validates event_types in save() → full_clean().
+            # Use filter + create pattern to avoid get_or_create validation issues.
+            event_configs = [
+                ("Demo Asset Events", ["asset.created", "asset.updated"]),
+                ("Demo Contract Events", ["contract.created", "contract.updated"]),
+                (
+                    "Demo Marketplace Events",
+                    ["marketplace.listing.published", "marketplace.order.created"],
+                ),
+                ("Demo DQ Events", ["dq.run.succeeded", "dq.run.failed"]),
+                ("Demo Compliance Events", ["compliance.run.succeeded"]),
+            ]
+            for wh_name, events in event_configs:
+                if Webhook.objects.filter(name=wh_name, tenant=dpo_tenant).exists():
+                    continue
+                try:
+                    Webhook.objects.create(
+                        name=wh_name,
+                        tenant=dpo_tenant,
+                        url=f"https://webhook.site/{uuid.uuid4().hex[:12]}",
+                        secret=uuid.uuid4().hex,
+                        event_types=events,
+                        status="ACTIVE",
+                        max_retries=3,
+                        retry_intervals=[1, 5, 30],
+                        created_by=dpo_user,
+                    )
+                except Exception as e:
+                    self.stderr.write(f"  Webhook '{wh_name}' failed: {e}")
         # ── Summary ──────────────────────────────────────────────────
         total_assets = Asset.objects.filter(key__startswith="demo-", tenant=dpo_tenant).count()
         total_contracts = Contract.objects.filter(
             asset__key__startswith="demo-", tenant=dpo_tenant
         ).count()
-        total_listings = Listing.objects.filter(
-            asset__key__startswith="demo-", tenant=dpo_tenant
-        ).count()
-        total_orders = Order.objects.filter(
-            listing__asset__key__startswith="demo-", tenant=consumer_tenant
-        ).count()
+        if not _django_settings.HUB_CORE_ONLY:
+            total_listings = Listing.objects.filter(
+                asset__key__startswith="demo-", tenant=dpo_tenant
+            ).count()
+            total_orders = Order.objects.filter(
+                listing__asset__key__startswith="demo-", tenant=consumer_tenant
+            ).count()
+        else:
+            total_listings = 0
+            total_orders = 0
         self.stdout.write(
             self.style.SUCCESS(
                 f"\nSeeded: {total_assets} assets, {total_contracts} contracts, "

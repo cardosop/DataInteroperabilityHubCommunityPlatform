@@ -25,7 +25,7 @@ from rest_framework.response import Response
 from hub.apps.audit.utils import create_audit_event
 from hub.apps.auth.permissions import HasScope
 from hub.apps.governance.abac import ABACEngine
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 
 from .business_rules import TransformationBusinessRules
 from .models import (

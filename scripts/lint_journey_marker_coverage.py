@@ -18,8 +18,12 @@ import argparse
 import json
 import os
 import re
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from boundary_scope import add_scope_argument, build_scan_dirs, paid_ids
 
 JOURNEY_IDS_FILE = "docs/CRITICAL_UC_JOURNEY_IDS.yaml"
 SCAN_DIRS = ["hub/apps", "tests", "cli/tests", "sdk/python/tests", "services"]
@@ -63,10 +67,13 @@ def run_lint(
     repo_root: Path,
     blocking: bool = False,
     json_output: bool = False,
+    scope: str = "full",
 ) -> int:
     yaml_ids = _extract_yaml_journey_ids(repo_root / JOURNEY_IDS_FILE)
+    if scope == "core":
+        yaml_ids -= paid_ids(repo_root)
     marked_ids = _extract_marked_journey_ids(
-        [repo_root / d for d in SCAN_DIRS],
+        build_scan_dirs(repo_root, SCAN_DIRS, scope),
     )
 
     uncovered = yaml_ids - marked_ids
@@ -122,9 +129,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="TR.L.4 — Journey marker coverage lint")
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--blocking", action="store_true")
+    add_scope_argument(parser)
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args()
-    return run_lint(Path(args.repo_root).resolve(), args.blocking, args.json)
+    return run_lint(Path(args.repo_root).resolve(), args.blocking, args.json, scope=args.scope)
 
 
 if __name__ == "__main__":

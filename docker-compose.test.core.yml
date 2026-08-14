@@ -1,0 +1,89 @@
+# Phase 313.2 — core-only test stack overlay.
+#
+# Usage (exactly like the private full test stack, minus the paid layer):
+#   docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml \
+#       --env-file .env.test up -d --build
+#   make test-core   # convenience wrapper (Makefile.core)
+#
+# Design: an OVERLAY, not a copy — paid-layer services get a non-default
+# compose profile so `docker compose up` (default profiles) excludes them.
+# No service definition is duplicated, so the core stack cannot drift from
+# the private one. Services without an entry below remain core.
+
+services:
+  # Core services pin their depends_on to core-only targets so the default
+  # profile render never references a paid service (compose requires
+  # depends_on targets to exist in the rendered model). `!reset` replaces
+  # the base map instead of deep-merging it (compose v2.24+).
+  api-service-test:
+    depends_on: !reset
+      migrate-test-db:
+        condition: service_completed_successfully
+      ensure-test-db:
+        condition: service_completed_successfully
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
+        condition: service_healthy
+      minio-test:
+        condition: service_healthy
+      mailhog-test:
+        condition: service_started
+  worker-service-test:
+    depends_on: !reset
+      api-service-test:
+        condition: service_started
+      postgres-test:
+        condition: service_healthy
+      redis-cache-test:
+        condition: service_healthy
+      redis-queue-test:
+        condition: service_healthy
+      redis-events-test:
+        condition: service_healthy
+      redis-channels-test:
+        condition: service_healthy
+  postgres-baas-test:
+    profiles: ["paid-excluded"]
+  redis-baas-test:
+    profiles: ["paid-excluded"]
+  clamav-test:
+    profiles: ["paid-excluded"]
+  fuseki-test:
+    profiles: ["paid-excluded"]
+  datacontract-service-test:
+    profiles: ["paid-excluded"]
+  dq-service-test:
+    profiles: ["paid-excluded"]
+  compliance-service-test:
+    profiles: ["paid-excluded"]
+  compliance-rq-worker-test:
+    profiles: ["paid-excluded"]
+  semantic-service-test:
+    profiles: ["paid-excluded"]
+  prefect-server-test:
+    profiles: ["paid-excluded"]
+  prefect-db-test:
+    profiles: ["paid-excluded"]
+  ensure-prefect-work-pool:
+    profiles: ["paid-excluded"]
+  prefect-worker-test:
+    profiles: ["paid-excluded"]
+  prefect-integration-service-test:
+    profiles: ["paid-excluded"]
+  ckan-test:
+    profiles: ["paid-excluded"]
+  ckan-test-db-test:
+    profiles: ["paid-excluded"]
+  ckan-test-solr-test:
+    profiles: ["paid-excluded"]
+  ckan-test-redis-test:
+    profiles: ["paid-excluded"]
+  odh-training-operator-test:
+    profiles: ["paid-excluded"]

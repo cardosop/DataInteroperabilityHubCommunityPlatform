@@ -516,28 +516,6 @@ def _onboarding_check_kyc_change(sender, instance, created, **kwargs):
     )
 
 
-def _onboarding_check_subscription(sender, instance, created, **kwargs):
-    """Fire after a Subscription save; check when status is in active set.
-
-    Both ``created`` (new subscription) and update-to-active (e.g.
-    INCOMPLETE → ACTIVE after Stripe checkout completes) trigger
-    the check. Connected dynamically (see ``register_*`` block at
-    the bottom) to avoid eager import of ``billing.models`` during
-    tenants-app load.
-    """
-    from hub.apps.tenants.onboarding import _BILLING_ACTIVE_STATES
-
-    status = getattr(instance, "status", None)
-    if status not in _BILLING_ACTIVE_STATES:
-        return
-    tenant = getattr(instance, "tenant", None)
-    if tenant is None:
-        return
-    transaction.on_commit(
-        lambda: _check_and_mark_onboarding_complete(tenant, triggered_by="subscription_activated")
-    )
-
-
 def _register_onboarding_signal_handlers():
     """Attach the cross-app handlers (UserRole / Subscription).
 
@@ -578,24 +556,6 @@ def _register_onboarding_signal_handlers():
         logger.exception("onboarding_user_role_signal_register_failed")
         if _in_test:
             raise
-
-    try:
-        from hub.apps.billing.models import Subscription
-
-        post_save.connect(
-            _onboarding_check_subscription,
-            sender=Subscription,
-            dispatch_uid="onboarding_check_subscription",
-        )
-    except ImportError:
-        logger.exception("onboarding_subscription_signal_register_failed")
-        if _in_test:
-            raise
-    except Exception:
-        logger.exception("onboarding_subscription_signal_register_failed")
-        if _in_test:
-            raise
-
 
 # ── Phase 285.13 — per-file offboarding audit on hard delete ──────
 

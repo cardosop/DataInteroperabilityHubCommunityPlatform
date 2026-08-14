@@ -17,7 +17,7 @@ from rest_framework.response import Response
 from hub.apps.api.e2e_gating import is_e2e_environment, verify_e2e_token
 from hub.apps.audit import event_types as audit_event_types
 from hub.apps.audit.utils import create_audit_event, log_tenant_operation
-from hub.apps.billing.serializers import TenantPlanAdminSerializer
+from .plan_serializers import TenantPlanAdminSerializer
 from hub.apps.compliance.models import RiskLevel
 from hub.apps.core.responses import handle_service_exception
 from hub.apps.core.services.base import ServiceError
@@ -1687,10 +1687,10 @@ class RateLimitConfigView(viewsets.ViewSet):
             "sparql_queries",
             "general",
         ]:
-            from hub.apps.rate_limiting.config import (
+            from hub.apps.core.rate_limiting.config import (
                 get_tenant_rate_limit,
             )
-            from hub.apps.rate_limiting.utils import TimeWindow
+            from hub.apps.core.rate_limiting.utils import TimeWindow
 
             effective_limits[category] = {
                 "burst_per_10s": get_tenant_rate_limit(tenant_id, category, TimeWindow.BURST),

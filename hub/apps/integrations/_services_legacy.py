@@ -1443,7 +1443,7 @@ class MarketplaceIntegrationService(
                 try:
                     from hub.apps.orchestration.registry import WorkflowRegistry
                     from hub.apps.orchestration.workflow_engine import WorkflowEngine
-                    from hub.apps.orchestration.workflows.marketplace_sync import (
+                    from hub.apps.marketplace.workflows.marketplace_sync import (
                         MarketplaceSyncWorkflow,
                     )
 
@@ -1731,7 +1731,7 @@ class MarketplaceIntegrationService(
                 try:
                     from hub.apps.orchestration.registry import WorkflowRegistry
                     from hub.apps.orchestration.workflow_engine import WorkflowEngine
-                    from hub.apps.orchestration.workflows.marketplace_sync import (
+                    from hub.apps.marketplace.workflows.marketplace_sync import (
                         MarketplaceSyncWorkflow,
                     )
 

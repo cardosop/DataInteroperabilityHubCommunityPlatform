@@ -12,6 +12,7 @@ from typing import Any
 import click
 
 from ._mvp_detection import detect_mvp_gated_feature, extract_environment_url
+from ._core_gates import detect_core_gated_feature
 from ._mvp_gates import (
     MVP_FEATURE_GATED_CODE,
     MVP_GATED_MESSAGE_TEMPLATE,
@@ -147,6 +148,42 @@ class ODPSFeatureGatedError(ODPSCLIError):
         self.prefix = prefix
         self.endpoint = endpoint
         self.environment_url = environment_url
+
+class CoreFeatureUnavailableError(ODPSCLIError):
+    """
+    Raised when a CLI request hits a paid-layer group on a core-only backend
+    (HUB_CORE_ONLY=1). Carries the stable ``code='SAAS_FEATURE_UNAVAILABLE'``
+    plus structured fields so programmatic consumers can branch on
+    ``error.code``. Subclasses :class:`ODPSCLIError` (backwards-compat).
+    """
+
+    def __init__(
+        self,
+        feature: str,
+        endpoint: str,
+        environment_url: str,
+        original_error: Exception | None = None,
+    ):
+        rendered = (
+            f"'{feature}' is a SaaS feature — not available in this deployment "
+            f"(core-only backend). Endpoint: {endpoint or '(unknown)'}. "
+            f"Environment: {environment_url or '(unknown)'}."
+        )
+        super().__init__(
+            message=rendered,
+            error_code="SAAS_FEATURE_UNAVAILABLE",
+            context={"feature": feature, "endpoint": endpoint, "environment_url": environment_url},
+            suggestion=(
+                "Run 'datahub --help' for commands available in core deployments, "
+                "or use the hosted Meshant SaaS for the full feature set."
+            ),
+            original_error=original_error,
+        )
+        self.code = "SAAS_FEATURE_UNAVAILABLE"
+        self.feature = feature
+        self.endpoint = endpoint
+        self.environment_url = environment_url
+
 
 
 def parse_api_error_response(error_data: dict[str, Any]) -> ODPSCLIError | None:
@@ -291,6 +328,19 @@ def handle_api_error(
         is an :class:`ODPSFeatureGatedError` (subclass of ODPSCLIError) so
         existing ``except ODPSCLIError:`` handlers keep working unchanged.
     """
+    # Phase 313.4 — intercept paid-group 404s (core-only backend) BEFORE
+    # the MVP interception and any generic JSON-error fall-through.
+    if status_code == 404:
+        detection_input = endpoint or request_url or ""
+        core_hit = detect_core_gated_feature(detection_input)
+        if core_hit is not None:
+            group, _message = core_hit
+            return CoreFeatureUnavailableError(
+                feature=group,
+                endpoint=endpoint or detection_input,
+                environment_url=extract_environment_url(request_url or ""),
+            )
+
     # Intercept MVP-gated 404s BEFORE any generic JSON-error fall-through.
     # We try ``endpoint`` first (which is already the post-/api/v1/ relative
     # path computed by the api_client) and fall back to ``request_url`` so

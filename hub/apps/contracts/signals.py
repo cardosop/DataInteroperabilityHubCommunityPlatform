@@ -302,12 +302,12 @@ def fire_contract_tombstone_on_delete(sender, instance, **kwargs):
 
     def _dispatch():
         try:
-            from hub.apps.semantic.tombstone import (
+            from hub.apps.core.commercial_hooks import (
                 REASON_CONTRACT_DELETED,
-                tombstone_resource,
+                dispatch_tombstone,
             )
 
-            tombstone_resource(
+            dispatch_tombstone(
                 resource_type="CONTRACT",
                 resource_id=contract_id,
                 reason=REASON_CONTRACT_DELETED,

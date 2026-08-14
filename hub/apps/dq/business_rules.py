@@ -1873,8 +1873,8 @@ class DQBusinessRules(BusinessRules):
             details["dq_service_status"] = service_status
 
         # Check tenant DQ run quota using rate limiting system
-        from hub.apps.rate_limiting.quota import QuotaManager
-        from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+        from hub.apps.core.rate_limiting.quota import QuotaManager
+        from hub.apps.core.rate_limiting.utils import EndpointCategory, TimeWindow
 
         # Check daily quota for DQ runs
         has_quota, quota_info = QuotaManager.check_quota(

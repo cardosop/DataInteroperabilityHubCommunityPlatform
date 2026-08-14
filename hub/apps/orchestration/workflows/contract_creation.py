@@ -23,7 +23,7 @@ from hub.apps.orchestration.models import WorkflowInstance, WorkflowStatus
 from hub.apps.orchestration.registry import WorkflowRegistry
 from hub.apps.orchestration.workflow_engine import WorkflowEngine
 from hub.apps.search.indexing import SearchIndexer
-from hub.apps.semantic.utils import map_contract_to_semantic
+from hub.apps.core.commercial_hooks import map_via_semantic
 
 logger = structlog.get_logger(__name__)
 
@@ -852,8 +852,8 @@ class ContractCreationWorkflow:
                     contract_id=contract_id,
                 )
             else:
-                semantic_resource = map_contract_to_semantic(
-                    contract=contract, tenant=contract.tenant, use_cache=False
+                semantic_resource = map_via_semantic(
+                    "contract", contract=contract, tenant=contract.tenant, use_cache=False
                 )
 
                 if semantic_resource:
@@ -878,8 +878,8 @@ class ContractCreationWorkflow:
             try:
                 odps_contract = Contract.objects.get(id=odps_contract_id)
                 if odps_contract.hub_contract_json:
-                    semantic_resource = map_contract_to_semantic(
-                        contract=odps_contract, tenant=odps_contract.tenant, use_cache=False
+                    semantic_resource = map_via_semantic(
+                        "contract", contract=odps_contract, tenant=odps_contract.tenant, use_cache=False
                     )
                     if semantic_resource:
                         mapped_contracts.append(

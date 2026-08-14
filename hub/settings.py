@@ -55,6 +55,22 @@ if _AWS_SECRETS_ENABLED:
 
     load_from_aws()
 
+# ---------------------------------------------------------------------------
+# Phase 313.1 — OSS/paid split manifest. Single source of truth for app
+# membership; HUB_CORE_ONLY=1 boots without the paid layer (semantic,
+# marketplace, billing, baas, rate_limiting, ai, ml, social, graphql*).
+# Production path (flag unset) is byte-for-byte unchanged: ALL_HUB_APPS
+# preserves the exact pre-split INSTALLED_APPS ordering.
+# ---------------------------------------------------------------------------
+from hub.apps.manifest import (  # noqa: E402
+    ALL_HUB_APPS,
+    CORE_APPS,
+    PAID_MIDDLEWARE,
+    is_core_only,
+)
+
+HUB_CORE_ONLY = is_core_only()
+
 # Dev-only default secrets; production MUST set SECRET_KEY and JWT_SECRET_KEY via env (see validation below).
 _DEV_SECRET_KEY = "dev-secret-key-not-for-production"
 _DEV_JWT_SECRET_KEY = "dev-jwt-secret-key-not-for-production"
@@ -109,62 +125,14 @@ INSTALLED_APPS = [
     # the package installed still boots.
     # django-prometheus removed: Not compatible with Django 6.0
     # Migrated to OpenTelemetry metrics with Prometheus exporter
-    # Local apps
-    "hub.apps.core",
-    "hub.apps.tenants",
-    "hub.apps.users",
-    "hub.apps.auth",
-    "hub.apps.audit",
-    "hub.apps.billing",
-    "hub.apps.platform",
-    "hub.apps.gdpr",
-    "hub.apps.files",
-    "hub.apps.datasets",
-    "hub.apps.assets",
-    "hub.apps.jobs",
-    "hub.apps.contracts",
-    "hub.apps.dq",
-    "hub.apps.compliance.apps.ComplianceConfig",
-    "hub.apps.governance",
-    "hub.apps.consent",
-    "hub.apps.dsar.apps.DsarConfig",
-    "hub.apps.ropa.apps.RopaConfig",
-    "hub.apps.dpia.apps.DpiaConfig",
-    "hub.apps.breach.apps.BreachConfig",
-    "hub.apps.processor_agreements.apps.ProcessorAgreementsConfig",
-    "hub.apps.regulation_policies.apps.RegulationPoliciesConfig",
-    "hub.apps.semantic",
-    "hub.apps.marketplace",
-    "hub.apps.developer",
-    "hub.apps.api",
-    "hub.apps.graphql",
-    "hub.apps.graphql_ld",  # Phase 230.13 (REQ-SEM-GQL-001) — GraphQL-LD endpoint
-    # hub.apps.graphql_graphene is optional - only add if graphene_django is available
-    # "hub.apps.graphql_graphene",  # Made optional to prevent startup failures if not installed
-    "hub.apps.health",
-    "hub.apps.observability",
-    "hub.apps.notifications",
-    "hub.apps.rate_limiting",
-    "hub.apps.scheduled_ingestion",
-    "hub.apps.scheduled_export",
-    "hub.data_movement",
-    "hub.apps.search",
-    "hub.apps.webhooks.apps.WebhooksConfig",
-    "hub.apps.api.analytics",
-    "hub.apps.orchestration",
-    "hub.apps.websocket",  # WebSocket API
-    "hub.apps.ai",  # AI/ML features
-    "hub.apps.ml",  # ML Model Registry Bridge
-    "hub.apps.social",  # Social features
-    "hub.apps.mesh",  # Data mesh domains and federated governance
-    "hub.apps.virtualization",  # Data virtualization and federated queries
-    "hub.apps.integrations",  # Marketplace connectors and integrations
-    "hub.apps.baas",  # BaaS Platform (API Gateway, usage tracking, developer portal)
-    "hub.apps.transformation",  # Data transformation pipelines (Phase 115A)
-    "hub.apps.versioning",  # Versioning API (list/get/compare versions for contracts and datasets)
-    "hub.apps.warehouses.apps.WarehousesConfig",  # Phase 275.A — WarehouseConnection
-    "hub.apps.security",  # CSP violation reporting + security metrics
+    # Local apps — Phase 313.1: membership + exact ordering come from
+    # hub/apps/manifest.py (ALL_HUB_APPS / CORE_APPS). Core-only mode
+    # (HUB_CORE_ONLY=1) installs CORE_APPS only.
 ]
+if HUB_CORE_ONLY:
+    INSTALLED_APPS += list(CORE_APPS)
+else:
+    INSTALLED_APPS += list(ALL_HUB_APPS)
 
 # Phase 228 X (228.X.9 / REQ-LIN-X-009) — django-migration-linter
 # integration. The package adds the ``manage.py lintmigrations``
@@ -199,21 +167,24 @@ except ImportError:
     pass
 
 # Conditionally add graphene_django and graphql_graphene app if available
-# This prevents startup failures if graphene-django is not installed
-try:
-    import graphene_django  # noqa: F401
+# This prevents startup failures if graphene-django is not installed.
+# Phase 313.1 — paid layer (graphql + graphql_graphene) is absent in
+# core-only mode, so the whole conditional insert is skipped there.
+if not HUB_CORE_ONLY:
+    try:
+        import graphene_django  # noqa: F401
 
-    # Add graphene_django to INSTALLED_APPS if available
-    if "graphene_django" not in INSTALLED_APPS:
-        INSTALLED_APPS.insert(INSTALLED_APPS.index("strawberry.django") + 1, "graphene_django")
-    # Add graphql_graphene app if available
-    if "hub.apps.graphql_graphene" not in INSTALLED_APPS:
-        INSTALLED_APPS.insert(
-            INSTALLED_APPS.index("hub.apps.graphql") + 1, "hub.apps.graphql_graphene"
-        )
-except ImportError:
-    # graphene_django is not installed - this is OK, GraphQL Graphene endpoint won't be available
-    pass
+        # Add graphene_django to INSTALLED_APPS if available
+        if "graphene_django" not in INSTALLED_APPS:
+            INSTALLED_APPS.insert(INSTALLED_APPS.index("strawberry.django") + 1, "graphene_django")
+        # Add graphql_graphene app if available
+        if "hub.apps.graphql_graphene" not in INSTALLED_APPS:
+            INSTALLED_APPS.insert(
+                INSTALLED_APPS.index("hub.apps.graphql") + 1, "hub.apps.graphql_graphene"
+            )
+    except ImportError:
+        # graphene_django is not installed - this is OK, GraphQL Graphene endpoint won't be available
+        pass
 
 # Conditionally add channels if available (for WebSocket support)
 try:
@@ -294,6 +265,10 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+
+# Phase 313.1 — paid-layer middleware is absent in core-only mode.
+if HUB_CORE_ONLY:
+    MIDDLEWARE = [m for m in MIDDLEWARE if m not in PAID_MIDDLEWARE]
 
 ROOT_URLCONF = "hub.urls"
 
@@ -814,50 +789,59 @@ else:
 
 # BaaS dedicated instances (optional). See design D1b and docs/runbooks/BAAS_INFRASTRUCTURE.md
 # When set, BaaS usage/quota use these; when unset, main DATABASE and REDIS_URL are used.
-BAAS_DATABASE_URL = env("BAAS_DATABASE_URL", default=None)
-BAAS_REDIS_URL = env("BAAS_REDIS_URL", default=None)
-# postgres | redis; default postgres. See docs/runbooks/BAAS_INFRASTRUCTURE.md.
-BAAS_USAGE_STORAGE_BACKEND = env("BAAS_USAGE_STORAGE_BACKEND", default="postgres").lower()
-if BAAS_USAGE_STORAGE_BACKEND not in ("postgres", "redis"):
+# Phase 313.1 — the whole BaaS wiring (paid layer) is skipped in core-only mode;
+# the 'baas' alias (incl. its MIRROR test hook) exists only when BaaS is installed.
+if not HUB_CORE_ONLY:
+    BAAS_DATABASE_URL = env("BAAS_DATABASE_URL", default=None)
+    BAAS_REDIS_URL = env("BAAS_REDIS_URL", default=None)
+    # postgres | redis; default postgres. See docs/runbooks/BAAS_INFRASTRUCTURE.md.
+    BAAS_USAGE_STORAGE_BACKEND = env("BAAS_USAGE_STORAGE_BACKEND", default="postgres").lower()
+    if BAAS_USAGE_STORAGE_BACKEND not in ("postgres", "redis"):
+        BAAS_USAGE_STORAGE_BACKEND = "postgres"
+    if BAAS_DATABASE_URL:
+        _baas_db_config = env.db_url_config(BAAS_DATABASE_URL)
+        _baas_db_config.setdefault("OPTIONS", {})
+        # PgBouncer transaction mode requires CONN_MAX_AGE=0 (same rule as main DB).
+        _baas_db_config["CONN_MAX_AGE"] = (
+            0 if _pgbouncer_enabled else _baas_db_config.get("CONN_MAX_AGE", 60)
+        )
+        # Phase 89: statement_timeout + idle_in_transaction — same policy as main DB.
+        _baas_db_config["OPTIONS"]["options"] = _db_options.get("options", "")
+        if ENVIRONMENT == "production":
+            # Enforce TLS for BaaS database in production — same policy as main DB.
+            _baas_db_config["OPTIONS"]["sslmode"] = "require"
+        DATABASES["baas"] = _baas_db_config
+    elif "test" in sys.argv or "pytest" in sys.modules:
+        # In test mode, provide a 'baas' alias pointing at the default DB so
+        # that Django's test runner registers the alias at startup.  This lets
+        # usage-backend tests call connections["baas"] without monkey-patching
+        # the ConnectionHandler (which causes _remove_databases_failures crashes
+        # in Django 6.0's TestCase/TransactionTestCase teardown).
+        DATABASES["baas"] = dict(DATABASES["default"])
+        # Mark baas as a mirror of default so TransactionTestCase._fixture_teardown
+        # does not flush it separately.  Without MIRROR, every TransactionTestCase
+        # flushes both aliases via two connections to the same physical DB,
+        # causing TRUNCATE (AccessExclusiveLock) deadlocks between the two
+        # connections when the suite is large enough (>150 tests).
+        DATABASES["baas"].setdefault("TEST", {})
+        DATABASES["baas"]["TEST"]["MIRROR"] = "default"
+else:
+    BAAS_DATABASE_URL = None
+    BAAS_REDIS_URL = None
     BAAS_USAGE_STORAGE_BACKEND = "postgres"
-if BAAS_DATABASE_URL:
-    _baas_db_config = env.db_url_config(BAAS_DATABASE_URL)
-    _baas_db_config.setdefault("OPTIONS", {})
-    # PgBouncer transaction mode requires CONN_MAX_AGE=0 (same rule as main DB).
-    _baas_db_config["CONN_MAX_AGE"] = (
-        0 if _pgbouncer_enabled else _baas_db_config.get("CONN_MAX_AGE", 60)
-    )
-    # Phase 89: statement_timeout + idle_in_transaction — same policy as main DB.
-    _baas_db_config["OPTIONS"]["options"] = _db_options.get("options", "")
-    if ENVIRONMENT == "production":
-        # Enforce TLS for BaaS database in production — same policy as main DB.
-        _baas_db_config["OPTIONS"]["sslmode"] = "require"
-    DATABASES["baas"] = _baas_db_config
-elif "test" in sys.argv or "pytest" in sys.modules:
-    # In test mode, provide a 'baas' alias pointing at the default DB so
-    # that Django's test runner registers the alias at startup.  This lets
-    # usage-backend tests call connections["baas"] without monkey-patching
-    # the ConnectionHandler (which causes _remove_databases_failures crashes
-    # in Django 6.0's TestCase/TransactionTestCase teardown).
-    DATABASES["baas"] = dict(DATABASES["default"])
-    # Mark baas as a mirror of default so TransactionTestCase._fixture_teardown
-    # does not flush it separately.  Without MIRROR, every TransactionTestCase
-    # flushes both aliases via two connections to the same physical DB,
-    # causing TRUNCATE (AccessExclusiveLock) deadlocks between the two
-    # connections when the suite is large enough (>150 tests).
-    DATABASES["baas"].setdefault("TEST", {})
-    DATABASES["baas"]["TEST"]["MIRROR"] = "default"
 
 # DATABASE_ROUTERS: BaaS router first (handles BaaSUsageRecord exclusively),
 # then ManagementCommandAdminRouter (B-RLS-0.5: manage.py → admin / BYPASSRLS when
 # HUB_USE_ADMIN_DB_FOR_COMMANDS is set — see hub/manage.py prepare_manage_argv),
 # then PrimaryReplicaRouter for read-replica routing across read-heavy apps.
 # PrimaryReplicaRouter is a no-op when DATABASE_REPLICA_URL is not configured.
+# Phase 313.1 — the BaaS router (paid layer) is absent in core-only mode.
 DATABASE_ROUTERS = [
-    "hub.apps.baas.db_router.BaaSDBRouter",
     "hub.db_router.ManagementCommandAdminRouter",
     "hub.db_router.PrimaryReplicaRouter",
 ]
+if not HUB_CORE_ONLY:
+    DATABASE_ROUTERS.insert(0, "hub.apps.baas.db_router.BaaSDBRouter")
 
 # ---------------------------------------------------------------------------
 # PostgreSQL Read Replica (17.1)

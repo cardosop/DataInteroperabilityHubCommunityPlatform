@@ -131,3 +131,25 @@ mvp_scope:
 thresholds:
   uc_coverage_percent: 70
   journey_coverage_percent: 60
+
+# Phase 313.2 — paid-layer IDs (marketplace/semantic/billing/social personas).
+# Excluded from core-scope gate runs (--scope core); docs stay full.
+paid_ids:
+  # Marketplace / social / billing (paid SaaS layer)
+  - UC-AM-002
+  - UC-CM-001
+  - UC-CM-002
+  - UC-CM-003
+  - UC-CM-004
+  - UC-MKT-ADV-001
+  - UC-MKT-ADV-002
+  - UC-BILL-002
+  # Personas whose journeys live in the paid surface
+  - JOURNEY-CPO-001
+  - JOURNEY-CPO-006
+  - JOURNEY-CPO-007
+  - JOURNEY-CPO-008
+  - JOURNEY-CPO-009
+  - JOURNEY-CPO-010
+  - JOURNEY-DC-001
+  - JOURNEY-MPA-005

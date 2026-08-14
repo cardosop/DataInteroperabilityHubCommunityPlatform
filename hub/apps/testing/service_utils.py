@@ -190,9 +190,12 @@ def get_service_mock_or_real(service_name: str, default_url: str, mock_class=Non
 
             return True, DataContractCLIClient()
         elif "SEMANTIC" in service_name:
-            from hub.apps.semantic.service_client import SemanticServiceClient
+            from hub.apps.core.commercial_hooks import get_service_client_factory
 
-            return True, SemanticServiceClient()
+            factory = get_service_client_factory("SEMANTIC")
+            if factory is None:
+                return False, MagicMock()
+            return True, factory()
 
     # Return mock
     mock = MagicMock()

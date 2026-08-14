@@ -344,7 +344,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
             access_request.save()
 
             # Cascade to marketplace only on final step.
-            if is_final_step and access_request.order_id:
+            if is_final_step and getattr(access_request, "order_id", None):
                 from hub.apps.marketplace.entitlement_utils import create_entitlement_for_order
                 from hub.apps.marketplace.models import Order, OrderStatus
 
@@ -731,7 +731,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         access_request.save()
 
         # Cascade to marketplace: reject the linked order
-        if access_request.order:
+        if getattr(access_request, "order", None):
             from hub.apps.marketplace.models import OrderStatus
 
             order = access_request.order
@@ -817,7 +817,7 @@ class GovernanceService(BaseService, AccessEventPublisher):
         access_request.save(update_fields=["status", "revocation_reason", "updated_at"])
 
         # Cascade to marketplace entitlement.
-        if access_request.order:
+        if getattr(access_request, "order", None):
             from hub.apps.marketplace.entitlement_utils import revoke_entitlement_for_order
 
             revoke_entitlement_for_order(

@@ -1262,8 +1262,8 @@ class ComplianceBusinessRules(BusinessRules):
             details["compliance_service_status"] = service_status
 
         # Check tenant compliance run quota using rate limiting system
-        from hub.apps.rate_limiting.quota import QuotaManager
-        from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+        from hub.apps.core.rate_limiting.quota import QuotaManager
+        from hub.apps.core.rate_limiting.utils import EndpointCategory, TimeWindow
 
         # Check daily quota for compliance runs
         has_quota, quota_info = QuotaManager.check_quota(

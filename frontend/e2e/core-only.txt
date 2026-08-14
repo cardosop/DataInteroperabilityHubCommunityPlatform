@@ -1,0 +1,33 @@
+# Phase 313.4 — core-only E2E subset (public CI weekly job).
+#
+# Grep-style list: each line is a substring matched against Playwright
+# spec titles (--grep). Core personas + core feature specs only —
+# paid-heavy specs (marketplace, ai-ml-semantic, social, baas, billing,
+# ml lifecycle, external-developer, community-manager, data-consumer,
+# data-product-owner, data-scientist) are excluded by construction.
+#
+# Core personas (13 canonical personas minus the paid-heavy set).
+visitor
+data-engineer
+platform-admin
+auditor
+compliance-officer
+data-analyst
+data-mesh-domain-owner
+# Core feature areas
+assets
+datasets
+contracts
+dq
+compliance
+governance
+files
+webhooks
+notifications
+search
+scheduled-ingestions
+scheduled-exports
+jobs
+# Cross-cutting core dimensions
+a11y
+security

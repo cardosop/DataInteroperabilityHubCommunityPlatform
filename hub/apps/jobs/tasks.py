@@ -12,7 +12,6 @@ This module imports from split modules:
 - tasks_search: Search indexing job handlers
 - tasks_odps: ODPS-related job handlers
 - tasks_virtualization: Virtualization job handlers
-- tasks_marketplace: Marketplace sync job handlers
 
 SAVING CHECKPOINT: This module serves as the main entry point and imports
 from specialized modules. Each handler module is < 700 lines per project rule.

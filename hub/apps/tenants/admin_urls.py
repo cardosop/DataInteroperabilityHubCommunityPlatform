@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from django.urls import path
 
-from hub.apps.billing import connect_views
-
 from .admin_dashboard_summary import AdminDashboardSummaryView
 from .admin_feature_flag_views import (
     AdminTenantFeatureFlagView,
@@ -89,13 +87,5 @@ urlpatterns = [
         "dashboard/summary/",
         AdminDashboardSummaryView.as_view(),
         name="admin-dashboard-summary",
-    ),
-    # Phase 271.5.1 — PLATFORM_ADMIN KYB review queue: lists
-    # ConnectAccounts stuck in Stripe's KYB pipeline (>24h since
-    # creation, details_submitted but charges_enabled still False).
-    path(
-        "connect/review-queue/",
-        connect_views.connect_review_queue,
-        name="admin-connect-review-queue",
     ),
 ]

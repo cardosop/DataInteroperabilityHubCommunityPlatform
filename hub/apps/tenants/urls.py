@@ -5,7 +5,10 @@ Tenant URL Configuration
 from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
-from hub.apps.semantic.views import TenantSparqlEndpointViewSet
+# Phase 313.1 — per-tenant SPARQL allowlist routes are a paid feature:
+# the semantic app registers the ViewSet via commercial hooks; core-only
+# mode has no hook and the routes do not exist.
+from hub.apps.core.commercial_hooks import get_tenant_sparql_view
 
 from .ephemeral_views import ephemeral_tenant
 from .views import RateLimitConfigView, TenantConfigViewSet, TenantViewSet
@@ -101,28 +104,40 @@ urlpatterns = [
         TenantConfigViewSet.as_view({"get": "retrieve", "patch": "partial_update"}),
         name="tenant-config-detail",
     ),
-    # Phase 230.8 (REQ-SEM-FED-001) — per-tenant SPARQL allowlist CRUD.
-    # Mounted under tenants/ rather than semantic/ because the route is
-    # nested under <tenant_id>; the implementation lives in semantic/
-    # so the model + view + serializer travel together.
-    path(
-        "<uuid:tenant_id>/sparql-endpoints/",
-        TenantSparqlEndpointViewSet.as_view(
-            {"get": "list", "post": "create"},
-        ),
-        name="tenant-sparql-endpoint-list",
-    ),
-    path(
-        "<uuid:tenant_id>/sparql-endpoints/<uuid:pk>/",
-        TenantSparqlEndpointViewSet.as_view(
-            {
-                "get": "retrieve",
-                "patch": "partial_update",
-                "put": "update",
-                "delete": "destroy",
-            },
-        ),
-        name="tenant-sparql-endpoint-detail",
-    ),
     path("", include(router.urls)),
 ]
+
+# Phase 230.8 (REQ-SEM-FED-001) — per-tenant SPARQL allowlist CRUD.
+# Mounted under tenants/ rather than semantic/ because the route is
+# nested under <tenant_id>; the implementation lives in semantic/
+# so the model + view + serializer travel together.
+# Phase 313.1 — registered only when the paid semantic app provides the
+# view (commercial hook). Appended AFTER the router include keeps the
+# <uuid> patterns resolvable: Django resolves in order and these are more
+# specific than nothing else at this level; the pre-split URLconf had them
+# before the router include, and the router's terminal '' pattern only
+# matches the empty remainder, so order relative to it is preserved by
+# keeping these entries ahead of any catch-all.
+_sparql_view = get_tenant_sparql_view()
+if _sparql_view is not None:
+    urlpatterns = [
+        path(
+            "<uuid:tenant_id>/sparql-endpoints/",
+            _sparql_view.as_view(
+                {"get": "list", "post": "create"},
+            ),
+            name="tenant-sparql-endpoint-list",
+        ),
+        path(
+            "<uuid:tenant_id>/sparql-endpoints/<uuid:pk>/",
+            _sparql_view.as_view(
+                {
+                    "get": "retrieve",
+                    "patch": "partial_update",
+                    "put": "update",
+                    "delete": "destroy",
+                },
+            ),
+            name="tenant-sparql-endpoint-detail",
+        ),
+    ] + urlpatterns

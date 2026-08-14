@@ -577,33 +577,21 @@ def _execute_job_logic(job_obj: Job, job_type: str) -> dict:
 
         return _execute_virtual_query_job(job_obj)
 
-    elif job_type == JobType.MARKETPLACE_SYNC:
-        from .tasks_marketplace import _execute_marketplace_sync_job
-
-        return _execute_marketplace_sync_job(job_obj)
-
-    elif job_type == JobType.SEMANTIC_SNAPSHOT:
-        # Phase 230.4 (REQ-SEM-MEMENTO-001) — debounced snapshot job.
-        from hub.apps.semantic.tasks import _execute_semantic_snapshot_job
-
-        return _execute_semantic_snapshot_job(job_obj)
-
-    elif job_type == JobType.ONTOLOGY_VALIDATE:
-        # Phase 230.10 (REQ-SEM-ONTO-001) — async ontology re-validation.
-        from hub.apps.semantic.tasks import _execute_ontology_validate_job
-
-        return _execute_ontology_validate_job(job_obj)
-
-    elif job_type == JobType.LDN_OUTBOUND_DELIVERY:
-        # Phase 230.12 (REQ-SEM-LDN-003) — outbound LDN delivery.
-        from hub.apps.semantic.tasks_ldn import _execute_ldn_outbound_delivery_job
-
-        return _execute_ldn_outbound_delivery_job(job_obj)
-
     elif job_type == JobType.AUDIT_MERKLE_SNAPSHOT:
         return _execute_audit_merkle_snapshot_job(job_obj)
 
     else:
+        # Phase 313.1 — paid-layer job types (MARKETPLACE_SYNC,
+        # SEMANTIC_SNAPSHOT, ONTOLOGY_VALIDATE, LDN_OUTBOUND_DELIVERY)
+        # dispatch through the core-owned handler registry; handlers are
+        # registered by the paid apps' AppConfig.ready(). In core-only mode
+        # no handler exists and the unknown-type error applies — the core
+        # path never imports paid code.
+        from hub.apps.core.job_handlers import get_job_handler
+
+        registered_handler = get_job_handler(job_type.value)
+        if registered_handler is not None:
+            return registered_handler(job_obj)
         raise ValueError(f"Unknown job type: {job_type}")
 
 

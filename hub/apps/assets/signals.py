@@ -74,10 +74,11 @@ def _fire_asset_tombstone_if_retired(sender, instance, **kwargs):
 
     def _dispatch():
         try:
-            from hub.apps.semantic.tombstone import (
-                REASON_ASSET_RETIRED, tombstone_resource,
+            from hub.apps.core.commercial_hooks import (
+                REASON_ASSET_RETIRED,
+                dispatch_tombstone,
             )
-            tombstone_resource(
+            dispatch_tombstone(
                 resource_type="ASSET",
                 resource_id=instance.pk,
                 reason=REASON_ASSET_RETIRED,

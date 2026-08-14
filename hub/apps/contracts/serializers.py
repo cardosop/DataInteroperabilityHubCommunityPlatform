@@ -10,7 +10,8 @@ from drf_spectacular.utils import OpenApiExample, extend_schema_serializer
 from rest_framework import serializers
 
 # Phase 226 G7a — canonical IRI exposure for SDK + dereferenceability proofs.
-from hub.apps.semantic.iri import canonical_iri_for
+# Phase 313.1 — imported from core so the core app never imports paid code.
+from hub.apps.core.identifiers import canonical_iri_for
 
 from .models import Contract, ContractStatus, OriginalFormat, OriginalSpecType, SecurityAuditLog
 

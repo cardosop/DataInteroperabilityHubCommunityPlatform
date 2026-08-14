@@ -2062,10 +2062,13 @@ class AssetViewSet(viewsets.ModelViewSet):
         if not consumer_tenant_id:
             return None
 
-        from hub.apps.marketplace.entitlement_check import require_entitlement
+        # Phase 313.1 — entitlement enforcement goes through the commercial
+        # hook: the paid marketplace registers require_entitlement in
+        # ready(); core-only mode fails open (OSS has no paywall).
+        from hub.apps.core.commercial_hooks import check_entitlement
 
         try:
-            require_entitlement(
+            check_entitlement(
                 consumer_tenant_id=consumer_tenant_id,
                 asset_id=str(asset.id),
                 provider_tenant_id=str(asset.tenant_id),
@@ -3115,8 +3118,8 @@ class AssetViewSet(viewsets.ModelViewSet):
             )
 
         # Check tenant resource download quota (only when resource exists)
-        from hub.apps.rate_limiting.quota import QuotaManager
-        from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+        from hub.apps.core.rate_limiting.quota import QuotaManager
+        from hub.apps.core.rate_limiting.utils import EndpointCategory, TimeWindow
 
         has_quota, quota_info = QuotaManager.check_quota(
             tenant_id=str(tenant.id),
@@ -3452,8 +3455,8 @@ class AssetViewSet(viewsets.ModelViewSet):
                 )
 
             # Check quota for batch download
-            from hub.apps.rate_limiting.quota import QuotaManager
-            from hub.apps.rate_limiting.utils import EndpointCategory, TimeWindow
+            from hub.apps.core.rate_limiting.quota import QuotaManager
+            from hub.apps.core.rate_limiting.utils import EndpointCategory, TimeWindow
 
             has_quota, quota_info = QuotaManager.check_quota(
                 tenant_id=str(tenant.id), category=EndpointCategory.GENERAL, window=TimeWindow.DAILY

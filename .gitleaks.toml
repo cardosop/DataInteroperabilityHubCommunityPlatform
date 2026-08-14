@@ -16,6 +16,11 @@ title = "Meshant Gitleaks Config"
   description = "Global path allowlist for test fixtures, templates, and E2E helpers"
 
   paths = [
+    # Local environment files — untracked + gitignored (Phase 313.0 rotation).
+    # These carry per-machine values and are never committed; re-tracking is
+    # blocked independently by tests/security/test_secrets_rotation.py
+    # (test_no_real_env_file_is_git_tracked).
+    '''^\.env($|\..*$)''',
     # Environment templates contain placeholder values, not real secrets
     '''^\.env\..*\.template$''',
     # Test fixtures use dummy data

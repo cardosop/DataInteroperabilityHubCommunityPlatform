@@ -1,0 +1,101 @@
+# Phase 313.4 — core-only DEV stack overlay (docker-compose.yml base).
+#
+# Usage:
+#   docker compose -f docker-compose.yml -f docker-compose.core.yml up -d --build
+#   make quickstart   # convenience wrapper (Makefile.core)
+#
+# Same overlay design as docker-compose.test.core.yml: paid + optional
+# services get a non-default profile so default `up` excludes them, and the
+# core services pin their depends_on to core-only targets via `!reset`
+# (compose deep-merges maps, so a plain list would merge instead of replace).
+
+services:
+  api-service:
+    environment:
+      HUB_CORE_ONLY: "1"
+    depends_on: !reset
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+  worker-service:
+    environment:
+      HUB_CORE_ONLY: "1"
+    depends_on: !reset
+      postgres:
+        condition: service_healthy
+      redis-cache:
+        condition: service_healthy
+      redis-queue:
+        condition: service_healthy
+      redis-events:
+        condition: service_healthy
+      redis-channels:
+        condition: service_healthy
+
+  traefik:
+    depends_on: !reset
+      api-service:
+        condition: service_started
+      frontend:
+        condition: service_started
+
+  # Paid-layer services (excluded from core)
+  postgres-baas:
+    profiles: ["core-excluded"]
+  redis-baas:
+    profiles: ["core-excluded"]
+  clamav:
+    profiles: ["core-excluded"]
+  fuseki:
+    profiles: ["core-excluded"]
+  semantic-service:
+    profiles: ["core-excluded"]
+  datacontract-service:
+    profiles: ["core-excluded"]
+  dq-service:
+    profiles: ["core-excluded"]
+  compliance-service:
+    profiles: ["core-excluded"]
+  compliance-rq-worker:
+    profiles: ["core-excluded"]
+  prefect-server:
+    profiles: ["core-excluded"]
+  prefect-db:
+    profiles: ["core-excluded"]
+  prefect-worker:
+    profiles: ["core-excluded"]
+  prefect-integration-service:
+    profiles: ["core-excluded"]
+  odh-training-operator:
+    profiles: ["core-excluded"]
+  odh-inference-scheduler:
+    profiles: ["core-excluded"]
+  ckan-test:
+    profiles: ["core-excluded"]
+  ckan-test-db:
+    profiles: ["core-excluded"]
+  ckan-test-solr:
+    profiles: ["core-excluded"]
+  ckan-test-redis:
+    profiles: ["core-excluded"]
+
+  # Optional dev extras (excluded from the minimal core stack)
+  jaeger:
+    profiles: ["core-excluded"]
+  mock-server:
+    profiles: ["core-excluded"]
+  prometheus:
+    profiles: ["core-excluded"]
+  grafana:
+    profiles: ["core-excluded"]
+  alertmanager:
+    profiles: ["core-excluded"]

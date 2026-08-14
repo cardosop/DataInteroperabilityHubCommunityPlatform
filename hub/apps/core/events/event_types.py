@@ -2530,6 +2530,32 @@ EVENT_TYPE_SCHEMAS: dict[str, dict[str, Any]] = {
 }
 
 
+def register_event_schema(event_type: str, schema: dict[str, Any]) -> None:
+    """
+    Register an event-type schema from outside core (Phase 313.1).
+
+    Paid apps register their own event schemas from ``AppConfig.ready()``
+    so core never edits itself for a paid feature. The existing
+    ``marketplace.*`` entries remain in this module as the published
+    publisher/subscriber contract.
+
+    Idempotent across reloads (same schema re-registers silently); a
+    CONFLICTING schema raises so drift between a paid definition and a
+    core one is loud, never silent.
+
+    Args:
+        event_type: Event type (e.g., 'marketplace.new_thing')
+        schema: JSON-schema-shaped dict (same shape as EVENT_TYPE_SCHEMAS values)
+
+    Raises:
+        ValueError: when a different schema is already registered for the type.
+    """
+    existing = EVENT_TYPE_SCHEMAS.get(event_type)
+    if existing is not None and existing != schema:
+        raise ValueError(f"register_event_schema: conflicting schema for {event_type!r}")
+    EVENT_TYPE_SCHEMAS[event_type] = schema
+
+
 def get_event_schema(event_type: str) -> dict[str, Any] | None:
     """
     Get schema for specific event type.

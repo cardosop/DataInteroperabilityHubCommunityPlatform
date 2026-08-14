@@ -25,7 +25,7 @@ from rest_framework.response import Response
 from hub.apps.api.standards.pagination import StandardPageNumberPagination
 from hub.apps.auth.permissions import HasAnyRole, HasScope
 from hub.apps.core.services.base import ConflictError, NotFoundError, ValidationError
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 
 from .base import MarketplaceType, SyncDirection
 from .factory import MarketplaceConnectorFactory

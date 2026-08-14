@@ -109,7 +109,10 @@ SPARQLWrapper==2.0.0
 python-dateutil==2.9.0.post0
 pytz==2025.2
 pyyaml==6.0.3
-html2text==2025.4.15
+# html2text REMOVED (Phase 313.3.4) — GPL-3.0 is incompatible with the
+# Apache-2.0 core. notifications.templates.py treats it as OPTIONAL
+# (try/except + plain fallback); operators may self-install it if they
+# accept the GPL terms — that choice stays with the operator.
 click==8.3.1  # CLI framework
 croniter==6.0.0  # Cron expression parsing for scheduled ingestions
 

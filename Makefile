@@ -2774,3 +2774,4 @@ wait-for-services: ## Wait for all services to be healthy
 	done
 	@echo "✅ All services are healthy"
 
+include Makefile.core

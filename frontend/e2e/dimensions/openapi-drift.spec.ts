@@ -41,10 +41,17 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// Phase 313.4 — core-only deployments have their own snapshot: paid paths
+// are absent from the served schema, so the full-mode snapshot would never
+// match. E2E_CORE_ONLY=1 selects the core snapshot (generated with
+// UPDATE_OPENAPI_SNAPSHOT=1 against a HUB_CORE_ONLY=1 backend).
+const SNAPSHOT_FILE = process.env.E2E_CORE_ONLY === '1'
+  ? 'openapi-drift.core.snapshot.json'
+  : 'openapi-drift.snapshot.json';
 const SNAPSHOT_PATH = path.resolve(
   __dirname,
   '__snapshots__',
-  'openapi-drift.snapshot.json',
+  SNAPSHOT_FILE,
 );
 
 interface DriftSnapshot {

@@ -55,14 +55,17 @@ class APIKey(models.Model):
         help_text="Custom API gateway rate limit (requests per hour); null uses tier/tenant default",
     )
     # BaaS: optional tier for usage/quota (single API key model — D2)
-    tier = models.ForeignKey(
-        "baas.APITierModel",
-        on_delete=models.RESTRICT,
-        related_name="auth_api_keys",
-        null=True,
-        blank=True,
-        help_text="BaaS API tier for this key (null for non-BaaS keys)",
-    )
+    # Phase 313.1 — paid-layer FK: declared only when the baas app is
+    # installed; absent in core-only mode (no BaaS tiers exist there).
+    if not settings.HUB_CORE_ONLY:
+        tier = models.ForeignKey(
+            "baas.APITierModel",
+            on_delete=models.RESTRICT,
+            related_name="auth_api_keys",
+            null=True,
+            blank=True,
+            help_text="BaaS API tier for this key (null for non-BaaS keys)",
+        )
     revoked_at = models.DateTimeField(
         null=True,
         blank=True,
@@ -95,11 +98,12 @@ class APIKey(models.Model):
     class Meta:
         db_table = "api_keys"
         ordering = ["-created_at"]
+        # Phase 313.1 — tier_id index exists only with the conditional
+        # BaaS tier FK (see field declaration above).
         indexes = [
             models.Index(fields=["tenant", "user"]),
             models.Index(fields=["key_hash"]),
-            models.Index(fields=["tier_id"]),
-        ]
+        ] + ([models.Index(fields=["tier_id"])] if not settings.HUB_CORE_ONLY else [])
 
     def __str__(self):
         return f"{self.name} ({self.tenant.name})"

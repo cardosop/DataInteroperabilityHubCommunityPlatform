@@ -55,11 +55,15 @@ class Command(BaseCommand):
                     # Cascade to marketplace entitlement
                     if request.order:
                         try:
-                            from hub.apps.marketplace.entitlement_utils import (
-                                revoke_entitlement_for_order,
+                            # Phase 313.1 — marketplace cascade via the
+                            # commercial hook (no-op in core-only mode:
+                            # governance still revokes the access request,
+                            # but no marketplace entitlement exists).
+                            from hub.apps.core.commercial_hooks import (
+                                revoke_order_entitlement,
                             )
 
-                            revoke_entitlement_for_order(
+                            revoke_order_entitlement(
                                 request.order, reason="Governance access expired"
                             )
                         except Exception:

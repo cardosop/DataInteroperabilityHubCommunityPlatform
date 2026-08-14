@@ -15,6 +15,14 @@ from .models import (
 )
 
 
+# Phase 313.1 — the "order" field exists only when the marketplace app is
+# installed (conditional FK on AccessRequest); the field lists adapt so the
+# OpenAPI schema generation works in core-only mode.
+from django.conf import settings
+
+_ACCESS_REQUEST_ORDER_FIELDS = ["order"] if not settings.HUB_CORE_ONLY else []
+
+
 class AccessRequestSerializer(serializers.ModelSerializer):
     """Serializer for AccessRequest"""
 
@@ -41,7 +49,7 @@ class AccessRequestSerializer(serializers.ModelSerializer):
             "rejection_reason",
             "expires_at",
             "access_granted_at",
-            "order",
+            *(_ACCESS_REQUEST_ORDER_FIELDS),
             "created_at",
             "updated_at",
         ]
@@ -56,7 +64,7 @@ class AccessRequestSerializer(serializers.ModelSerializer):
             "rejected_by",
             "rejected_at",
             "access_granted_at",
-            "order",
+            *_ACCESS_REQUEST_ORDER_FIELDS,
         ]
 
 

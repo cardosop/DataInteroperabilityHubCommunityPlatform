@@ -30,6 +30,9 @@ import re
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from boundary_scope import add_scope_argument, build_scan_dirs, paid_ids
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 USE_CASES_DOC = REPO_ROOT / "docs" / "USE_CASES.md"
 CRITICAL_YAML = REPO_ROOT / "docs" / "CRITICAL_UC_JOURNEY_IDS.yaml"
@@ -126,18 +129,25 @@ def _check_duplicates(doc_path: Path) -> list[str]:
 def run_check(
     repo_root: Path,
     ci_mode: bool = False,
+    scope: str = "full",
     report: bool = False,
     fix_hints: bool = False,
 ) -> int:
     doc_path = repo_root / "docs" / "USE_CASES.md"
     yaml_path = repo_root / "docs" / "CRITICAL_UC_JOURNEY_IDS.yaml"
     frontend_dir = repo_root / "frontend" / "e2e" / "use-cases"
-    scan_dirs = [repo_root / d for d in SCAN_DIRS]
+    scan_dirs = build_scan_dirs(repo_root, SCAN_DIRS, scope)
 
     doc_ids = _extract_doc_uc_ids(doc_path)
     critical_ids = _extract_critical_uc_ids(yaml_path)
     marked_ids = _extract_marked_uc_ids(scan_dirs)
     frontend_ids = _extract_frontend_uc_ids(frontend_dir)
+    if scope == "core":
+        skip = paid_ids(repo_root)
+        doc_ids -= skip
+        critical_ids -= skip
+        marked_ids -= skip
+        frontend_ids -= skip
     duplicates = _check_duplicates(doc_path)
 
     # Forward: doc -> markers
@@ -273,6 +283,7 @@ def main() -> int:
     parser.add_argument(
         "--ci-mode", action="store_true", help="Exit 1 on blocking violations, output JSON"
     )
+    add_scope_argument(parser)
     parser.add_argument("--report", action="store_true", help="Output markdown report")
     parser.add_argument("--fix-hints", action="store_true", help="Print fix hints for violations")
     args = parser.parse_args()

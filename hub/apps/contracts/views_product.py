@@ -20,7 +20,7 @@ from rest_framework import serializers, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from hub.apps.orchestration.workflows.product_creation import ProductCreationWorkflow
+from hub.apps.core.commercial_hooks import get_product_creation_workflow
 
 from .business_rules import ODPSBusinessRules
 from .models import OriginalSpecType
@@ -182,7 +182,16 @@ class ContractProductMixin:
         try:
             if is_test_env:
                 # Synchronous execution for tests - returns contracts directly
-                result = ProductCreationWorkflow.execute(
+                workflow = get_product_creation_workflow()
+                if workflow is None:
+                    return Response(
+                        {
+                            "error_code": "FEATURE_NOT_AVAILABLE",
+                            "detail": "Product creation is a SaaS feature — not available in this deployment.",
+                        },
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                result = workflow.execute(
                     original_raw=original_raw,
                     original_format=original_format,
                     tenant_id=str(tenant.id),
@@ -207,7 +216,7 @@ class ContractProductMixin:
                 )
             else:
                 # Asynchronous execution for production
-                result = ProductCreationWorkflow.execute_start(
+                result = workflow.execute_start(
                     original_raw=original_raw,
                     original_format=original_format,
                     tenant_id=str(tenant.id),

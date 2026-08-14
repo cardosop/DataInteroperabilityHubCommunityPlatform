@@ -48,15 +48,6 @@ logger = logging.getLogger(__name__)
 # The maximum subclass-walk depth per the spec ("depth ≤ 2").
 MAX_SUBCLASS_DEPTH = 2
 
-# rdflib formats keyed by the TenantOntology.format choices.  Keep the
-# table in this module so a future format addition is one line.
-_FORMAT_MAP = {
-    "turtle": "turtle",
-    "rdf_xml": "xml",
-    "json_ld": "json-ld",
-}
-
-
 @dataclass(frozen=True)
 class ExpansionBridge:
     """One bridge from a query term to a related ontology term.
@@ -104,7 +95,7 @@ def expand_query_terms(
     if not tokens:
         return []
 
-    graph = _build_active_graph(tenant_id)
+    graph = _acquire_active_graph(tenant_id)
     if graph is None:
         return []
 
@@ -125,81 +116,20 @@ def expand_query_terms(
 # ---------------------------------------------------------------------------
 
 
-def _build_active_graph(tenant_id):
-    """Parse every active TenantOntology row + the Meshant base
-    ontology into a single rdflib Graph.
+def _acquire_active_graph(tenant_id):
+    """Acquire the tenant's active ontology graph via the commercial hook.
 
-    Returns ``None`` on import failure (rdflib missing) or when the
-    tenant has no active ontologies (fast-path for the unset case).
+    Phase 313.1: the graph builder (TenantOntology rows + bundled base
+    ontology) lives in the paid semantic app and registers itself from
+    AppConfig.ready(). Core-only mode has no provider -> no expansion,
+    matching the pre-split no-ontology fast path.
     """
-    try:
-        from rdflib import Graph
-    except ImportError:  # pragma: no cover — rdflib is a hard dep.
-        logger.warning("semantic_expansion_no_rdflib")
+    from hub.apps.core.commercial_hooks import get_ontology_expansion_provider
+
+    provider = get_ontology_expansion_provider()
+    if provider is None:
         return None
-
-    try:
-        from hub.apps.semantic.models import (
-            OntologyValidationStatus,
-            TenantOntology,
-        )
-    except Exception as exc:  # pragma: no cover — import-time only.
-        logger.warning("semantic_expansion_import_failed: %s", exc)
-        return None
-
-    rows = list(
-        TenantOntology.objects.filter(
-            tenant_id=tenant_id,
-            is_active=True,
-            validation_status=OntologyValidationStatus.VALID,
-        ).values_list("rdf_content", "format")
-    )
-    if not rows:
-        return None
-
-    graph = Graph()
-    for content, fmt in rows:
-        rdflib_fmt = _FORMAT_MAP.get(fmt)
-        if not rdflib_fmt or not content:
-            continue
-        try:
-            graph.parse(data=content, format=rdflib_fmt)
-        except Exception as exc:
-            logger.warning(
-                "semantic_expansion_parse_failed tenant=%s fmt=%s error=%s",
-                tenant_id,
-                fmt,
-                exc,
-            )
-
-    # Best-effort load of the bundled Meshant base ontology (when the
-    # operator has it on disk).  Never fail the search if it's missing
-    # — the per-tenant graph is the load-bearing contributor.
-    _load_base_ontology_into(graph)
-
-    if len(graph) == 0:
-        return None
-    return graph
-
-
-def _load_base_ontology_into(graph) -> None:
-    """Attempt to load ``hub/apps/semantic/ontology.ttl`` (or the
-    public Meshant ontology fallback) into the graph.  Silent on
-    miss — the spec scenario is satisfied by per-tenant ontologies
-    alone."""
-    try:
-        from pathlib import Path
-
-        candidates = [
-            Path(__file__).resolve().parents[1] / "semantic" / "ontology.ttl",
-            Path(__file__).resolve().parents[1] / "semantic" / "ontology" / "meshant.ttl",
-        ]
-        for candidate in candidates:
-            if candidate.is_file():
-                graph.parse(source=str(candidate), format="turtle")
-                return
-    except Exception as exc:
-        logger.debug("semantic_expansion_base_ontology_skip: %s", exc)
+    return provider(tenant_id)
 
 
 def _bridges_for_token(graph, token: str) -> Iterable[ExpansionBridge]:

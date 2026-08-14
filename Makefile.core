@@ -1,0 +1,52 @@
+# Makefile.core — core-only targets (Phase 313.2).
+#
+# Included by the private Makefile (`include Makefile.core`) and shipped
+# renamed to `Makefile` in the public repo. Keeps ONE definition for the
+# core subset; the private Makefile keeps the full-stack targets.
+#
+# Core test stack = full compose files + the core overlay that profiles
+# the paid layer out. Core mode is enforced via HUB_CORE_ONLY=1 inside
+# the api container.
+
+# .env.test is untracked by design (313.0) — use it only when present;
+# CI and fresh public clones rely on compose ${VAR:-fallback} defaults.
+CORE_COMPOSE = -f docker-compose.test.yml -f docker-compose.test.core.yml $(if $(wildcard .env.test),--env-file .env.test,)
+
+.PHONY: test-core-stack-up test-core-stack-down test-core lint-core boundary-check publish-check quickstart
+
+test-core-stack-up: ## Bring up the core-only test stack
+	docker compose $(CORE_COMPOSE) up -d --build
+
+test-core-stack-down: ## Tear down the core-only test stack
+	docker compose $(CORE_COMPOSE) down
+
+test-core: test-core-stack-up ## Core-only backend suite (<15 min; public CI parity)
+	docker compose $(CORE_COMPOSE) exec -T \
+		-e HUB_CORE_ONLY=1 \
+		-e DATABASE_URL=postgresql://hub_test:hub_test@postgres-test:5432/hub_test_test_shared \
+		api-service-test \
+		python -m pytest hub/apps/ hub/tests/ --reuse-db -x -q --timeout=300 \
+		-m "not e2e and not integration and not requires_fuseki and not requires_prefect and not requires_stripe and not requires_services and not network and not benchmark and not performance"
+
+lint-core: ## Lint the core subset (same tools, pinned versions via pre-commit)
+	pre-commit run ruff --all-files
+
+boundary-check: ## GATE-29 — core never imports paid
+	python scripts/check_core_boundary.py
+	python scripts/check_core_boundary.py --check-allowlist-growth
+
+publish-check: ## Pre-publish gate (boundary + secrets + hostnames)
+	python scripts/check_core_boundary.py
+	command -v gitleaks >/dev/null 2>&1 && \
+		gitleaks detect --source . --config .gitleaks.toml --redact --no-banner --log-level=warn || \
+		echo "gitleaks not installed — skipping (CI runs gitleaks-action)"
+
+CORE_DEV_COMPOSE = -f docker-compose.yml -f docker-compose.core.yml
+
+quickstart: ## Five-minute core quickstart (dev stack + migrate + seed)
+	docker compose $(CORE_DEV_COMPOSE) up -d --build \
+		postgres redis-cache redis-queue redis-events redis-channels minio \
+		api-service worker-service frontend traefik
+	docker compose $(CORE_DEV_COMPOSE) exec -T api-service python hub/manage.py migrate
+	docker compose $(CORE_DEV_COMPOSE) exec -T api-service python hub/manage.py seed_demo_data
+	@echo "Core stack ready — open http://localhost:3000"

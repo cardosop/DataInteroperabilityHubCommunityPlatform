@@ -36,7 +36,7 @@ from hub.apps.core.services.base import (
     ValidationError,
 )
 from hub.apps.governance.abac import ABACEngine
-from hub.apps.rate_limiting.service import check_rate_limit, get_rate_limit_headers
+from hub.apps.core.rate_limiting import check_rate_limit, get_rate_limit_headers
 from hub.apps.tenants.request_tenant import get_request_tenant, get_request_tenant_id
 
 from .business_rules import VirtualizationBusinessRules, VirtualizationRuleExecutionContext

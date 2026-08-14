@@ -1,24 +1,22 @@
-# Workflow implementations
+# Workflow implementations (Phase 313.1 — core workflows only).
+
+# Paid workflows (api_key_management, marketplace_publication,
+# marketplace_sync, model_inference, model_training, product_creation,
+# marketplace_purchase_saga) moved to their owning apps'
+# workflows/ packages so the core boot path never imports paid code.
 
 from .access_request import AccessRequestWorkflow
-from .api_key_management import APIKeyManagementWorkflow
 from .asset_creation import AssetCreationWorkflow
 from .compliance_reporting import ComplianceReportingWorkflow
 from .contract_creation import ContractCreationWorkflow
 from .data_mesh import DataMeshWorkflow
 from .data_quality import DataQualityCheckWorkflow
 from .dataset_creation import DatasetCreationWorkflow
-from .marketplace_publication import MarketplacePublicationWorkflow
-from .marketplace_sync import MarketplaceSyncWorkflow
-from .model_inference import ModelInferenceWorkflow
-from .model_training import ModelTrainingWorkflow
-from .product_creation import ProductCreationWorkflow
 from .scheduled_ingestion import ScheduledIngestionWorkflow
 from .version_creation import VersionCreationWorkflow
 from .virtualization import VirtualizationWorkflow
 
 __all__ = [
-    "APIKeyManagementWorkflow",
     "AccessRequestWorkflow",
     "AssetCreationWorkflow",
     "ComplianceReportingWorkflow",
@@ -26,11 +24,6 @@ __all__ = [
     "DataMeshWorkflow",
     "DataQualityCheckWorkflow",
     "DatasetCreationWorkflow",
-    "MarketplacePublicationWorkflow",
-    "MarketplaceSyncWorkflow",
-    "ModelInferenceWorkflow",
-    "ModelTrainingWorkflow",
-    "ProductCreationWorkflow",
     "ScheduledIngestionWorkflow",
     "VersionCreationWorkflow",
     "VirtualizationWorkflow",

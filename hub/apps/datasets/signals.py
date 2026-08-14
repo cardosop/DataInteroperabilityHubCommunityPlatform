@@ -130,12 +130,12 @@ def fire_dataset_tombstone_on_archive(sender, instance, **kwargs):
 
     def _dispatch():
         try:
-            from hub.apps.semantic.tombstone import (
+            from hub.apps.core.commercial_hooks import (
                 REASON_DATASET_ARCHIVED,
-                tombstone_resource,
+                dispatch_tombstone,
             )
 
-            tombstone_resource(
+            dispatch_tombstone(
                 resource_type="DATASET",
                 resource_id=dataset_id,
                 reason=REASON_DATASET_ARCHIVED,
