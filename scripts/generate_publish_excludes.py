@@ -38,6 +38,9 @@ PAID_SERVICES = (
 EXTRA = (
     # Meshant-ops-specific (internal hostnames)
     "infrastructure/",
+    # Dev-postgres init script (base compose mounts it); certs/private
+    # scripts stay excluded.
+    "!infrastructure/postgres/02-pg-hba-host.sh",
     "helm/",
     # Community chart ships (negation re-includes it in the publish tree)
     "!helm/community/",

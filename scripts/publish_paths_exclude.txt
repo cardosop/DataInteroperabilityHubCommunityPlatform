@@ -27,6 +27,7 @@ services/observability-service/
 services/workflow_engine/
 services/tests/
 infrastructure/
+!infrastructure/postgres/02-pg-hba-host.sh
 helm/
 !helm/community/
 k8s/

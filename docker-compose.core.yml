@@ -10,6 +10,14 @@
 # (compose deep-merges maps, so a plain list would merge instead of replace).
 
 services:
+  postgres:
+    # Core-only init mounts: the base compose also mounts pgbouncer-user
+    # and ssl-copy scripts whose sources (infrastructure/postgres/*)
+    # do not ship in the public tree. !reset replaces the list.
+    volumes: !reset
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./infrastructure/postgres/02-pg-hba-host.sh:/docker-entrypoint-initdb.d/02-pg-hba-host.sh:ro
   api-service:
     # Fresh-volume postgres initdb can outrun the settings startup probe —
     # retry until the database accepts connections (idempotent).
