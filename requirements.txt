@@ -5,7 +5,10 @@ gunicorn>=23.0.0,<24.0
 uvicorn[standard]>=0.34.0,<1.0
 
 # Core Django Framework
-Django>=6.0,<7.0
+# Pin the minor: DRF 3.16.1 imports django.utils.cache.cc_delim_re, which was
+# REMOVED in Django 6.1 — a fresh image build with the unpinned range resolved
+# a newer 6.x and crashed at import (found by the DoD quickstart gate).
+Django>=6.0,<6.1
 djangorestframework==3.16.1
 django-cors-headers==4.9.0
 # Pin docutils: Django's admindocs (pulled in by DRF schema discovery) uses docutils.parsers.rst;
