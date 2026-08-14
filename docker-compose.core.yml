@@ -11,6 +11,9 @@
 
 services:
   api-service:
+    # Fresh-volume postgres initdb can outrun the settings startup probe —
+    # retry until the database accepts connections (idempotent).
+    restart: unless-stopped
     environment:
       HUB_CORE_ONLY: "1"
       POSTGRES_HOST: postgres
@@ -33,6 +36,7 @@ services:
       minio:
         condition: service_healthy
   worker-service:
+    restart: unless-stopped
     environment:
       HUB_CORE_ONLY: "1"
       POSTGRES_HOST: postgres
