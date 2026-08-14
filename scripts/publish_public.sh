@@ -165,6 +165,10 @@ git ls-files | while IFS= read -r f; do rm -f "$f"; done
   cp "$STAGING/$f" "$f"
 done
 git add -A
+# frontend/.gitignore excludes the generated shared/ copy (the private CI
+# builds it fresh) — but the PUBLIC repo must be self-contained, so the
+# published tree force-adds it.
+git add -f -A frontend/shared 2>/dev/null || true
 git commit -q -m "sync: core subset @ ${PRIVATE_SHA}" || log "nothing to commit"
 git tag -f "$TAG"
 
