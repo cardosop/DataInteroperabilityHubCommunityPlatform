@@ -509,3 +509,4 @@ tests/test_worker_tasks.py:413:Phase 313.2 long-tail inversion (lazy import → 
 tests/unit/test_dpo_workflows.py:28:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 tests/utils/test_data_management.py:28:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/governance/migrations/0005_accessrequest_order_fk.py:70:Phase 313 intentional — state operation keeps full-mode model parity; the DATABASE FK is created conditionally (core-only has no marketplace)
+hub/apps/auth/migrations/0004_apikey_tier_revoked_at.py:75:Phase 313 intentional — state operation keeps full-mode model parity; the DATABASE tier FK is created conditionally (core-only has no BaaS)
