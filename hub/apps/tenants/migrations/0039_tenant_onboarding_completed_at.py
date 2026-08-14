@@ -41,7 +41,15 @@ def _backfill_onboarding_complete(apps, schema_editor):
     """
     Tenant = apps.get_model("tenants", "Tenant")
     UserRole = apps.get_model("users", "UserRole")
-    Subscription = apps.get_model("billing", "Subscription")
+    # Phase 313 — core-only has no billing app; the backfill only matters for
+    # PRE-EXISTING databases (fresh installs have no rows to backfill), so
+    # an absent billing app/table is a legitimate no-op.
+    if "billing" not in apps.all_models:
+        return
+    try:
+        Subscription = apps.get_model("billing", "Subscription")
+    except LookupError:
+        return
 
     now = timezone.now()
 
@@ -56,11 +64,16 @@ def _backfill_onboarding_complete(apps, schema_editor):
         .values_list("tenant_id", flat=True)
         .distinct()
     )
-    tenants_with_billing = (
-        Subscription.objects.filter(status__in=_BILLING_ACTIVE_STATES)
-        .values_list("tenant_id", flat=True)
-        .distinct()
-    )
+    try:
+        tenants_with_billing = (
+            Subscription.objects.filter(status__in=_BILLING_ACTIVE_STATES)
+            .values_list("tenant_id", flat=True)
+            .distinct()
+        )
+    except Exception:
+        # Billing table not yet migrated (fresh full installs reorder
+        # without the dependency) — nothing to backfill from.
+        return
 
     manager = getattr(Tenant, "all_objects", None) or Tenant._default_manager
 
@@ -98,9 +111,9 @@ class Migration(migrations.Migration):
         # filters by ``role__name`` + ``tenant_id``, so we need the
         # FK column live.
         ("users", "0016_passwordhistory"),
-        # Latest billing migration to guarantee ``Subscription.status``
-        # exists — filter relies on it.
-        ("billing", "0004_add_subscription_category"),
+        # Phase 313 — the billing dependency is REMOVED: core-only installs
+        # have no billing app, and the backfill self-guards against an absent
+        # billing table (it only matters for pre-existing databases).
     ]
 
     operations = [

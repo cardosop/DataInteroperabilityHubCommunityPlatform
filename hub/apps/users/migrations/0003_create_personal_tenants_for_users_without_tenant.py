@@ -41,7 +41,14 @@ def create_personal_tenants_for_users_without_tenant(apps, schema_editor):
     Tenant = apps.get_model("tenants", "Tenant")
     TenantPlan = apps.get_model("tenants", "TenantPlan")
     TenantConfig = apps.get_model("tenants", "TenantConfig")
-    Subscription = apps.get_model("billing", "Subscription")
+    # Phase 313 — billing is absent in core-only installs; personal
+    # tenants are created without a subscription there.
+    Subscription = None
+    if "billing" in apps.all_models:
+        try:
+            Subscription = apps.get_model("billing", "Subscription")
+        except LookupError:
+            Subscription = None
     Role = apps.get_model("users", "Role")
     UserRole = apps.get_model("users", "UserRole")
 
@@ -100,13 +107,16 @@ def create_personal_tenants_for_users_without_tenant(apps, schema_editor):
             max_queued_jobs=platform_defaults.get("max_queued_jobs"),
         )
 
-        Subscription.objects.create(
-            tenant=tenant,
-            plan=plan,
-            status="ACTIVE",
-            current_period_start=now,
-            current_period_end=period_end,
-        )
+        if Subscription is not None:
+            # Phase 313 — core-only installs have no billing app: personal
+            # tenants are created without a subscription there.
+            Subscription.objects.create(
+                tenant=tenant,
+                plan=plan,
+                status="ACTIVE",
+                current_period_start=now,
+                current_period_end=period_end,
+            )
 
         for role_name, description in [
             ("DATA_PROVIDER", "Can create and manage data assets"),
@@ -133,7 +143,8 @@ class Migration(migrations.Migration):
     dependencies = [
         ("users", "0002_alter_user_status"),
         ("tenants", "0010_ensure_free_plan_exists"),
-        ("billing", "0001_initial"),
+        # Phase 313 — billing dependency REMOVED (core-only has no billing
+        # app); Subscription creation below self-guards on its absence.
     ]
 
     operations = [
