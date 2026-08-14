@@ -740,7 +740,8 @@ services:
     ports:
       - "${API_TEST_PORT:-8001}:8000"
     env_file:
-      - .env.test
+      - path: .env.test
+        required: false  # untracked by design (313.0) — optional in fresh clones
     environment:
       # Force Python to always read .py source instead of stale .pyc bytecode.
       # Without this, root-owned .pyc files in __pycache__ persist across runs

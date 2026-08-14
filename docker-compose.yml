@@ -456,7 +456,8 @@ services:
     ports:
       - "${API_PORT:-8000}:8000"
     env_file:
-      - .env.dev
+      - path: .env.dev
+        required: false  # untracked by design (313.0) — optional in fresh clones
     environment:
       # Brand (default: Meshant)
       - APP_NAME=${APP_NAME:-Meshant}
@@ -706,7 +707,8 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env.dev
+      - path: .env.dev
+        required: false  # untracked by design (313.0) — optional in fresh clones
     depends_on:
       postgres:
         condition: service_healthy
@@ -982,7 +984,8 @@ services:
     volumes:
       - .:/app
     env_file:
-      - .env.dev
+      - path: .env.dev
+        required: false  # untracked by design (313.0) — optional in fresh clones
     environment:
       PREFECT_API_URL: http://prefect-server:4200/api
       PREFECT_API_KEY: ${PREFECT_API_KEY:-}
