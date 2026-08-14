@@ -57,7 +57,7 @@ class CapabilitiesService {
       this.openApiSchema = response.data;
 
       // Derive capabilities from OpenAPI paths
-      this.capabilities = this.this.deriveCapabilitiesFromOpenAPI(this.openApiSchema);
+      this.capabilities = this.deriveCapabilitiesFromOpenAPI(this.openApiSchema);
 
       // Phase 250.6.D.2 — fetch runtime per-tenant capabilities so the
       // SPA can branch on ``asset_creation_blocked_reason``. Failure
