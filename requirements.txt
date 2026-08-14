@@ -86,7 +86,7 @@ charset-normalizer>=3.4.0,<4.0
 httpx==0.28.1
 httpx2>=2.4.0  # Starlette TestClient transport (replaces deprecated httpx)
 requests==2.32.4
-urllib3>=2.6.3
+urllib3>=2.7.0
 
 # Phase 260.0.8 — bounded retries for S3 reads on schema inference path
 tenacity>=9.0.0,<10.0
