@@ -28,6 +28,7 @@ if [[ "$PYTHON" != /* ]]; then
   PYTHON="$(cd "$(dirname "$0")/.." && pwd)/$PYTHON"
 fi
 
+PRIVATE_SHA="$(git rev-parse --short HEAD)"
 REPLACE_TEXT_FILE="$(mktemp /tmp/publish_replace_text.XXXXXX.txt)"
 
 trap 'rm -f "$REPLACE_TEXT_FILE"' EXIT
@@ -93,6 +94,15 @@ PYEOF
 # staged (or committed) before they ship, and untracked files never leak.
 git checkout-index -f --prefix="$STAGING/" --stdin < "$WORK/files.txt"
 
+# The frontend prebuild (scripts/sync-shared.sh) requires the repo-root
+# shared/ INSIDE the frontend build context (compose builds frontend with
+# context ./frontend; the private CI copies shared/ in before building).
+# Mirror that here so the public tree's frontend builds out of the box.
+if [ -d "$STAGING/shared" ] && [ -d "$STAGING/frontend" ]; then
+  mkdir -p "$STAGING/frontend/shared"
+  cp -r "$STAGING/shared/." "$STAGING/frontend/shared/"
+fi
+
 # overlay (patched worker Dockerfile, license/community files)
 if [ -d scripts/publish_public_overlay ]; then
   cp -r scripts/publish_public_overlay/. "$STAGING/"
@@ -155,7 +165,7 @@ git ls-files | while IFS= read -r f; do rm -f "$f"; done
   cp "$STAGING/$f" "$f"
 done
 git add -A
-git commit -q -m "sync: core subset @ $(git -C "$(dirname "$0")/.." rev-parse --short HEAD)" || log "nothing to commit"
+git commit -q -m "sync: core subset @ ${PRIVATE_SHA}" || log "nothing to commit"
 git tag -f "$TAG"
 
 # Post-commit verification IN the public checkout (before any push):
@@ -167,6 +177,8 @@ if command -v gitleaks >/dev/null 2>&1; then
 fi
 docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml config -q
 
-git push -q "$PUBLIC_REMOTE" mirror/public-core --tags
+git push -q "$PUBLIC_REMOTE" mirror/public-core
+# Tags are movable (vYYYY.MM.DD) — force ONLY the tag ref, never the branch.
+git push -q --force "$PUBLIC_REMOTE" "$TAG"
 popd >/dev/null
 log "published $TAG to $PUBLIC_REMOTE mirror/public-core"
