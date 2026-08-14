@@ -13347,3 +13347,6 @@ This document provides a comprehensive architecture decision for the Event Bus i
 **Decision Owner:** Architecture Team
 **Review Date:** 2025-06-30 (6 months)
 
+
+> Core-only note: this repository ships the open-source core; the semantic layer,
+> marketplace, and billing surfaces are hosted-SaaS capabilities.
