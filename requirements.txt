@@ -10,7 +10,7 @@ djangorestframework==3.16.1
 django-cors-headers==4.9.0
 # Pin docutils: Django's admindocs (pulled in by DRF schema discovery) uses docutils.parsers.rst;
 # docutils 0.21+ reorganized the package and no longer exposes parsers.rst, causing AttributeError.
-docutils>=0.17,<0.21
+docutils>=0.23,<0.24
 
 # Database
 psycopg2-binary==2.9.11
