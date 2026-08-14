@@ -43,7 +43,10 @@ publish-check: ## Pre-publish gate (boundary + secrets + hostnames)
 
 CORE_DEV_COMPOSE = -f docker-compose.yml -f docker-compose.core.yml
 
-quickstart: ## Five-minute core quickstart (dev stack + migrate + seed)
+.env:
+	python3 scripts/make_dev_env.py
+
+quickstart: .env ## Five-minute core quickstart (dev stack + migrate + seed)
 	docker compose $(CORE_DEV_COMPOSE) up -d --build \
 		postgres redis-cache redis-queue redis-events redis-channels minio \
 		api-service worker-service frontend traefik

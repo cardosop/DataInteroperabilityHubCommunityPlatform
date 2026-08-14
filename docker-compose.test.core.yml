@@ -79,6 +79,8 @@ services:
     profiles: ["paid-excluded"]
   ckan-test:
     profiles: ["paid-excluded"]
+    image: busybox:latest
+    build: !reset null
   ckan-test-db-test:
     profiles: ["paid-excluded"]
   ckan-test-solr-test:

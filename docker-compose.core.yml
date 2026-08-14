@@ -59,34 +59,64 @@ services:
     profiles: ["core-excluded"]
   semantic-service:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   datacontract-service:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   dq-service:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   compliance-service:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   compliance-rq-worker:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   prefect-server:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   prefect-db:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   prefect-worker:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   prefect-integration-service:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   odh-training-operator:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   odh-inference-scheduler:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   ckan-test:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   ckan-test-db:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   ckan-test-solr:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
   ckan-test-redis:
     profiles: ["core-excluded"]
+    image: busybox:latest
+    build: !reset null
 
   # Optional dev extras (excluded from the minimal core stack)
   jaeger:
