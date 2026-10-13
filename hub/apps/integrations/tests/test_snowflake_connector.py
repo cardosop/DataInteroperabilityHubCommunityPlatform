@@ -58,7 +58,7 @@ def get_snowflake_credentials() -> dict:
 
     Missing credentials: CI raises EnvironmentFailureError (the environment
     failure announces itself); local runs skip. See
-    docs/docs/runbooks/RB-INTEGRATIONS-002-snowflake-sandbox-provisioning.md
+    docs/runbooks/RB-INTEGRATIONS-002-snowflake-sandbox-provisioning.md
     for the provisioning recipe.
     """
     account = os.getenv("SNOWFLAKE_ACCOUNT")

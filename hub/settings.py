@@ -1881,7 +1881,7 @@ REST_FRAMEWORK = {
         "databricks_uc_changes": "30/minute",
         "databricks_budgets": "30/minute",
         # Delta Sharing server (task 5.2) — per-recipient-token protocol
-        # throttle (the docs/docs/integrations/delta-sharing.md promise:
+        # throttle (the docs/integrations/delta-sharing.md promise:
         # 30 req/min per consumer).
         "delta_share_recipients": "30/minute",
         "semantic_export": "5/min",

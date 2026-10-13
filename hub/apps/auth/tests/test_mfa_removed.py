@@ -68,15 +68,17 @@ class MFADocClaimTest(TestCase):
         return (Path(settings.BASE_DIR) / relative).read_text()
 
     def test_security_docs_state_mfa_not_shipped(self):
-        for path in ("docs/SECURITY.md", "docs/docs/SECURITY.md"):
-            text = self._repo_doc(path)
-            self.assertNotIn("(JWT, OAuth, SSO, MFA)", text)
-            self.assertIn("MFA is not", text)
+        # docs/docs/ was the W12.1-deleted duplication — only the
+        # canonical tree exists now.
+        text = self._repo_doc("docs/SECURITY.md")
+        self.assertNotIn("(JWT, OAuth, SSO, MFA)", text)
+        self.assertIn("MFA is not", text)
 
     def test_feature_completeness_does_not_check_mfa(self):
-        for path in ("docs/FEATURE_COMPLETENESS.md", "docs/docs/FEATURE_COMPLETENESS.md"):
-            text = self._repo_doc(path)
-            self.assertNotIn("Login, MFA, SSO", text)
+        # docs/docs/ was the W12.1-deleted duplication — only the
+        # canonical tree exists now.
+        text = self._repo_doc("docs/FEATURE_COMPLETENESS.md")
+        self.assertNotIn("Login, MFA, SSO", text)
 
     def test_testing_guide_does_not_claim_mfa_coverage(self):
         text = self._repo_doc("docs/TESTING_GUIDE.md")
@@ -88,6 +90,7 @@ class MFADocClaimTest(TestCase):
         self.assertIn("NOT SHIPPED (W1.7", text)
 
     def test_incident_response_uses_generic_auth_bypass_example(self):
-        for path in ("docs/INCIDENT_RESPONSE.md", "docs/docs/INCIDENT_RESPONSE.md"):
-            text = self._repo_doc(path)
-            self.assertNotIn("MFA bypass", text)
+        # docs/docs/ was the W12.1-deleted duplication — only the
+        # canonical tree exists now.
+        text = self._repo_doc("docs/INCIDENT_RESPONSE.md")
+        self.assertNotIn("MFA bypass", text)
