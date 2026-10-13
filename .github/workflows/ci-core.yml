@@ -120,6 +120,7 @@ jobs:
         run: |
           docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml exec -T \
             -e HUB_CORE_ONLY=1 \
+            -e CI=true \
             -e DATABASE_URL=postgresql://hub_test:hub_test@postgres-test:5432/hub_test_test_shared \
             api-service-test \
             python -m pytest hub/apps/ hub/tests/test_mvp_mode.py --reuse-db -x -q --timeout=300 \
