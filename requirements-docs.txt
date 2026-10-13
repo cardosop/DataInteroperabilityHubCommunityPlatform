@@ -5,5 +5,5 @@ mkdocs-material>=9.5,<10
 mkdocstrings[python]>=0.25,<1
 mkdocs-swagger-ui-tag>=0.0.17,<1
 mkdocs-redirects>=1.2,<2
-linkchecker>=10.0,<11
+linkchecker>=10.6.0,<11
 codespell>=2.3,<3
