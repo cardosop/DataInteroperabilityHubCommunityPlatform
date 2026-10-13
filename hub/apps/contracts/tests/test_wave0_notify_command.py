@@ -14,6 +14,8 @@ boundary around the network call, not around our own code paths.
 """
 
 from __future__ import annotations
+import shutil
+import tempfile
 
 import json
 from datetime import date, timedelta
@@ -85,18 +87,15 @@ def _write_jsonl(tmp_path: Path, rows: list[dict]) -> Path:
 
 @pytest.mark.django_db(transaction=True)
 class NotifyCommandTests(TestCase):
-    def _cleanup(self, tmp_path: Path):
-        if tmp_path.exists():
-            for p in tmp_path.iterdir():
-                p.unlink()
-            tmp_path.rmdir()
+    def _cleanup(self):
+        shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
     # --------------------------------------------------------------
     # Dry-run path (no email sent)
     # --------------------------------------------------------------
 
-    def test_dry_run_reports_per_tenant_dispatch_plan_without_sending(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_dry_run_reports_per_tenant_dispatch_plan_without_sending(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             t1 = _create_tenant("Acme")
             t2 = _create_tenant("Globex")
@@ -136,8 +135,8 @@ class NotifyCommandTests(TestCase):
     # Real dispatch path
     # --------------------------------------------------------------
 
-    def test_dispatch_calls_send_email_async_for_each_admin(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_dispatch_calls_send_email_async_for_each_admin(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant("Acme")
             admin1 = _create_user("admin1@example.com", tenant)
@@ -168,8 +167,8 @@ class NotifyCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_skips_tenant_with_no_admin_with_warning(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_skips_tenant_with_no_admin_with_warning(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant_with_admin = _create_tenant("WithAdmin")
             tenant_no_admin = _create_tenant("NoAdmin")
@@ -207,11 +206,11 @@ class NotifyCommandTests(TestCase):
     # Drift guard
     # --------------------------------------------------------------
 
-    def test_skips_contracts_no_longer_structureless(self, tmp_path: Path):
+    def test_skips_contracts_no_longer_structureless(self):
         """If a contract was structureless when the JSONL was captured
         but has since been remediated, the dispatcher must NOT include
         it in the per-tenant body — drift would mislead customers."""
-        tmp_path / "audit-reports"
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant("Acme")
             admin = _create_user("admin@example.com", tenant)
@@ -258,8 +257,8 @@ class NotifyCommandTests(TestCase):
     # Audit trail
     # --------------------------------------------------------------
 
-    def test_writes_audit_trail_jsonl(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_writes_audit_trail_jsonl(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant("Acme")
             admin = _create_user("admin@example.com", tenant)
@@ -297,8 +296,8 @@ class NotifyCommandTests(TestCase):
     # Tenant filter
     # --------------------------------------------------------------
 
-    def test_tenant_id_flag_scopes_dispatch(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_tenant_id_flag_scopes_dispatch(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             t1 = _create_tenant("Acme")
             t2 = _create_tenant("Globex")
@@ -331,8 +330,8 @@ class NotifyCommandTests(TestCase):
     # Date validation
     # --------------------------------------------------------------
 
-    def test_rejects_invalid_deadline_format(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_rejects_invalid_deadline_format(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             artefact = _write_jsonl(tmp_path, [])
 
@@ -350,10 +349,10 @@ class NotifyCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_rejects_past_deadline(self, tmp_path: Path):
+    def test_rejects_past_deadline(self):
         """A T-14 notification with a deadline in the past is a runbook
         violation — the operator must use a future date."""
-        tmp_path / "audit-reports"
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             admin = _create_user("a@example.com", tenant)

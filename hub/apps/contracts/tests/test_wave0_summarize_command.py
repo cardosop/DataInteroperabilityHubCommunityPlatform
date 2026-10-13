@@ -15,6 +15,8 @@ assert markdown substrings + counts.
 """
 
 from __future__ import annotations
+import shutil
+import tempfile
 
 import json
 from io import StringIO
@@ -88,8 +90,8 @@ def _row(contract, classification: str = "odcs_no_schema_block"):
 
 @pytest.mark.django_db(transaction=True)
 class SummarizeCommandTests(TestCase):
-    def test_summarizes_total_count(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_summarizes_total_count(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             c1 = _create_contract(tenant, hub_contract_json={"models": []})
@@ -109,8 +111,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_per_classification_breakdown(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_per_classification_breakdown(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             c1 = _create_contract(tenant, hub_contract_json={"models": []})
@@ -142,8 +144,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_per_tenant_breakdown_joins_tenant_name(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_per_tenant_breakdown_joins_tenant_name(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             t1 = _create_tenant("Acme Corp")
             t2 = _create_tenant("Globex")
@@ -166,10 +168,10 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_handles_unknown_tenant_id_gracefully(self, tmp_path: Path):
+    def test_handles_unknown_tenant_id_gracefully(self):
         """A row with a tenant_id that no longer exists must surface as
         '(unknown tenant)' rather than crashing the summarizer."""
-        tmp_path / "audit-reports"
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             artefact = _write_jsonl(
                 tmp_path,
@@ -200,8 +202,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_flags_tenants_without_admin(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_flags_tenants_without_admin(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             with_admin = _create_tenant("WithAdmin")
             no_admin = _create_tenant("NoAdmin")
@@ -228,8 +230,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_writes_to_output_file_when_specified(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_writes_to_output_file_when_specified(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             c1 = _create_contract(tenant, hub_contract_json={"models": []})
@@ -249,8 +251,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_handles_empty_jsonl_with_clean_message(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_handles_empty_jsonl_with_clean_message(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             artefact = _write_jsonl(tmp_path, [])
 
@@ -267,8 +269,8 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def test_skips_malformed_lines_with_warning(self, tmp_path: Path):
-        tmp_path / "audit-reports"
+    def test_skips_malformed_lines_with_warning(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tmp_path.mkdir(parents=True, exist_ok=True)
             artefact = tmp_path / "report.jsonl"
@@ -301,8 +303,5 @@ class SummarizeCommandTests(TestCase):
         finally:
             self._cleanup(tmp_path)
 
-    def _cleanup(self, tmp_path: Path):
-        if tmp_path.exists():
-            for p in tmp_path.iterdir():
-                p.unlink()
-            tmp_path.rmdir()
+    def _cleanup(self):
+        shutil.rmtree(tmp_path.parent, ignore_errors=True)

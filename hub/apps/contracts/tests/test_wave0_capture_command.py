@@ -13,6 +13,8 @@ verify the artefact file shape end-to-end.
 """
 
 from __future__ import annotations
+import shutil
+import tempfile
 
 import json
 from datetime import date
@@ -53,12 +55,9 @@ def _create_contract(tenant, *, hub_contract_json=None, original_raw: str = ""):
 
 @pytest.mark.django_db(transaction=True)
 class CaptureCommandTests(TestCase):
-    def test_creates_audit_reports_directory_if_missing(self, tmp_path: Path):
-        tmp_path = tmp_path / "audit-reports"
-        if tmp_path.exists():
-            for p in tmp_path.iterdir():
-                p.unlink()
-            tmp_path.rmdir()
+    def test_creates_audit_reports_directory_if_missing(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
+        shutil.rmtree(tmp_path.parent, ignore_errors=True)
         try:
             tenant = _create_tenant()
             _create_contract(tenant, hub_contract_json={"models": []})
@@ -73,13 +72,10 @@ class CaptureCommandTests(TestCase):
             assert tmp_path.exists()
             assert tmp_path.is_dir()
         finally:
-            if tmp_path.exists():
-                for p in tmp_path.iterdir():
-                    p.unlink()
-                tmp_path.rmdir()
+            shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
-    def test_writes_jsonl_with_today_date_in_filename(self, tmp_path: Path):
-        tmp_path = tmp_path / "audit-reports"
+    def test_writes_jsonl_with_today_date_in_filename(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             _create_contract(tenant, hub_contract_json={"models": []})
@@ -98,13 +94,10 @@ class CaptureCommandTests(TestCase):
                 f"Found: {list(tmp_path.iterdir()) if tmp_path.exists() else []}"
             )
         finally:
-            if tmp_path.exists():
-                for p in tmp_path.iterdir():
-                    p.unlink()
-                tmp_path.rmdir()
+            shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
-    def test_jsonl_contains_one_row_per_structureless_contract(self, tmp_path: Path):
-        tmp_path = tmp_path / "audit-reports"
+    def test_jsonl_contains_one_row_per_structureless_contract(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             _create_contract(tenant, hub_contract_json={"models": []})
@@ -141,13 +134,10 @@ class CaptureCommandTests(TestCase):
                 # Each line must be valid JSON.
                 json.loads(ln)
         finally:
-            if tmp_path.exists():
-                for p in tmp_path.iterdir():
-                    p.unlink()
-                tmp_path.rmdir()
+            shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
-    def test_stdout_summary_includes_path_and_count(self, tmp_path: Path):
-        tmp_path = tmp_path / "audit-reports"
+    def test_stdout_summary_includes_path_and_count(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             _create_contract(tenant, hub_contract_json={"models": []})
@@ -169,13 +159,10 @@ class CaptureCommandTests(TestCase):
                 f"Output should mention structureless count; got: {output}"
             )
         finally:
-            if tmp_path.exists():
-                for p in tmp_path.iterdir():
-                    p.unlink()
-                tmp_path.rmdir()
+            shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
-    def test_idempotent_overwrite_warns_and_replaces(self, tmp_path: Path):
-        tmp_path = tmp_path / "audit-reports"
+    def test_idempotent_overwrite_warns_and_replaces(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             tenant = _create_tenant()
             _create_contract(tenant, hub_contract_json={"models": []})
@@ -197,13 +184,10 @@ class CaptureCommandTests(TestCase):
             # The operator must be warned that an overwrite happened.
             assert "overwrit" in out.getvalue().lower() or "exist" in out.getvalue().lower()
         finally:
-            if tmp_path.exists():
-                for p in tmp_path.iterdir():
-                    p.unlink()
-                tmp_path.rmdir()
+            shutil.rmtree(tmp_path.parent, ignore_errors=True)
 
-    def test_passes_tenant_id_through(self, tmp_path: Path):
-        tmp_path = tmp_path / "audit-reports"
+    def test_passes_tenant_id_through(self):
+        tmp_path = Path(tempfile.mkdtemp(prefix="hub-wave0-")) / "audit-reports"
         try:
             t1 = _create_tenant("Tenant A")
             t2 = _create_tenant("Tenant B")
@@ -228,7 +212,4 @@ class CaptureCommandTests(TestCase):
             )
             assert json.loads(t1_lines[0])["tenant_id"] == str(t1.id)
         finally:
-            if tmp_path.exists():
-                for p in tmp_path.iterdir():
-                    p.unlink()
-                tmp_path.rmdir()
+            shutil.rmtree(tmp_path.parent, ignore_errors=True)
