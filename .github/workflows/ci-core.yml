@@ -110,7 +110,11 @@ jobs:
           key: pip-${{ hashFiles('requirements.txt') }}
           restore-keys: pip-
       - name: Start core test stack
-        run: docker compose -f docker-compose.test.yml -f docker-compose.test.core.yml up -d --build --wait
+        # The Makefile target (not raw compose --wait): --wait aborts when
+        # the one-shot init containers (dlt-pipelines-init, migrate) exit 0
+        # on idempotent re-runs — the target's host-side health loop is the
+        # sanctioned readiness signal.
+        run: make test-core-stack-up
         timeout-minutes: 10
       - name: Run core-only tests
         run: |
