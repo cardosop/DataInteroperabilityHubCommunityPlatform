@@ -10,7 +10,7 @@ hub/apps/assets/business_rules.py:703:Phase 313.2 long-tail inversion (lazy impo
 hub/apps/assets/services.py:965:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 hub/apps/assets/tests/test_asset_relationships.py:27:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/assets/tests/test_asset_relationships.py:778:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
-hub/apps/assets/tests/test_business_rules.py:841:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
+hub/apps/assets/tests/test_business_rules.py:844:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/assets/views.py:1648:Phase 313.2 long-tail inversion (lazy import -> hook/registry/event-bus)
 hub/apps/assets/views.py:2539:Phase 313.2 long-tail inversion (lazy import -> hook/registry/event-bus)
 hub/apps/assets/views_optimized.py:326:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
@@ -210,6 +210,7 @@ hub/apps/tenants/tests/test_onboarding_completion.py:37:Phase 313.2 long-tail in
 hub/apps/tenants/tests/test_onboarding_completion_signals.py:32:Phase 313.2 long-tail inversion (lazy import -> hook/registry/event-bus)
 hub/apps/tenants/tests/test_plan_limit_service.py:251:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/tenants/tests/test_plan_limit_warnings.py:9:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
+hub/apps/tenants/tests/test_seed_default_plans.py:100:W7.1 — guarded billing import; wipe degrades to no-op when the paid layer is absent
 hub/apps/tenants/tests/test_seed_default_plans.py:27:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus) — audited 2026-10-06 (W0.4b drill GATE-29 re-baseline)
 hub/apps/tenants/tests/test_seed_default_plans.py:52:W7.1 — guarded billing import; wipe degrades to no-op when the paid layer is absent
 hub/apps/tenants/tests/test_seed_default_plans.py:76:W7.1 — guarded billing import; wipe degrades to no-op when the paid layer is absent
@@ -555,4 +556,3 @@ tests/test_worker_tasks.py:286:Phase 313.2 long-tail inversion (lazy import → 
 tests/test_worker_tasks.py:293:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 tests/test_worker_tasks.py:301:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
 tests/test_worker_tasks.py:418:Phase 313.2 long-tail inversion (lazy import → hook/registry/event-bus)
-hub/apps/tenants/tests/test_seed_default_plans.py:100:W7.1 — guarded billing import; wipe degrades to no-op when the paid layer is absent

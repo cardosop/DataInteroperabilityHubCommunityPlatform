@@ -838,7 +838,12 @@ class AssetsBusinessRulesLifecycleValidationTest(TestCase):
 
     def test_retirement_requirements_with_active_listings(self):
         """Test retirement requirements with active listings (invalid)"""
-        from hub.apps.marketplace.models import Listing, ListingStatus
+        # marketplace is the paid layer — the sanctioned guard covers both
+        # core-only absence forms (W7.1).
+        try:
+            from hub.apps.marketplace.models import Listing, ListingStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("marketplace (paid layer) not installed in core-only mode")
 
         asset = AssetFactory.create_asset(
             tenant=self.tenant, created_by=self.user, status=AssetStatus.ACTIVE
