@@ -95,6 +95,17 @@ services:
       -c synchronous_commit=off
       -c full_page_writes=off
 
+  # W3.10 — the dlt pipeline-state volume mounts root-owned; the API and
+  # worker run as appuser (uid 1000) — chown the volume root once so the
+  # non-root processes can create pipeline state inside it.
+  dlt-pipelines-init:
+    image: busybox:1.36
+    container_name: hub-test-dlt-pipelines-init
+    command: ["sh", "-c", "chown -R 1000:1000 /dlt-data/pipelines"]
+    volumes:
+      - dlt-pipelines-test-data:/dlt-data/pipelines
+    restart: "no"
+
   # One-off: ensure hub_test database exists (handles volumes created without POSTGRES_DB=hub_test)
   ensure-test-db:
     image: postgres:16-alpine
@@ -385,7 +396,7 @@ services:
 
   # MinIO (S3-compatible storage) for Testing
   minio-test:
-    image: minio/minio:RELEASE.2025-02-28T09-55-16Z
+    image: cgr.dev/chainguard/minio
     container_name: hub-test-minio
     command: server /data --console-address ":9001"
     environment:
@@ -402,7 +413,7 @@ services:
     volumes:
       - minio-test-data:/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      test: ['CMD-SHELL', 'mc alias set local http://localhost:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null 2>&1 && mc ready local']
       interval: 20s
       timeout: 10s
       retries: 5
@@ -857,6 +868,10 @@ services:
     volumes:
       - .:/app
       - /var/run/docker.sock:/var/run/docker.sock
+      # W3.10 — the volume-backed dlt pipeline STATE (processed keys,
+      # SQL cursors): survives container re-creates, unlike dlt's /tmp
+      # default which wiped the cursor on every restart.
+      - dlt-pipelines-test-data:/dlt-data/pipelines
     group_add:
       - "984"  # host docker group GID — grants appuser access to /var/run/docker.sock
     ports:
@@ -1028,6 +1043,7 @@ services:
       ALLOWED_HOSTS: localhost,127.0.0.1,api-service,api-service-test,testserver,host.docker.internal  # host.docker.internal: the containerized k6 load client's view of the host (pilot-readiness 4.4)
       # dlt (data load tool) — suppress verbose output during tests
       DLT_LOG_LEVEL: ERROR
+      DLT_PIPELINES_DIR: ${DLT_PIPELINES_DIR:-/dlt-data/pipelines}
       DLT_DEV_MODE: "false"
       # E2E: relax auth rate limit for parallel Playwright workers (no mocks)
       RATE_LIMIT_E2E_RELAX: ${RATE_LIMIT_E2E_RELAX:-true}
@@ -1046,12 +1062,24 @@ services:
       GUNICORN_WORKERS: ${GUNICORN_WORKERS:-1}
       # Real scheduled ingestion/export E2E: uses MinIO (S3-compatible) already in this stack
       REAL_SCHEDULED_E2E: ${REAL_SCHEDULED_E2E:-1}
-      # Optional: set STRIPE_SECRET_KEY (e.g. sk_test_...) to run billing Stripe-dependent tests (no mocks)
-      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
-      STRIPE_PUBLISHABLE_KEY: ${STRIPE_PUBLISHABLE_KEY:-}
+      # Stripe keys flow in via env_file (.env.test) — NOT environment: —
+      # because `environment:` ALWAYS overrides env_file values, even when
+      # the ${VAR:-} substitution resolves to an empty string.  The W0.5
+      # de-leak (9ec3c03e7) left the empty defaults in place, which
+      # silently BLANKED the .env.test test keys inside the container —
+      # the backend took the local-only billing path and the
+      # E2E_STRIPE_ENABLED=1 runs could never see a Stripe customer
+      # (root-caused by W2.10).  Same convention as the CKAN/cloud
+      # credentials below: env_file only, never an empty override.
       # Optional: set STRIPE_WEBHOOK_SECRET (e.g. whsec_...) so webhook signature test runs (test_stripe_webhook_invalid_signature)
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-whsec_test}
       STRIPE_MARKETPLACE_WEBHOOK_SECRET: ${STRIPE_MARKETPLACE_WEBHOOK_SECRET:-whsec_test_marketplace}
+      # W2.10 (pilot 4.3): the Stripe E2E listener (stripe listen, host-side)
+      # writes its per-session whsec_ into ./.e2e/stripe-webhook-whsec AFTER
+      # this container boots — /app is the repo bind mount, so the backend
+      # reads it per request (billing.views._webhook_secret_candidates).
+      # Missing file = env secrets only; a stale file never breaks them.
+      STRIPE_WEBHOOK_SECRET_FILE: ${STRIPE_WEBHOOK_SECRET_FILE:-/app/.e2e/stripe-webhook-whsec}
       # --- Marketplace connector credentials (from .env.test) ---
       # CKAN: local instance in this compose stack
       CKAN_TEST_URL: http://ckan-test:5000
@@ -1069,6 +1097,8 @@ services:
       # Worker API key for scheduled export/ingestion internal endpoints (E2E test default)
       HUB_WORKER_API_KEY: ${HUB_WORKER_API_KEY:-e2e-test-worker-key-scheduled-export}
     depends_on:
+      dlt-pipelines-init:
+        condition: service_completed_successfully
       migrate-test-db:
         condition: service_completed_successfully
       ensure-test-db:
@@ -1160,6 +1190,11 @@ services:
       - "${WORKER_TEST_HEALTH_PORT:-8087}:8080"
     volumes:
       - .:/app
+      # W3.10 — the volume-backed dlt pipeline STATE (processed
+      # keys, SQL cursors): the worker's state must survive
+      # container re-creates too — the cursor lives wherever the
+      # pipeline runs.
+      - dlt-pipelines-test-data:/dlt-data/pipelines
     environment:
       EMAIL_BACKEND: smtp
       EMAIL_BASE_URL: ${EMAIL_BASE_URL:-http://localhost:8001}
@@ -1218,6 +1253,8 @@ services:
       CLAMAV_HOST: ${CLAMAV_HOST:-clamav-test}
       CLAMAV_PORT: ${CLAMAV_PORT:-3310}
     depends_on:
+      dlt-pipelines-init:
+        condition: service_completed_successfully
       postgres-test:
         condition: service_healthy
       redis-cache-test:
@@ -1915,6 +1952,8 @@ services:
       start_period: 20s
 
 volumes:
+  dlt-pipelines-test-data:
+    driver: local
   postgres-test-data:
     driver: local
   redis-cache-test-data:
