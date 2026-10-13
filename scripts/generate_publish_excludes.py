@@ -82,6 +82,13 @@ EXTRA = (
     "docker-compose.override.test-run.yml",
     "docker-compose.test.marquez.yml",
     "docker-compose.test.mvp.yml",
+    # W5.1 impersonation WIP (2026-10-13): the session-revocation
+    # enforcement does not exist yet — this RED TDD draft asserts
+    # session.end() revokes JWTs (401 IMPERSONATION_SESSION_ENDED) with
+    # no implementation behind it. Excluded from the public tree until
+    # the impersonation backend lands; REMOVE this entry with the W5.1
+    # merge.
+    "hub/apps/auth/tests/test_impersonation_w16.py",
     # Private-only dev/ops tooling (313.H.2.3) — these import paid modules
     # and are never part of the public product surface:
     #   validate_odps_final_checklist.py   — private PR checklist validator
@@ -101,9 +108,16 @@ EXTRA = (
     ".env.test.ckan",
     ".env.local",
     "infrastructure/postgres/certs/",
-    # Duplicated docs trees
-    "docs/docs/",
+    # Deprecated docs tree (duplicated docs/docs/ was DELETED by
+    # oss-release-remediation W12.1 — no exclusion needed for a dir
+    # that no longer exists).
     "docs/deprecated-doc/",
+    # W0.4 (2026-10-06): leaked-credential doc dropped from the
+    # rewritten history — the published tree must match the rewritten
+    # tree's content (single-sourced here; the previous hand-appended
+    # entries at the bottom of the generated file were wiped by every
+    # regeneration and are now folded in or dropped-with-their-targets).
+    "docs/MARKETPLACE_AND_CONNECTORS.md",
     # Private CI (50+ jobs, paid services, internal URLs) never ships; the
     # overlay provides the public workflows instead.
     ".github/workflows/",

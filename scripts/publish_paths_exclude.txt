@@ -54,6 +54,7 @@ docker-compose.override.memory.yml
 docker-compose.override.test-run.yml
 docker-compose.test.marquez.yml
 docker-compose.test.mvp.yml
+hub/apps/auth/tests/test_impersonation_w16.py
 scripts/validate_odps_final_checklist.py
 scripts/provision_smoke_fixtures.py
 scripts/semantic_memento_capacity_test.py
@@ -66,8 +67,8 @@ scripts/performance/profile_p1_endpoints.py
 .env.test.ckan
 .env.local
 infrastructure/postgres/certs/
-docs/docs/
 docs/deprecated-doc/
+docs/MARKETPLACE_AND_CONNECTORS.md
 .github/workflows/
 scripts/publish_public_overlay/
 openspec/
@@ -88,18 +89,3 @@ node_modules/
 awscliv2.zip
 .gcp-sa-test.json
 .claude/
-# W0.4 additions (2026-10-06) — leaked-credential docs and artifact dumps
-# dropped from history by the filter-repo rewrite; the published tree must
-# match the rewritten tree's content.
-docs/MARKETPLACE_AND_CONNECTORS.md
-docs/MARKETPLACE_GCP_GUIDE.md
-docs/MARKETPLACE_ORACLE_GUIDE.md
-docs/docs/MARKETPLACE_AND_CONNECTORS.md
-docs/docs/deprecated-doc/marketplace-originals/
-docs/api-audit/code-examples-audit.json
-docs/docs/api-audit/code-examples-audit.json
-docs/docs/deprecated-doc/api-audit/code-examples-audit.json
-services/api-gateway/TEST_RESULTS.md
-services/api-gateway/TEST_RESULTS_FINAL.md
-openspec/changes/testreview1/
-openspec/changes/workflows1/artifacts/
