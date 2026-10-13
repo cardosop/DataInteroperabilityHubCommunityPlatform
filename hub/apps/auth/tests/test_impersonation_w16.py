@@ -168,6 +168,12 @@ class ImpersonationBackendPinTest(TestCase):
     def test_ended_session_jwt_401s_on_graphql(self):
         """Exit revokes on the GraphQL surface too (DRF auth on
         strawberry paths — the W1.6 GraphQL fix)."""
+        # graphql is the paid layer — skip when it is not installed
+        # (W7.1: the core-only suite has no GraphQL surface).
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("hub.apps.graphql"):
+            pytest.skip("graphql (paid layer) not installed in core-only mode")
         self.session.end(reason="manual_exit")
 
         response = self._bearer(self.impersonation_jwt).post(
