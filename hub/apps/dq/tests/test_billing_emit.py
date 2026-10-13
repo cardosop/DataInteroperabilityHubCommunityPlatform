@@ -204,7 +204,10 @@ class DQRunBillingEmitTests(DQAPITestBaseExtended):
         between the producer (DQ pipeline) and the constant
         registry — a typo would cause subscribers to silently
         miss events."""
-        from hub.apps.billing.event_types import DQ_RUN_COMPLETED
+        try:
+            from hub.apps.billing.event_types import DQ_RUN_COMPLETED
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
         from hub.apps.dq.views import execute_dq_run
 
         with (

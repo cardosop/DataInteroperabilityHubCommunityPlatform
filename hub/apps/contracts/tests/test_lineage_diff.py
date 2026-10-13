@@ -221,11 +221,17 @@ from django.utils import timezone
 
 
 def _create_tenant_with_subscription():
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
-    from hub.apps.billing.tests.plan_fixtures import (
-        create_unique_tenant,
-        get_pro_plan,
-    )
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
+    try:
+        from hub.apps.billing.tests.plan_fixtures import (
+            create_unique_tenant,
+            get_pro_plan,
+        )
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
     plan = get_pro_plan()
     t = create_unique_tenant(

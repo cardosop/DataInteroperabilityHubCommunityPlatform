@@ -42,7 +42,10 @@ class MeProfileUpdateTest(TestCase):
         )
         TenantConfig.objects.create(tenant=self.tenant)
         plan = TenantPlan.objects.get(slug="free", is_active=True)
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
         Subscription.objects.create(
             tenant=self.tenant,

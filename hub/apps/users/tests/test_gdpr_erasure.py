@@ -261,7 +261,10 @@ class TestGDPRErasureGaps(TestCase):
         tenant are scrubbed by the erasure pipeline (metadata PII
         redacted)."""
         from hub.apps.gdpr.services import ErasureService
-        from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+        try:
+            from hub.apps.marketplace.models import Listing, ListingStatus, PricingModel
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
 
         asset = Asset.objects.create(
             tenant=self.tenant,

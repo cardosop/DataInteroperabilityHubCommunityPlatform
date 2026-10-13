@@ -150,7 +150,10 @@ class TenantSuspensionMiddlewareTest(TestCase):
     # ── C8: Subscription enforcement tests ───────────────────────
     def test_no_subscription_blocks_writes(self):
         """Middleware blocks writes when tenant has no subscription."""
-        from hub.apps.billing.models import Subscription
+        try:
+            from hub.apps.billing.models import Subscription
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
         Subscription.objects.filter(tenant=self.tenant).delete()
 
@@ -171,7 +174,10 @@ class TenantSuspensionMiddlewareTest(TestCase):
 
     def test_no_subscription_allows_reads(self):
         """Middleware allows reads when tenant has no subscription."""
-        from hub.apps.billing.models import Subscription
+        try:
+            from hub.apps.billing.models import Subscription
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
         Subscription.objects.filter(tenant=self.tenant).delete()
 
@@ -183,7 +189,10 @@ class TenantSuspensionMiddlewareTest(TestCase):
 
     def test_past_due_subscription_blocks_writes(self):
         """Middleware blocks writes for PAST_DUE subscription."""
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
         sub = Subscription.objects.filter(tenant=self.tenant).first()
         self.assertIsNotNone(sub, "subscription must exist for this test — setUp should create one")
@@ -207,7 +216,10 @@ class TenantSuspensionMiddlewareTest(TestCase):
 
     def test_canceled_subscription_blocks_writes(self):
         """Middleware blocks writes for CANCELED subscription."""
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
         sub = Subscription.objects.filter(tenant=self.tenant).first()
         if sub:

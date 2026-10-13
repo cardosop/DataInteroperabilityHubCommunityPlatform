@@ -6,6 +6,7 @@ Tests all validation methods using real services and models (no mocks/stubs).
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -1176,13 +1177,16 @@ class CrossSourceCompatibilityValidationTest(TestCase):
         )
 
         # Create listing and entitlement
-        from hub.apps.marketplace.models import (
-            Entitlement,
-            EntitlementStatus,
-            Listing,
-            ListingStatus,
-            PricingModel,
-        )
+        try:
+            from hub.apps.marketplace.models import (
+                Entitlement,
+                EntitlementStatus,
+                Listing,
+                ListingStatus,
+                PricingModel,
+            )
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
 
         listing = Listing.objects.create(
             tenant=other_tenant,
@@ -1970,13 +1974,16 @@ class CrossTenantAccessValidationTest(TestCase):
         self.asset_other_tenant.save()
 
         # Create entitlement for cross-tenant access
-        from hub.apps.marketplace.models import (
-            Entitlement,
-            EntitlementStatus,
-            Listing,
-            ListingStatus,
-            PricingModel,
-        )
+        try:
+            from hub.apps.marketplace.models import (
+                Entitlement,
+                EntitlementStatus,
+                Listing,
+                ListingStatus,
+                PricingModel,
+            )
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
         from hub.apps.tenants.models import KYCStatus
 
         self.other_tenant.kyc_status = KYCStatus.VERIFIED

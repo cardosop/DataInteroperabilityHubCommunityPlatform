@@ -30,7 +30,10 @@ pytestmark = pytest.mark.django_db(transaction=True)
 
 def _ensure_tenant_has_active_subscription(tenant):
     """Ensure tenant has active subscription so SubscriptionStatusMiddleware allows DELETE."""
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
     from hub.apps.tenants.models import PlanTier, TenantPlan
 
     if Subscription.objects.filter(tenant=tenant, status=SubscriptionStatus.ACTIVE).exists():

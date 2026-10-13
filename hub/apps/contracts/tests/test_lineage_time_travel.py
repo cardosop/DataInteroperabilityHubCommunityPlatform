@@ -331,8 +331,14 @@ class TestAsOfReturnsHistoricalState(TransactionTestCase):
 def _create_subscription_for_tenant(tenant):
     """Create an ACTIVE BASE subscription so the billing middleware
     doesn't 403 the GET. Mirrors the F4 inbound test pattern."""
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
-    from hub.apps.billing.tests.plan_fixtures import get_pro_plan
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
+    try:
+        from hub.apps.billing.tests.plan_fixtures import get_pro_plan
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
     plan = get_pro_plan()
     Subscription.objects.create(

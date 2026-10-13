@@ -56,7 +56,10 @@ def semantic_service_available() -> bool:
     network calls in tight loops.
     """
     try:
-        from hub.apps.semantic.service_client import SemanticServiceClient
+        try:
+            from hub.apps.semantic.service_client import SemanticServiceClient
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.semantic (paid layer) not installed in core-only mode")
 
         client = SemanticServiceClient()
         is_healthy, _ = client.health_check()

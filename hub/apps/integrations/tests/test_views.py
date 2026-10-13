@@ -1106,7 +1106,10 @@ class MarketplaceRateLimitingTest(TestCase):
         """Return a RateLimitResult that mimics a throttled response."""
         import time
 
-        from hub.apps.rate_limiting.service import RateLimitResult
+        try:
+            from hub.apps.rate_limiting.service import RateLimitResult
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.rate_limiting (paid layer) not installed in core-only mode")
 
         return RateLimitResult(
             allowed=False,

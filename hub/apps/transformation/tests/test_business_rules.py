@@ -6,6 +6,7 @@ Tests all validation methods using real services and models (no mocks/stubs).
 
 import uuid
 
+import pytest
 from django.test import TestCase
 
 from hub.apps.assets.models import Asset, AssetStatus
@@ -1225,12 +1226,15 @@ class TransformationBusinessRulesTest(TestCase):
         2. Marketplace entitlement granting access
         """
         from hub.apps.governance.models import AccessPolicy
-        from hub.apps.marketplace.models import (
-            Entitlement,
-            Listing,
-            ListingStatus,
-            PricingModel,
-        )
+        try:
+            from hub.apps.marketplace.models import (
+                Entitlement,
+                Listing,
+                ListingStatus,
+                PricingModel,
+            )
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
 
         # Create another tenant (KYC-verified, required to publish listings) and asset
         other_tenant = Tenant.objects.create(

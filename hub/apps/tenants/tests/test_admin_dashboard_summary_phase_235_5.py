@@ -346,7 +346,10 @@ class TestDashboardSummaryReflectsSeededData:
 
     @pytest.mark.integration
     def test_billing_widget_counts_active_subscriptions(self):
-        from hub.apps.billing.models import Subscription, SubscriptionStatus
+        try:
+            from hub.apps.billing.models import Subscription, SubscriptionStatus
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
         from hub.apps.tenants.models import TenantPlan
 
         tenant = _make_tenant()

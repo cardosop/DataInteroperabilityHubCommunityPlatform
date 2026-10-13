@@ -248,7 +248,10 @@ class PlanLimitServiceTest(TestCase):
 
     def test_check_limit_no_default_free_plan_raises_error(self):
         """Tenant without plan + no FREE plan in DB → NotFoundError."""
-        from hub.apps.billing.models import Subscription
+        try:
+            from hub.apps.billing.models import Subscription
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
 
         tenant_no_plan = _make_tenant(name_prefix="OrphanTenant")
         # Delete subscriptions first (RESTRICT FK), then the free plan

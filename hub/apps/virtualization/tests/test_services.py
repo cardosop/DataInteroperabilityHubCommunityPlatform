@@ -1493,7 +1493,10 @@ class VirtualizationServiceComplianceIntegrationTest(TestCase):
         from hub.apps.datasets.models import Dataset
         from hub.apps.files.models import File
         from hub.apps.files.storage import S3StorageClient
-        from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing
+        try:
+            from hub.apps.marketplace.models import Entitlement, EntitlementStatus, Listing
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
 
         # Create asset in other tenant
         other_asset = Asset.objects.create(

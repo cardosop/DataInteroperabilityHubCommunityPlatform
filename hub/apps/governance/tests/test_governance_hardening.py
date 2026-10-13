@@ -306,7 +306,10 @@ class TestKYCExpiration(TestCase):
     def test_can_publish_blocks_expired_kyc(self):
         """can_publish() returns False when KYC is expired."""
         from hub.apps.assets.models import Asset
-        from hub.apps.marketplace.models import Listing
+        try:
+            from hub.apps.marketplace.models import Listing
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
         from hub.apps.users.models import User
 
         user = User.objects.create(
@@ -339,7 +342,10 @@ class TestKYCExpiration(TestCase):
     def test_can_publish_allows_valid_kyc(self):
         """can_publish() returns True when KYC is verified and not expired."""
         from hub.apps.assets.models import Asset
-        from hub.apps.marketplace.models import Listing
+        try:
+            from hub.apps.marketplace.models import Listing
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.marketplace (paid layer) not installed in core-only mode")
         from hub.apps.users.models import User
 
         user = User.objects.create(
@@ -464,8 +470,14 @@ class TestClassificationPropagation(TestCase):
         """link_model_to_dataset calls propagate_classification for PII datasets."""
         from hub.apps.assets.models import Asset
         from hub.apps.datasets.models import Dataset
-        from hub.apps.ml.models import MLModel, ModelDatasetLink
-        from hub.apps.ml.services import ModelRegistryBridgeService
+        try:
+            from hub.apps.ml.models import MLModel, ModelDatasetLink
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.ml (paid layer) not installed in core-only mode")
+        try:
+            from hub.apps.ml.services import ModelRegistryBridgeService
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.ml (paid layer) not installed in core-only mode")
 
         dataset = Dataset.objects.create(
             tenant=self.tenant,

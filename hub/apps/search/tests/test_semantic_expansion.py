@@ -85,11 +85,14 @@ def _make_asset(tenant, user, *, name, description=""):
 
 
 def _make_active_ontology(tenant, *, turtle_body):
-    from hub.apps.semantic.models import (
-        OntologyFormat,
-        OntologyValidationStatus,
-        TenantOntology,
-    )
+    try:
+        from hub.apps.semantic.models import (
+            OntologyFormat,
+            OntologyValidationStatus,
+            TenantOntology,
+        )
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.semantic (paid layer) not installed in core-only mode")
 
     suffix = uuid.uuid4().hex[:6]
     return TenantOntology.objects.create(
@@ -199,7 +202,10 @@ class SemanticQueryExpansionUnitTests(TransactionTestCase):
 
     def test_inactive_ontology_does_not_contribute(self):
         from hub.apps.search.semantic_query_expansion import expand_query_terms
-        from hub.apps.semantic.models import TenantOntology
+        try:
+            from hub.apps.semantic.models import TenantOntology
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.semantic (paid layer) not installed in core-only mode")
 
         tenant = _make_tenant("inact")
         ont = _make_active_ontology(tenant, turtle_body=_EQUIV_TURTLE)

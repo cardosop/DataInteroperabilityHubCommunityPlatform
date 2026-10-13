@@ -505,7 +505,10 @@ class TestFederatedAssetCreation(TestCase):
         def mock_map_contract(contract, tenant=None, use_cache=True):
             semantic_calls.append(("contract", str(contract.id), contract.original_spec_type))
 
-        from hub.apps.semantic import utils
+        try:
+            from hub.apps.semantic import utils
+        except (RuntimeError, ModuleNotFoundError):
+            pytest.skip("hub.apps.semantic (paid layer) not installed in core-only mode")
 
         original_map_asset = utils.map_asset_to_semantic
         original_map_contract = utils.map_contract_to_semantic

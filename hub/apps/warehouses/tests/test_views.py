@@ -41,7 +41,10 @@ def _create_tenant(**overrides):
 
     # Ensure tenant has an active BASE subscription so the billing
     # middleware allows POST/PATCH/DELETE (skipped for GET/HEAD/OPTIONS).
-    from hub.apps.billing.models import Subscription, SubscriptionStatus
+    try:
+        from hub.apps.billing.models import Subscription, SubscriptionStatus
+    except (RuntimeError, ModuleNotFoundError):
+        pytest.skip("hub.apps.billing (paid layer) not installed in core-only mode")
     from hub.apps.tenants.models import TenantConfig, TenantPlan
 
     TenantConfig.objects.get_or_create(tenant=tenant)
